@@ -1,0 +1,82 @@
+# Vault — standalone compose project (encrypted secret store for backend
+# cloud credentials).
+#
+# Vault uses file storage on the `vault-data` volume (mounted at /vault/file,
+# the path the hashicorp/vault entrypoint chowns to the vault user). Seal state
+# + secrets survive reboot/restart/`docker compose down`.
+#
+# vault-bootstrap (one-shot) initializes/unseals Vault, enables KV v2, issues a
+# least-privilege read token for the libcloud REST API, and seeds cloud
+# credentials from the host environment. It writes ../vault/generated/vault.env
+# (root token, unseal key, API read token). ../openfga_my/setup.sh sources
+# ../openfga_my/.env (seed creds) and runs this service with those vars exported.
+#
+# All services share the external `libcloud_net` network so the libcloud REST
+# API (in ../libcloud.rest) can reach Vault at http://vault:8200 by container
+# name. Host-side scripts reach Vault via the published port
+# (http://localhost:8200).
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./config.hcl:/vault/config/config.hcl:ro
+      # /vault/file is the path the vault image's entrypoint chowns to the vault
+      # user; see config.hcl for rationale.
+      - vault-data:/vault/file
+    command: ["vault", "server", "-config=/vault/config/config.hcl"]
+    healthcheck:
+      # /v1/sys/seal-status returns HTTP 200 in every state (uninit/sealed/unsealed),
+      # so it reliably reports "listener up + core responsive". Avoid `vault status`
+      # here: the CLI defaults to https against this tls-disabled listener.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8200/v1/sys/seal-status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+  vault-bootstrap:
+    image: python:3.12-slim
+    container_name: vault-bootstrap
+    depends_on:
+      vault:
+        condition: service_started
+    networks:
+      - libcloud_net
+    # Run as the host user so generated/vault.env (chmod 0600) is owned by the
+    # host user and readable by setup.sh. Falls back to 1000:1000 for manual
+    # `docker compose up vault-bootstrap` invocations.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_PUBLIC_ADDR: ${VAULT_PUBLIC_ADDR:-http://localhost:8200}
+      # Output location for vault.env (root token + unseal key + API read token).
+      VAULT_OUTPUT_DIR: /bootstrap/generated
+      VAULT_LOG_LEVEL: INFO
+      # Vault initialization is gated on a superadmin Dex login. setup.sh
+      # obtains this via scripts/superadmin_auth.sh. Empty -> bootstrap refuses
+      # to run (see vault_bootstrap.py main()).
+      # Per-tenant backend credentials are NOT seeded here; they are written by
+      # the tenant owner via scripts/set_tenant_credentials.py.
+      SUPERADMIN_JWT: ${SUPERADMIN_JWT:-}
+    volumes:
+      # The bootstrap script lives with the orchestrator (../openfga_my).
+      - ../openfga_my/vault_bootstrap.py:/bootstrap/vault_bootstrap.py:ro
+      - ./generated:/bootstrap/generated
+    working_dir: /bootstrap
+    command: ["python3", "vault_bootstrap.py"]
+    restart: "no"
+
+networks:
+  libcloud_net:
+    external: true
+
+volumes:
+  vault-data:

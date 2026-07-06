@@ -1,0 +1,22 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "task-rp-1111-1111-1111-111111111111",
+    "status": "SUCCEEDED",
+    "operation": "CreateRecoveryPoint",
+    "progressPercentage": 100,
+    "entitiesAffected": [
+      {
+        "extId": "rp-11111111-1111-1111-1111-111111111111",
+        "name": "snapshot-data-volume-01",
+        "rel": "dataprotection:config:recovery-point"
+      }
+    ],
+    "completionDetails": [
+      {
+        "name": "recoveryPointExtId",
+        "value": "rp-11111111-1111-1111-1111-111111111111"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "task-fail-1111-1111-1111-111111111111",
+    "status": "FAILED",
+    "operation": "CreateVm",
+    "errorMessages": [
+      {"message": "Insufficient resources on cluster"}
+    ]
+  }
+}

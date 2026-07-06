@@ -1,0 +1,541 @@
+Authenticating ntnx-owner against Dex ...
+OpenFGA Check user:ntnx-owner can_manage_credentials tenant:nutanix ...
+set_tenant_credentials: OpenFGA check failed (HTTP 401): {"code":"invalid_claims","message":"invalid claims"}
+
+>>> GET http://localhost:5556/dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex
+>>> POST http://localhost:5556/dex/auth/lldap/login?back=&state=wc445iby3cz4yifnnrqaqjhzm (login=ntnx-admin)
+>>> GET http://localhost:8765/v1/auth/me
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+<<< HTTP 200
+<<< Response headers:
+HTTP/1.1 200 OK
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 439
+content-type: application/json
+x-request-id: req_f0f483118fc2
+
+<<< Response body:
+{
+    "data": {
+        "username": "ntnx-admin",
+        "tenant_id": "default",
+        "scope": "compute:read compute:image:read compute:size:read compute:location:read compute:node:create compute:node:delete compute:node:power compute:node:update compute:volume:manage compute:snapshot:manage compute:network:read compute:network:manage compute:keypair:manage jobs:read",
+        "allowed_providers": [
+            "nutanix"
+        ],
+        "session_id": "ntnx-admin"
+    },
+    "meta": {
+        "request_id": "req_f0f483118fc2"
+    }
+}
+
+>>> POST http://localhost:8765/v1/connections:test
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+Content-Type: application/json
+>>> Request body:
+{
+    "provider": "nutanix",
+    "config": {
+        "host": "host.docker.internal",
+        "port": 9440,
+        "secure": true,
+        "api_version": "v4.0",
+        "verify_ssl_cert": false
+    },
+    "auth_binding": "nutanix"
+}
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_adbd4ca77c9a
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_adbd4ca77c9a"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/locations
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_fd539a6ae8f8
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_fd539a6ae8f8"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/sizes
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_bbb884021e0f
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_bbb884021e0f"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/images
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_12e77a2cc7d2
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_12e77a2cc7d2"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/storage-containers
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:20 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_8a5f6bb6456d
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_8a5f6bb6456d"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/nodes
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:21 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_9bf98d57bd9d
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_9bf98d57bd9d"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/locations
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:21 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_f9be5799fcb0
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_f9be5799fcb0"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/images
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:21 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_0953b7bfc997
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_0953b7bfc997"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/subnets
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:21 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_7e7cf3f7e931
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_7e7cf3f7e931"
+    }
+}
+
+Could not resolve CLUSTER_ID/IMAGE_ID from catalog listings.
+>>> GET http://localhost:5556/dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex
+>>> POST http://localhost:5556/dex/auth/lldap/login?back=&state=ukmovu3wokjab2wb7ro4b7me3 (login=ntnx-viewer)
+>>> GET http://localhost:8765/v1/auth/me
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+<<< HTTP 200
+<<< Response headers:
+HTTP/1.1 200 OK
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 270
+content-type: application/json
+x-request-id: req_eae6e13fe80c
+
+<<< Response body:
+{
+    "data": {
+        "username": "ntnx-viewer",
+        "tenant_id": "default",
+        "scope": "compute:read compute:image:read compute:size:read compute:location:read compute:network:read jobs:read",
+        "allowed_providers": [
+            "nutanix"
+        ],
+        "session_id": "ntnx-viewer"
+    },
+    "meta": {
+        "request_id": "req_eae6e13fe80c"
+    }
+}
+
+>>> POST http://localhost:8765/v1/connections:test
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+Content-Type: application/json
+>>> Request body:
+{
+    "provider": "nutanix",
+    "config": {
+        "host": "host.docker.internal",
+        "port": 9440,
+        "secure": true,
+        "api_version": "v4.0",
+        "verify_ssl_cert": false
+    },
+    "auth_binding": "nutanix"
+}
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_e0d358ae9140
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_e0d358ae9140"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/locations
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_1908e7b8eb83
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_1908e7b8eb83"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/sizes
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_40d4f55d9a53
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_40d4f55d9a53"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/images
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_0899e339021a
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_0899e339021a"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/storage-containers
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_e0c25cfd7cf4
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_e0c25cfd7cf4"
+    }
+}
+
+>>> GET http://localhost:8765/v1/compute/nodes
+>>> Request headers:
+Authorization: Bearer ***REDACTED***
+Accept: application/json
+X-Provider-Connection: ***REDACTED***
+<<< HTTP 503
+<<< Response headers:
+HTTP/1.1 503 Service Unavailable
+date: Fri, 03 Jul 2026 07:54:22 GMT
+server: uvicorn
+content-length: 264
+content-type: application/json
+x-request-id: req_83b610e03034
+
+<<< Response body:
+{
+    "error": {
+        "code": "authz_fga_error",
+        "message": "OpenFGA authorization check failed",
+        "details": {
+            "relation": "can_connect",
+            "object": "libcloud_api:main",
+            "detail": "{\"code\":\"invalid_claims\",\"message\":\"invalid claims\"}\n"
+        }
+    },
+    "meta": {
+        "request_id": "req_83b610e03034"
+    }
+}
+

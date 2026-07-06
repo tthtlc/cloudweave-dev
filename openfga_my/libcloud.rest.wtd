@@ -1,0 +1,27 @@
+
+  Docs — authorization.md §3 and ARCHITECTURE.md §5.5 updated to describe multi-tenant credentials, create_tenant.sh, and the libcloud REST follow-up.
+
+  Usage
+
+  ./setup.sh                                      # seeds tenant:aws + tenant:nutanix
+  # Mint a second AWS tenant with its own account:
+  TENANT=aws-dev CLOUD=aws ./scripts/create_tenant.sh
+  # -> creates aws-dev-owner/admin/viewer + aws_region:aws-dev + secret/libcloud/aws-dev binding
+  # Its owner sets ITS OWN access key/secret:
+  TENANT=aws-dev LIBCLOUD_USER=aws-dev-owner LIBCLOUD_PASSWORD='...' \
+    LIBCLOUD_AWS_KEY=AKIADEV... LIBCLOUD_AWS_SECRET=... \
+    python3 scripts/set_tenant_credentials.py
+  # Provision against that tenant (uses aws-dev creds + aws_region:aws-dev authz):
+  LIBCLOUD_AWS_AUTH_BINDING=aws-dev LIBCLOUD_USER=aws-dev-admin ./scripts/provision_aws.sh
+
+  tenant:aws and tenant:aws-dev now have completely separate credentials, owners, and backend objects; an aws-dev-admin cannot provision aws_region:aws and
+  vice versa.
+
+  Required follow-up (libcloud REST, out of this project)
+
+  For libcloud REST to enforce per-tenant isolation end-to-end, app/auth/policy.py must derive the OpenFGA backend object from connection.auth_binding
+  (aws_region:{auth_binding}) rather than from connection.config.region. The scripts' fga_check calls already use the per-tenant object; libcloud REST's own
+  enforcement needs that one change to match. This is flagged in authorization.md §3.
+
+
+

@@ -1,0 +1,67 @@
+# Dex OIDC issuer — users live in LLDAP (../lldap), reached over LDAP.
+#
+# Rendered to config.yaml by dex_bootstrap.py (OAuth client secret + LLDAP bind
+# credentials injected). Dex authenticates users against LLDAP via the LDAP
+# connector; no staticPasswords / enablePasswordDB here.
+#
+# The connector maps:
+#   idAttr  = uid   -> OIDC token `sub`            (e.g. "cloud-admin")
+#   emailAttr = mail -> OIDC token `email`         (e.g. cloud-admin@libcloud.local)
+#   nameAttr = cn   -> OIDC token `name`
+# so the libcloud REST API's principal_map (by_email / by_sub) resolves the
+# same stable principals (cloud-admin / cloud-readonly / cloud-denied) as before.
+#
+# LLDAP is on the shared libcloud_net network, so Dex reaches it at
+# ldap://lldap:3890. InsecureNoSSL is fine for the single-host dev network;
+# for production, enable LDAPS (startTLS or ssl) and a valid CA.
+
+# The issuer is the canonical in-container URL (http://dex:5556/dex) so that
+# in-cluster consumers (OpenFGA OIDC authn, libcloud REST API) can fetch JWKS
+# from `<issuer>/keys` over libcloud_net and the token `iss` matches. Host-side
+# clients use the published http://localhost:5556 port for the browser flow and
+# JWKS fetch (see ../openfga_my/dex_bootstrap.py -> generated/dex.env).
+issuer: http://dex:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+logger:
+  level: info
+  format: json
+
+oauth2:
+  skipApprovalScreen: true
+  responseTypes: ["code"]
+  grantTypes: ["authorization_code", "refresh_token"]
+
+staticClients:
+  - id: libcloud-rest
+    name: libcloud REST API
+    secret: HbpzexeVfU0STxDY9f14Td3-T2OfmhTsJIFwXxQrFVs
+    redirectURIs:
+      - http://127.0.0.1:8766/oauth/callback
+      - http://localhost:8765/oauth/callback
+
+connectors:
+  - type: ldap
+    id: lldap
+    name: LLDAP
+    config:
+      # LLDAP on the shared libcloud_net network.
+      host: lldap:3890
+      insecureNoSSL: true
+      # Service account bind for user lookups (admin).
+      bindDN: uid=admin,ou=people,dc=libcloud,dc=local
+      bindPW: 0OMzVB1LsQoIbYHGNFQL
+      userSearch:
+        baseDN: ou=people,dc=libcloud,dc=local
+        filter: "(objectClass=person)"
+        # The user types their uid (e.g. "cloud-admin") at the Dex login form.
+        username: uid
+        # idAttr becomes the OIDC `sub`; keep it = uid so principals stay stable.
+        idAttr: uid
+        emailAttr: mail
+        nameAttr: cn

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(chmod +x /home/ubuntu/nutanix_vm/scripts/smoke-test.sh)",
+      "Bash(/home/ubuntu/nutanix_vm/scripts/smoke-test.sh)",
+      "Bash(dpkg --print-architecture)",
+      "Bash(curl -sL \"https://github.com/nutanix/terraform-provider-nutanix/releases/download/v2.2.1/terraform-provider-nutanix_2.2.1_SHA256SUMS\")",
+      "Bash(/home/ubuntu/nutanix_vm/scripts/smoke-test.sh *)",
+      "Bash(curl -sk https://localhost:9440/health)",
+      "Bash(curl -sk https://localhost:9440/api/vmm/v4.0.a1/config/vms)",
+      "Bash(docker run *)",
+      "Bash(bash *)"
+    ]
+  }
+}

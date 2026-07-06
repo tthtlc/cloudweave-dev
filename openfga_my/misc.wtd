@@ -1,0 +1,20 @@
+
+Remaining hardening (documented, not done)
+
+  Network-isolate :8080 (don't publish to host) and enable OpenFGA TLS for non-localhost deployments — defense in depth on top of the now-enforced OIDC
+  authn.
+
+  Finished List dex dir and find issuer/env writers
+
+  The backgrounded shell task 556043 ("List dex dir and find issuer/env writers") errored — it was a slow rg scan I had already killed and superseded with
+  targeted Grep/Read calls. No action needed; it had no bearing on the implementation, which is complete and verified as summarized above.
+
+
+Build a reference OpenFGA authorization model specifically for a cloud-abstraction layer. Define types for 'cloud_account', 'instance', and 'storage_bucket' and relations that map LLDAP roles (admin, operator, viewer) to permissions like 'can_provision', 'can_delete', and 'can_view_metrics'. Include a sample set of tuple declarations that demonstrate how an LLDAP-issued role correlates to an OpenFGA relationship, and provide a pseudo-code implementation of the OpenFGA 'check' call as a middleware interceptor for the libcloud REST API
+
+
+Create a sequence diagram and architecture guide mapping the full authorization flow: from LLDAP user authentication and role retrieval, through the OpenFGA permission check (check/write), to the final libcloud API call. Include the specific middleware logic required to extract user IDs from LLDAP tokens, format the OpenFGA 'check' query based on the requested resource and action, and handle unauthorized response codes across the libcloud provider integration layer
+
+
+
+

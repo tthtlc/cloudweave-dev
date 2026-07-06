@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "httpStatus": 401
+  },
+  "data": {
+    "error": [
+      {
+        "code": "AUTHENTICATION_FAILED",
+        "message": "Invalid credentials"
+      }
+    ],
+    "message": "Invalid credentials"
+  }
+}

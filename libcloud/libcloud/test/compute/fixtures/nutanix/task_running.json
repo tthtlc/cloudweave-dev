@@ -1,0 +1,16 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "task-create-1111-1111-1111-111111111111",
+    "status": "RUNNING",
+    "operation": "CreateVm",
+    "progressPercentage": 50,
+    "entitiesAffected": [
+      {
+        "extId": "vm-new-1111-1111-1111-111111111111",
+        "name": "test-vm",
+        "rel": "vmm:ahv:config:vm"
+      }
+    ]
+  }
+}

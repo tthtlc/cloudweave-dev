@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "httpStatus": 202
+  },
+  "data": {
+    "extId": "task-create-1111-1111-1111-111111111111",
+    "$objectType": "prism.v4.config.TaskReference"
+  }
+}

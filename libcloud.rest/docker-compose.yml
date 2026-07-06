@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: libcloud.rest/Dockerfile
+    image: libcloud-rest-api:latest
+    container_name: libcloud-rest-api
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    env_file:
+      - .env
+    environment:
+      NUTANIX_HOST: ${NUTANIX_HOST:-host.docker.internal}
+      USERS_FILE: data/users.json
+      # Dex/OpenFGA/Vault are sibling compose projects on the shared libcloud_net
+      # network — reach them by container-name DNS. OIDC_ISSUER_URL stays
+      # http://localhost:5556/dex (matching Dex's issuer claim) and is read from
+      # .env; only the JWKS/FGA/Vault endpoints use the internal container names.
+      OIDC_JWKS_URL: http://dex:5556/dex/keys
+      FGA_API_URL: http://openfga:8080
+      VAULT_ADDR: http://vault:8200
+      # VAULT_TOKEN is read from .env (synced from ../openfga_my/../vault/generated/vault.env
+      # by ../openfga_my/setup.sh). VAULT_KV_MOUNT / VAULT_KV_PREFIX come from .env when set.
+    ports:
+      - "${API_PORT:-8765}:8765"
+    extra_hosts:
+      # Keep host.docker.internal for the Nutanix lab backend (NUTANIX_HOST).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - api-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  libcloud_net:
+    external: true
+
+volumes:
+  api-data:

@@ -1,0 +1,172 @@
+# Welcome
+<a name="Welcome"></a>
+
+## AWS Cost Explorer
+<a name="Welcome_AWS_Cost_Explorer_Service"></a>
+
+You can use the Cost Explorer API to programmatically query your cost and usage data. You can query for aggregated data such as total monthly costs or total daily usage. You can also query for granular data. This might include the number of daily write operations for Amazon DynamoDB database tables in your production environment. 
+
+Service Endpoint
+
+The Cost Explorer API provides the following endpoint:
++  `https://ce.us-east-1.amazonaws.com` 
+
+For information about the costs that are associated with the Cost Explorer API, see [AWS Cost Management Pricing](http://aws.amazon.com/aws-cost-management/pricing/).
+
+## AWS Billing and Cost Management Dashboards
+<a name="Welcome_AWS_Billing_and_Cost_Management_Dashboards"></a>
+
+ AWS Billing and Cost Management Dashboards is a service that enables you to create, manage, and share dashboards that combine multiple visualizations of your AWS cost and usage data. You can combine multiple data sources including Cost Explorer, Savings Plans, and Reserved Instance metrics into unified dashboards, helping you analyze spending patterns and share cost insights across your organization.
+
+You can use the AWS Billing and Cost Management Dashboards API to programmatically create, manage, and share dashboards. This includes creating custom dashboards, configuring widgets, managing dashboard permissions, and sharing dashboards across accounts in your organization.
+
+## AWS Data Exports
+<a name="Welcome_AWS_Billing_and_Cost_Management_Data_Exports"></a>
+
+You can use the Data Exports API to create customized exports from multiple AWS cost management and billing datasets, such as cost and usage data and cost optimization recommendations.
+
+The Data Exports API provides the following endpoint:
++ https://bcm-data-exports.us-east-1.api.aws
+
+## AWS Pricing Calculator
+<a name="Welcome_AWS_Billing_and_Cost_Management_Pricing_Calculator"></a>
+
+ You can use the Pricing Calculator API to programmatically create estimates for your planned cloud use. You can model usage and commitments such as Savings Plans and Reserved Instances, and generate estimated costs using your discounts and benefit sharing preferences. 
+
+The Pricing Calculator API provides the following endpoint:
++  `https://bcm-pricing-calculator.us-east-1.api.aws` 
+
+## AWS Billing and Cost Management Recommended Actions
+<a name="Welcome_AWS_Billing_and_Cost_Management_Recommended_Actions"></a>
+
+You can use the AWS Billing and Cost Management Recommended Actions API to programmatically query your best practices and recommendations to optimize your costs.
+
+The AWS Billing and Cost Management Recommended Actions API provides the following endpoint:
++  https://bcm-recommended-actions.us-east-1.api.aws
+
+## AWS Billing
+<a name="Welcome_AWS_Billing"></a>
+
+ You can use the Billing API to programatically list the billing views available to you for a given time period. A billing view represents a set of billing data. 
+
+The Billing API provides the following endpoint:
+
+ `https://billing.us-east-1.api.aws` 
+
+## AWS Budgets
+<a name="Welcome_AWS_Budgets"></a>
+
+Use the AWS Budgets API to plan your service usage, service costs, and instance reservations. This API reference provides descriptions, syntax, and usage examples for each of the actions and data types for the AWS Budgets feature. 
+
+Budgets provide you with a way to see the following information:
++ How close your plan is to your budgeted amount or to the free tier limits
++ Your usage-to-date, including how much you've used of your Reserved Instances (RIs)
++ Your current estimated charges from AWS, and how much your predicted usage will accrue in charges by the end of the month
++ How much of your budget has been used
+
+ AWS updates your budget status several times a day. Budgets track your unblended costs, subscriptions, refunds, and RIs. You can create the following types of budgets:
++  **Cost budgets** - Plan how much you want to spend on a service.
++  **Usage budgets** - Plan how much you want to use one or more services.
++  **RI utilization budgets** - Define a utilization threshold, and receive alerts when your RI usage falls below that threshold. This lets you see if your RIs are unused or under-utilized.
++  **RI coverage budgets** - Define a coverage threshold, and receive alerts when the number of your instance hours that are covered by RIs fall below that threshold. This lets you see how much of your instance usage is covered by a reservation.
+
+Service Endpoint
+
+The AWS Budgets API provides the following endpoint:
++ https://budgets.amazonaws.com
+
+For information about costs that are associated with the AWS Budgets API, see [AWS Cost Management Pricing](https://aws.amazon.com/aws-cost-management/pricing/).
+
+## AWS Cost Optimization Hub
+<a name="Welcome_Cost_Optimization_Hub"></a>
+
+You can use the Cost Optimization Hub API to programmatically identify, filter, aggregate, and quantify savings for your cost optimization recommendations across multiple AWS Regions and AWS accounts in your organization.
+
+The Cost Optimization Hub API provides the following endpoint:
++  https://cost-optimization-hub.us-east-1.amazonaws.com 
+
+## AWS Cost and Usage Report
+<a name="Welcome_AWS_Cost_and_Usage_Report_Service"></a>
+
+You can use the AWS Cost and Usage Report API to programmatically create, query, and delete AWS Cost and Usage Report definitions.
+
+ AWS Cost and Usage Report track the monthly AWS costs and usage associated with your AWS account. The report contains line items for each unique combination of AWS product, usage type, and operation that your AWS account uses. You can configure the AWS Cost and Usage Report to show only the data that you want, using the AWS Cost and Usage Report API.
+
+Service Endpoint
+
+The AWS Cost and Usage Report API provides the following endpoint:
++ cur.us-east-1.amazonaws.com
+
+## AWS Free Tier
+<a name="Welcome_AWS_Free_Tier"></a>
+
+You can use the AWS Free Tier API to query programmatically your Free Tier usage data.
+
+Free Tier tracks your monthly usage data for all free tier offers that are associated with your AWS account. You can use the Free Tier API to filter and show only the data that you want.
+
+Service endpoint
+
+The Free Tier API provides the following endpoint:
++ https://freetier.us-east-1.api.aws
+
+For more information, see [Using the AWS Free Tier](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/billing-free-tier.html) in the * AWS Billing User Guide*.
+
+## AWS Invoicing
+<a name="Welcome_AWS_Invoicing"></a>
+
+ ** AWS Invoice Configuration** 
+
+You can use AWS Invoice Configuration APIs to programmatically create, update, delete, get, and list invoice units. You can also programmatically fetch the information of the invoice receiver. For example, business legal name, address, and invoicing contacts. 
+
+You can use AWS Invoice Configuration to receive separate AWS invoices based your organizational needs. By using AWS Invoice Configuration, you can configure invoice units that are groups of AWS accounts that represent your business entities, and receive separate invoices for each business entity. You can also assign a unique member or payer account as the invoice receiver for each invoice unit. As you create new accounts within your Organizations using AWS Invoice Configuration APIs, you can automate the creation of new invoice units and subsequently automate the addition of new accounts to your invoice units.
+
+ ** AWS Procurement Portal Preferences** 
+
+You can use AWS Procurement Portal Preferences APIs to programmatically create, update, delete, get, and list procurement portal connections and e-invoice delivery settings. You can also programmatically fetch and modify the status of procurement portal configurations. For example, SAP Business Network or Coupa connections, configure e-invoice delivery and purchase order retrieval features.
+
+You can use AWS Procurement Portal Preferences to connect e-invoice delivery to your procurement portals based on your organizational needs. By using AWS Procurement Portal Preferences, you can configure connections to SAP Business Network and Coupa procurement portals that retrieve purchase orders and deliver AWS invoices on the same day they are generated. You can also set up testing environments to validate invoice delivery without affecting live transactions, and manage contact information for portal setup and support. 
+
+Administrative users should understand that billing read-only policies will show all procurement portal connection details. Review your IAM policies to ensure appropriate access controls are in place for procurement portal preferences.
+
+ ** AWS Invoice Management** 
+
+You can use AWS Invoice Management APIs to programmatically list invoice summaries and get invoice documents. You can also programmatically fetch invoice documents with S3 pre-signed URLs.
+
+You can use AWS Invoice Management to access invoice information based on your organizational needs. By using AWS Invoice Management, you can retrieve paginated lists of invoice summaries that include invoice metadata such as invoice IDs, amounts, and currencies without downloading documents. You can also download invoice documents in PDF format using S3 pre-signed URLs with built-in expiration. As you manage invoices across your organization using AWS Invoice Management APIs, you can create invoice retrieval processes and integrate invoice data into your financial systems.
+
+Service endpoint
+
+You can use the following endpoints for AWS Invoice Configuration, AWS Procurement Portal Preferences, and AWS Invoice Management:
++  `https://invoicing.us-east-1.api.aws` 
+
+## AWS Price List
+<a name="Welcome_AWS_Price_List_Service"></a>
+
+The AWS Price List API is a centralized and convenient way to programmatically query AWS for services, products, and pricing information. The AWS Price List uses standardized product attributes such as `Location`, `Storage Class`, and `Operating System`, and provides prices at the SKU level. You can use the AWS Price List to do the following:
++ Build cost control and scenario planning tools
++ Reconcile billing data
++ Forecast future spend for budgeting purposes
++ Provide cost benefit analysis that compare your internal workloads with AWS 
+
+Use `GetServices` without a service code to retrieve the service codes for all AWS services, then `GetServices` with a service code to retrieve the attribute names for that service. After you have the service code and attribute names, you can use `GetAttributeValues` to see what values are available for an attribute. With the service code and an attribute name and value, you can use `GetProducts` to find specific products that you're interested in, such as an `AmazonEC2` instance, with a `Provisioned IOPS` `volumeType`.
+
+You can use the following endpoints for the AWS Price List API:
++ https://api.pricing.us-east-1.amazonaws.com
++ https://api.pricing.ap-south-1.amazonaws.com
++ https://api.pricing.eu-central-1.amazonaws.com
+
+For more information, see [Using the AWS Price List API](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html) in the * AWS Billing User Guide*.
+
+For more information about AWS Billing and Cost Management endpoints, see [AWS Billing and Cost Management endpoints](https://docs.aws.amazon.com/general/latest/gr/billing.html) in the * Amazon Web Services General Reference *.
+
+For more information about AWS Billing and Cost Management quotas, see [Quotas and restrictions](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/billing-limits.html) in the * AWS Billing User Guide* and [Quotas and restrictions](https://docs.aws.amazon.com/cost-management/latest/userguide/management-limits.html) in the * AWS Cost Management User Guide*.
+
+## Tax Settings
+<a name="Welcome_Tax_Settings"></a>
+
+You can use the tax setting API to programmatically set, modify, and delete the tax registration number (TRN), associated business legal name, and address (Collectively referred to as "TRN information"). You can also programmatically view TRN information and tax addresses ("Tax profiles"). 
+
+You can use this API to automate your TRN information settings instead of manually using the console.
+
+Service Endpoint
++ https://tax.us-east-1.amazonaws.com

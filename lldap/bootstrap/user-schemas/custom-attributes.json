@@ -1,0 +1,23 @@
+[
+  {
+    "name": "department",
+    "attributeType": "STRING",
+    "isList": false,
+    "isEditable": true,
+    "isVisible": true
+  },
+  {
+    "name": "role",
+    "attributeType": "STRING",
+    "isList": false,
+    "isEditable": true,
+    "isVisible": true
+  },
+  {
+    "name": "jobtitle",
+    "attributeType": "STRING",
+    "isList": false,
+    "isEditable": true,
+    "isVisible": true
+  }
+]

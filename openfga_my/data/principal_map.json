@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Maps upstream IdP identifiers to stable libcloud/OpenFGA principal slugs. Phase 1 Dex userID=sub equals the slug; Phase 2 add Entra object IDs under by_sub.",
+  "by_sub": {},
+  "by_email": {
+    "cloud-admin@libcloud.local": "cloud-admin",
+    "cloud-readonly@libcloud.local": "cloud-readonly",
+    "cloud-denied@libcloud.local": "cloud-denied"
+  },
+  "legacy_username_aliases": {
+    "admin": "cloud-admin",
+    "provisioner": "cloud-admin",
+    "reader": "cloud-readonly",
+    "outsider": "cloud-denied"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "totalAvailableResults": 1
+  },
+  "data": [
+    {
+      "extId": "disk-11111111-1111-1111-1111-111111111111",
+      "index": 0,
+      "diskSizeBytes": 10737418240,
+      "storageContainerId": "sc-11111111-1111-1111-1111-111111111111"
+    }
+  ]
+}

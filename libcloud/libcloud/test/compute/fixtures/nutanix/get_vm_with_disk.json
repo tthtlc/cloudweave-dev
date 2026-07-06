@@ -1,0 +1,33 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "vm-11111111-1111-1111-1111-111111111111",
+    "name": "web-01",
+    "powerState": "ON",
+    "createTime": "2024-06-01T10:00:00Z",
+    "cluster": {"extId": "cluster-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
+    "numSockets": 2,
+    "numCoresPerSocket": 1,
+    "memorySizeBytes": 4294967296,
+    "disks": [
+      {
+        "extId": "disk-11111111-1111-1111-1111-111111111111",
+        "backingInfo": {
+          "vmDisk": {
+            "diskExtId": "disk-11111111-1111-1111-1111-111111111111",
+            "diskSizeBytes": 10737418240
+          }
+        }
+      }
+    ],
+    "nics": [
+      {
+        "networkInfo": {
+          "ipv4": {
+            "ipAddresses": [{"value": "10.0.0.10"}]
+          }
+        }
+      }
+    ]
+  }
+}

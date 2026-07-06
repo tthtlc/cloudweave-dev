@@ -1,0 +1,80 @@
+services:
+  lldap:
+    image: lldap/lldap:latest
+    container_name: lldap
+    hostname: lldap
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    ports:
+      - "${LLDAP_LDAP_PORT}:3890"      # LDAP
+      - "${LLDAP_HTTP_PORT}:17170"     # Web UI
+    volumes:
+      - lldap_data:/data
+    environment:
+      - UID=1000
+      - GID=1000
+      - LLDAP_JWT_SECRET=${LLDAP_JWT_SECRET}
+      - LLDAP_LDAP_USER_PASS=${LLDAP_LDAP_USER_PASS}
+      - LLDAP_LDAP_BASE_DN=${LLDAP_LDAP_BASE_DN}
+      - LLDAP_HTTP_PORT=17170
+      - LLDAP_HTTP_ADDR=0.0.0.0
+      - LLDAP_LDAP_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:17170/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # Containerized management tooling. Runs on demand via:
+  #   docker compose run --rm lldap-tools /scripts/setup-schema.sh
+  #   docker compose run --rm lldap-tools /scripts/create-user.sh ...
+  #   docker compose run --rm lldap-tools /scripts/verify-ldap.py
+  # Gated behind the "tools" profile so `docker compose up` only starts lldap.
+  lldap-tools:
+    image: lldap-tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    networks:
+      - libcloud_net
+    depends_on:
+      lldap:
+        condition: service_healthy
+    environment:
+      - LLDAP_URL=http://lldap:17170
+      - LLDAP_LDAP_URL=ldap://lldap:3890
+      - LLDAP_BASE_DN=${LLDAP_LDAP_BASE_DN}
+      - LLDAP_ADMIN_USER=admin
+      - LLDAP_ADMIN_PASS=${LLDAP_LDAP_USER_PASS}
+
+  # One-shot bootstrap: creates the custom user attributes after lldap is up.
+  # Run with: docker compose --profile bootstrap up
+  bootstrap:
+    image: lldap-tools
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["bootstrap"]
+    networks:
+      - libcloud_net
+    depends_on:
+      lldap:
+        condition: service_healthy
+    environment:
+      - LLDAP_URL=http://lldap:17170
+      - LLDAP_LDAP_URL=ldap://lldap:3890
+      - LLDAP_BASE_DN=${LLDAP_LDAP_BASE_DN}
+      - LLDAP_ADMIN_USER=admin
+      - LLDAP_ADMIN_PASS=${LLDAP_LDAP_USER_PASS}
+    entrypoint: ["bash", "/scripts/setup-schema.sh"]
+    restart: "no"
+
+networks:
+  libcloud_net:
+    external: true
+
+volumes:
+  lldap_data:

@@ -1,0 +1,227 @@
+# Architecture — Nutanix OpenAPI Mock Stack
+
+This document summarizes the Docker-based mocking environment for the Nutanix
+OpenAPI specification: how the containers are wired together, what the
+OpenAPI specification covers, and which Nutanix REST API endpoints are mocked
+statefully by the emulator shim versus which are answered schema-only by
+Stoplight Prism.
+
+---
+
+## 1. Overview
+
+The stack is a two-tier mock of Nutanix Prism Central's v4 REST API:
+
+1. **Stoplight Prism** — a stateless OpenAPI 3 mock server. It serves
+   schema-valid (but static/example) responses for **every** path declared in
+   the merged Nutanix v4 OpenAPI document.
+2. **Node.js emulator shim** — a stateful Express front-end that intercepts
+   the subset of endpoints which require real CRUD behaviour and async task
+   semantics, then proxies everything else through to Prism.
+
+```
+┌────────────────────┐
+│  Client (Terraform │
+│  / curl / SDK)     │
+└─────────┬──────────┘
+          │ HTTPS :9440 (self-signed)
+          ▼
+┌─────────────────────────────────────────────┐
+│  Node.js emulator shim (mock/server.js)     │
+│  • Stateful in-memory Maps                  │
+│  • VM/Subnet/VPC/FIP/NSP/VolumeGroup/...    │
+│    CRUD + task lifecycle simulation         │
+│  • Nutanix v4 envelopes ($objectType, …)    │
+│  • Catch-all reverse proxy → Prism          │
+└─────────┬───────────────────────────────────┘
+          │ HTTP :4010 (unmatched routes)
+          ▼
+┌─────────────────────────────────────────────┐
+│  Stoplight Prism 5 (stoplight/prism:5)      │
+│  • Reads spec/openapi.json (read-only)      │
+│  • Schema-valid contract mocking only       │
+└─────────────────────────────────────────────┘
+```
+
+Source of wiring: `docker-compose.yml`.
+
+---
+
+## 2. Docker Compose services
+
+File: `docker-compose.yml`
+
+| Service   | Image / build       | Port   | Role |
+|-----------|---------------------|--------|------|
+| `prism`   | `stoplight/prism:5` | `4010` | OpenAPI mock server. Command: `mock -h 0.0.0.0 -p 4010 -m false /spec/openapi.json`. Mounts `./spec:/spec:ro`. `-m false` disables dynamic request mocking so it serves static examples. |
+| `emulator`| build `./mock`      | `9440` | Stateful Node.js shim. `PRISM_URL=http://prism:4010` env var points at Prism. `depends_on: prism`. Restart policy `unless-stopped`. |
+
+Note: the older `tmp/README.md` also describes a `terraform` service, but the
+current `docker-compose.yml` only defines `prism` and `emulator`. Terraform is
+now invoked from the host or via the helper scripts in `tmp/`.
+
+---
+
+## 3. The merged OpenAPI specification
+
+Source file: `spec/openapi.json` (≈ 12.6 MB, 487 paths, 2206 schemas, 109 tags).
+
+It is produced by `scripts/merge-specs.js`, which runs inside a throwaway
+`node:20-alpine` container (see `myrun.sh`) and reads the per-namespace YAML
+specs from `mock/v40/`, merges their `paths` (each prefixed with `/api`),
+`schemas`, and `tags`, and writes the combined OpenAPI 3.0.1 document.
+
+### 3.1 Nutanix REST API namespaces included in the merged spec
+
+The merged spec combines all of the following Nutanix v4 namespace specs
+(from `scripts/merge-specs.js`):
+
+| Nutanix namespace (spec file) | REST API prefix (`/api/{ns}/...`) | Domain |
+|-------------------------------|-----------------------------------|--------|
+| `swagger-vmm-v4.0-all.yaml`             | `/api/vmm/v4.0/...`              | Virtual Machine Management (VMs, images, storage containers, CD-ROMs, categories) |
+| `swagger-networking-v4.0-all.yaml`      | `/api/networking/v4.0/...`       | Networking (subnets, VPCs, floating IPs, network security policies) |
+| `swagger-clustermgmt-v4.0-all.yaml`     | `/api/clustermgmt/v4.0/...` (also served as `cluster-mgmt`) | Cluster management |
+| `swagger-prism-v4.0-all.yaml`           | `/api/prism/v4.0/...`            | Prism Central core (tasks, etc.) |
+| `swagger-storage-v4.0.a3-all.yaml`      | `/api/storage/v4.0/...`          | Storage |
+| `swagger-volumes-v4.0-all.yaml`         | `/api/volumes/v4.0/...`          | Volume groups / vDisks |
+| `swagger-iam-v4.0-all.yaml`             | `/api/iam/v4.0/...`              | Identity & Access Management |
+| `swagger-files-v4.0-all.yaml`           | `/api/files/v4.0/...`            | Files / file server |
+| `swagger-security-v4.0-all.yaml`        | `/api/security/v4.0/...`         | Security |
+| `swagger-monitoring-v4.0-all.yaml`      | `/api/monitoring/v4.0/...`       | Monitoring / alerts |
+| `swagger-licensing-v4.0-all.yaml`       | `/api/licensing/v4.0/...`        | Licensing |
+| `swagger-aiops-v4.0-all.yaml`           | `/api/aiops/v4.0/...`            | AIOps |
+| `swagger-datapolicies-v4.0-all.yaml`    | `/api/datapolicies/v4.0/...`     | Data policies |
+| `swagger-dataprotection-v4.0-all.yaml`  | `/api/dataprotection/v4.0/...`   | Data protection / recovery points |
+| `swagger-lifecycle-v4.0-all.yaml`       | `/api/lifecycle/v4.0/...`        | Lifecycle (Lcm) |
+| `swagger-microseg-v4.0-all.yaml`        | `/api/microseg/v4.0/...`         | Micro-segmentation (flow / NSP) |
+| `swagger-objects-v4.0-all.yaml`         | `/api/objects/v4.0/...`          | Objects store |
+| `swagger-opsmgmt-v4.0-all.yaml`         | `/api/opsmgmt/v4.0/...`          | Ops management |
+| `swagger-multidomain-v4.2-all.yaml`     | `/api/multidomain/v4.2/...`      | Multi-domain management (v4.2) |
+
+Prism serves all 487 of these paths schema-only. Security schemes are
+deliberately stripped during merge so Prism does **not** enforce auth on mock
+responses.
+
+### 3.2 Path version variants
+
+The emulator accepts three API-version path variants for every resource (set
+in `mock/server.js`, `API_VERSIONS`):
+
+- `v4.0.a1` — legacy pre-release path
+- `v4.0`    — stable v4 path
+- `v4.0/ahv`— path used by the Nutanix Terraform provider v2.2.1
+
+`pathVariants(ns, category, resource)` expands each route to all three, e.g.
+`/api/vmm/{v4.0.a1|v4.0|v4.0/ahv}/config/vms`.
+
+---
+
+## 4. APIs mocked statefully by the emulator shim
+
+File: `mock/server.js` (Express, port 9440, HTTPS with self-signed cert
+generated by `mock/entrypoint.sh`).
+
+The shim keeps in-memory `Map`s for each resource type and simulates the
+Nutanix async pattern: mutating calls return `202` with a `TaskReference`
+envelope; the task transitions `QUEUED → RUNNING → SUCCEEDED` over
+`TASK_TRANSITION_MS` (200 ms) and is polled via the Prism tasks endpoint.
+
+### 4.1 Endpoints and the Nutanix namespace they belong to
+
+| Namespace (REST prefix) | Resource | Methods handled by the shim |
+|--------------------------|----------|------------------------------|
+| **vmm** (`/api/vmm/v4.0*/config`) | VMs (`vms`) | `POST` (create), `GET` (list + `$filter=name eq '...'`), `GET /:extId`, `PUT /:extId` (update), `DELETE /:extId`, `POST /:extId/power-state/:action`, `POST /:extId/$actions/:action` (power-on, power-off, guest-shutdown, reset, guest-reboot) |
+| **vmm** (`/api/vmm/v4.0*/config`) | Images (`images`) | `GET` (list), `GET /:extId` |
+| **vmm** (content) (`/api/vmm/v4.0/content/images`) | Images (v4 content path) | `POST` (create from URL or VM-disk `ext_id`), `DELETE /:extId` |
+| **vmm** + **cluster-mgmt** (`/api/vmm|cluster-mgmt/v4.0*/config`) | Storage containers (`storage-containers`) | `GET` (list), `GET /:extId` |
+| **prism** (`/api/prism/v4.0*/config`) | Tasks (`tasks`) | `GET /:extId` — returns `prism.v4.config.Task` envelope (`$fv: v4.r2`) so both AHV and networking Go clients can poll |
+| **clustermgmt** (`/api/cluster-mgmt|clustermgmt/v4.0*/config`) | Clusters (`clusters`) | `GET` (list), `GET /:extId` |
+| **networking** (`/api/networking/v4.0*/config`) | Subnets (`subnets`) | `GET` (list + filter), `GET /:extId`, `POST` (create), `PUT /:extId`, `DELETE /:extId` |
+| **networking** (`/api/networking/v4.0*/config`) | VPCs (`vpcs`) | `GET` (list + filter), `GET /:extId`, `POST`, `PUT /:extId`, `DELETE /:extId` |
+| **networking** (`/api/networking/v4.0*/config`) | Floating IPs (`floating-ips`) | `GET` (list + filter), `GET /:extId`, `POST` (auto-assigns `192.168.0.x`), `DELETE /:extId` |
+| **networking** (`/api/networking/v4.0*/config`) | Network Security Policies (`network-security-policies`) | `GET` (list + filter), `GET /:extId`, `POST`, `DELETE /:extId` |
+| **volumes** (`/api/volumes/v4.0/config`) | Volume Groups (`volume-groups`) | `POST`, `GET` (list + filter), `GET /:extId`, `DELETE /:extId`, `GET /:volumeGroupExtId/disks`, `GET /:volumeGroupExtId/vm-attachments`, `POST /:extId/$actions/attach-vm`, `POST /:extId/$actions/detach-vm` |
+| **dataprotection** (`/api/dataprotection/v4.0/config`) | Recovery Points (`recovery-points`) | `POST`, `GET` (list + `$filter=volumeGroupExtId eq '...'`), `GET /:extId`, `DELETE /:extId` |
+| (emulator-local) | Health (`/health`) | `GET` — returns counts of every in-memory store |
+
+### 4.2 Seed reference data
+
+Bootstrapped in `mock/server.js` and visible to every namespace above:
+
+| Resource            | extId                                  | Name |
+|---------------------|----------------------------------------|------|
+| Cluster             | `00000000-0000-0000-0000-000000000001` | emulator-cluster |
+| Subnet              | `00000000-0000-0000-0000-000000000002` | emulator-primary-subnet |
+| Image               | `00000000-0000-0000-0000-000000000003` | emulator-ubuntu-2204 |
+| Image               | `00000000-0000-0000-0000-000000000004` | emulator-centos-9 |
+| Storage Container   | `00000000-0000-0000-0000-000000000005` | emulator-default-container |
+
+### 4.3 Response envelope conventions
+
+The shim reproduces the Nutanix v4 wire format so the official Go SDK /
+Terraform provider can deserialize the responses:
+
+- **AHV / VMM / volumes / dataprotection** — `$objectType` from
+  `vmm.v4.ahv.config.*` / `prism.v4.config.*`, `$reserved.$fv = "v4.r0"`.
+  Task references use `prism.v4.config.TaskReference`.
+- **Networking** (subnets, VPCs, FIPs, NSPs) — `$objectType` from
+  `networking.v4.config.*`, `$reserved.$fv = "v4.r2"`. Task references use
+  `prism.v4.config.TaskReference` with `$fv = "v4.r2"` (the networking Go
+  client checks both).
+- **Tasks** — always served as `prism.v4.config.Task` with `$fv = "v4.r2"`
+  so they can be polled by both the AHV and networking clients.
+- Request bodies are accepted in either `snake_case` (curl/smoke tests) or
+  `camelCase` (Go SDK); responses are always emitted in `camelCase` via
+  `deepConvert(..., toCamelCase)`.
+
+### 4.4 Catch-all proxy to Prism
+
+Any path not matched by the routes above falls through to
+`createProxyMiddleware({ target: PRISM_URL })`. Because `express.json()`
+consumes the body stream, the proxy's `proxyReq` hook re-serializes and
+re-writes the JSON body for `POST/PATCH/PUT/DELETE` before forwarding. Proxy
+errors return `502 { message: 'Prism unavailable' }`.
+
+This means: **every endpoint that exists in the merged spec but is not in
+§4.1 is still mockable — it is answered by Prism with a schema-valid
+example response.** That covers the remaining namespaces in §3.1 (iam,
+files, security, monitoring, licensing, aiops, datapolicies, lifecycle,
+microseg, objects, opsmgmt, multidomain) plus any vmm/networking/cluster
+endpoint the shim does not handle explicitly.
+
+---
+
+## 5. Build & runtime artifacts
+
+| Path | Purpose |
+|------|---------|
+| `docker-compose.yml`        | Defines `prism` + `emulator` services |
+| `spec/openapi.json`         | Merged OpenAPI 3.0.1 spec consumed by Prism (487 paths, 2206 schemas) |
+| `scripts/merge-specs.js`    | Builds `spec/openapi.json` from the per-namespace YAML in `mock/v40/` |
+| `myrun.sh`                  | Helper that runs `merge-specs.js` in a `node:20-alpine` container and restarts Prism |
+| `mock/Dockerfile`           | `node:20-alpine` + curl + openssl; copies `server.js`, exposes 9440, healthcheck |
+| `mock/entrypoint.sh`        | Waits for Prism readiness, generates self-signed TLS cert, execs `node server.js` |
+| `mock/server.js`            | The stateful shim (all routes in §4) + Prism catch-all proxy |
+| `mock/package.json`         | Dependencies: `express`, `uuid`, `http-proxy-middleware` |
+| `scripts/smoke-test.sh`     | Curl-based integration test: health, seed data, VM CRUD lifecycle, path variants |
+
+---
+
+## 6. Operational notes / known limitations
+
+- **State is in-memory only.** All `Map` stores are lost on `emulator`
+  container restart; nothing is persisted to disk or a volume.
+- **Auth is bypassed.** The shim accepts any credentials; security schemes
+  are stripped from the merged spec so Prism also does not enforce auth.
+- **No real Nutanix semantics.** The shim validates the API contract shape,
+  not business logic (no cluster capacity checks, no real task workflows,
+  no UUID relationship enforcement beyond a few lookups like
+  image-from-VM-disk and volume-group VM attach).
+- **Terraform provider caveat.** The Nutanix Terraform provider v2.2.1 Go
+  SDK is sensitive to exact `$objectType` discriminators; mismatched
+  discriminators on create-VM responses can crash the provider. Tune the
+  envelopes in `mock/server.js` (§4.3) if you hit
+  `OneOfCreateVmApiResponseData.UnmarshalJSON` errors.
+- **`./terraform`** configuration referenced by `tmp/README.md` lives under
+  `tmp/terraform/` and `tmp/terraform-network/`, not in the top-level
+  `docker-compose.yml`.

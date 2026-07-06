@@ -1,0 +1,106 @@
+================================================================================
+HTTP Request URL Analysis: run3.log.stderr + run4.log.stderr
+Extracted: 2026-07-01
+================================================================================
+
+
+================================================================================
+run3.log.stderr (AWS run — login: aws-admin)
+================================================================================
+
+  #   Method   URL
+---   ------   ---
+  1   GET      http://localhost:5556/dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex
+  2   POST     http://localhost:5556/dex/auth/lldap/login?back=&state=wffcex2jurmcalj5smp5xvj56 (login=aws-admin)
+  3   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  4   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  5   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  6   GET      http://localhost:8765/v1/auth/me
+  7   POST     http://localhost:8765/v1/connections:test
+  8   GET      http://localhost:8765/v1/compute/locations
+  9   GET      http://localhost:8765/v1/compute/sizes
+ 10   GET      http://localhost:8765/v1/compute/images?name=%2AUbuntu%2A
+ 11   GET      http://localhost:8765/v1/compute/nodes
+ 12   GET      http://localhost:8765/v1/compute/images?name=%2AUbuntu%2A
+ 13   GET      http://localhost:8765/v1/compute/sizes
+ 14   GET      http://localhost:8765/v1/compute/subnets
+ 15   POST     http://localhost:8765/v1/compute/nodes
+
+
+================================================================================
+run4.log.stderr (Nutanix run — two sessions: ntnx-admin + ntnx-viewer)
+================================================================================
+
+--- Session 1: ntnx-admin ---
+
+  #   Method   URL
+---   ------   ---
+  1   GET      http://localhost:5556/dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex
+  2   POST     http://localhost:5556/dex/auth/lldap/login?back=&state=qkmskzj4afpzfn4ew5ckuvlga (login=ntnx-admin)
+  3   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  4   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  5   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+  6   GET      http://localhost:8765/v1/auth/me
+  7   POST     http://localhost:8765/v1/connections:test
+  8   GET      http://localhost:8765/v1/compute/locations
+  9   GET      http://localhost:8765/v1/compute/sizes
+ 10   GET      http://localhost:8765/v1/compute/images
+ 11   GET      http://localhost:8765/v1/compute/storage-containers
+ 12   GET      http://localhost:8765/v1/compute/nodes
+ 13   GET      http://localhost:8765/v1/compute/locations
+ 14   GET      http://localhost:8765/v1/compute/images
+ 15   GET      http://localhost:8765/v1/compute/subnets
+ 16   POST     http://localhost:8765/v1/compute/nodes
+
+--- Session 2: ntnx-viewer ---
+
+  #   Method   URL
+---   ------   ---
+ 17   GET      http://localhost:5556/dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex
+ 18   POST     http://localhost:5556/dex/auth/lldap/login?back=&state=bzgfjvajxyihgqygt4s4irl3g (login=ntnx-viewer)
+ 19   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+ 20   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+ 21   POST     http://localhost:8080/stores/01KW9EZ0Q706Y580FGQ2488THC/check
+ 22   GET      http://localhost:8765/v1/auth/me
+ 23   POST     http://localhost:8765/v1/connections:test
+ 24   GET      http://localhost:8765/v1/compute/locations
+ 25   GET      http://localhost:8765/v1/compute/sizes
+ 26   GET      http://localhost:8765/v1/compute/images
+ 27   GET      http://localhost:8765/v1/compute/storage-containers
+ 28   GET      http://localhost:8765/v1/compute/nodes
+
+
+================================================================================
+Summary — Request flow pattern (common to both runs)
+================================================================================
+
+  Phase                   Method   Endpoint
+  -----                   ------   --------
+  1. Dex OIDC init        GET      /dex/auth
+  2. LDAP login           POST     /dex/auth/lldap/login
+  3. OpenFGA check ×3     POST     /stores/{store_id}/check   (can_connect, can_use, can_provision/can_read)
+  4. Session info         GET      /v1/auth/me
+  5. Connection test      POST     /v1/connections:test
+  6. Discovery calls      GET      /v1/compute/locations
+                          GET      /v1/compute/sizes
+                          GET      /v1/compute/images
+                          GET      /v1/compute/storage-containers  (Nutanix only)
+                          GET      /v1/compute/nodes
+                          GET      /v1/compute/subnets             (before create only)
+  7. Node creation        POST     /v1/compute/nodes
+
+
+================================================================================
+Differences between runs
+================================================================================
+
+  Aspect                 run3 (AWS)                                  run4 (Nutanix)
+  ------                 -----------                                 --------------
+  User                   1 session (aws-admin)                       2 sessions (ntnx-admin, ntnx-viewer)
+  storage-containers     NOT called                                  Called (both sessions)
+  locations              Called once                                 Called twice (ntnx-admin only)
+  images                 Called twice with ?name=*Ubuntu* filter      Called twice (ntnx-admin), once (ntnx-viewer)
+  sizes                  Called twice                                Called once per session
+  subnets                Called once (before node create)            Called once (before node create, ntnx-admin only)
+  Node creation          Yes                                         Yes (ntnx-admin only; ntnx-viewer ends at GET /nodes)
+  OpenFGA check #3       can_provision:nutanix_cluster:nutanix       ntnx-admin: can_provision / ntnx-viewer: can_read

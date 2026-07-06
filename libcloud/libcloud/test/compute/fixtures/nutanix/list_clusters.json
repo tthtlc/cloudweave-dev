@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "totalAvailableResults": 1
+  },
+  "data": [
+    {
+      "extId": "cluster-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": "prod-cluster-01",
+      "clusterType": "AOS",
+      "numNodes": 4,
+      "aosVersion": "7.0",
+      "config": {
+        "hypervisorTypes": ["AHV"]
+      }
+    }
+  ]
+}

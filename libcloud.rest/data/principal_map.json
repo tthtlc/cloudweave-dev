@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "description": "Maps upstream IdP identifiers to stable libcloud/OpenFGA principal slugs. Per-cloud tenant model (../openfga_my/authorization.md).",
+  "by_sub": {},
+  "by_email": {
+    "superadmin@libcloud.local": "superadmin",
+    "aws-owner@libcloud.local": "aws-owner",
+    "aws-admin@libcloud.local": "aws-admin",
+    "aws-viewer@libcloud.local": "aws-viewer",
+    "ntnx-owner@libcloud.local": "ntnx-owner",
+    "ntnx-admin@libcloud.local": "ntnx-admin",
+    "ntnx-viewer@libcloud.local": "ntnx-viewer",
+    "cloud-denied@libcloud.local": "cloud-denied"
+  },
+  "legacy_username_aliases": {}
+}

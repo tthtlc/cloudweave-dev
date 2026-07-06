@@ -1,0 +1,34 @@
+# Phase 2 example — Dex as stable OIDC front door with upstream Entra ID (or AD/Authentik).
+# Merge relevant sections into dex/config.yaml; keep staticClients and issuer unchanged.
+#
+# After cutover:
+#   1. Add by_sub entries in data/principal_map.json for each Entra object ID → principal slug
+#   2. Remove staticPasswords / set enablePasswordDB: false
+#   3. OpenFGA tuples unchanged (still user:cloud-admin, etc.)
+
+connectors:
+  - type: oidc
+    id: entra
+    name: Microsoft Entra ID
+    config:
+      issuer: https://login.microsoftonline.com/<tenant-id>/v2.0
+      clientID: <entra-app-client-id>
+      clientSecret: <entra-app-client-secret>
+      redirectURI: http://127.0.0.1:5556/dex/callback
+      scopes:
+        - openid
+        - profile
+        - email
+      # Map Entra claims → Dex user (see IDENTITY.md)
+      userNameKey: preferred_username
+      emailKey: email
+
+  # Alternative: federate through Authentik as upstream (Dex → Authentik → users)
+  # - type: oidc
+  #   id: authentik
+  #   name: Authentik
+  #   config:
+  #     issuer: http://localhost:9000/application/o/libcloud-rest/
+  #     clientID: dex-upstream
+  #     clientSecret: ...
+  #     redirectURI: http://127.0.0.1:5556/dex/callback

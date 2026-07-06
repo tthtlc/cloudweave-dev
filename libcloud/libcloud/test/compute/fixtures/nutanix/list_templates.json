@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "totalAvailableResults": 1
+  },
+  "data": [
+    {
+      "extId": "tmpl-11111111-1111-1111-1111-111111111111",
+      "templateName": "linux-server-template",
+      "templateDescription": "Standard Linux server template",
+      "templateVersionSpec": {
+        "versionName": "v1.0"
+      }
+    }
+  ]
+}

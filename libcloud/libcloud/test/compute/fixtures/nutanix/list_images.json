@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "totalAvailableResults": 2
+  },
+  "data": [
+    {
+      "extId": "img-11111111-1111-1111-1111-111111111111",
+      "name": "ubuntu-22.04-cloud",
+      "description": "Ubuntu 22.04 cloud image",
+      "imageType": "DISK_IMAGE",
+      "sizeBytes": 5368709120,
+      "createTime": "2024-01-15T08:00:00Z"
+    },
+    {
+      "extId": "img-22222222-2222-2222-2222-222222222222",
+      "name": "centos-stream-9",
+      "description": "CentOS Stream 9",
+      "imageType": "DISK_IMAGE",
+      "sizeBytes": 4294967296
+    }
+  ]
+}

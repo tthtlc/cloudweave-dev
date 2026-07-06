@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "totalAvailableResults": 2,
+    "page": 1,
+    "limit": 1
+  },
+  "data": [
+    {
+      "extId": "vm-22222222-2222-2222-2222-222222222222",
+      "name": "db-01",
+      "powerState": "OFF",
+      "cluster": {"extId": "cluster-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
+      "numSockets": 4,
+      "numCoresPerSocket": 2,
+      "memorySizeBytes": 8589934592,
+      "nics": [],
+      "disks": []
+    }
+  ]
+}

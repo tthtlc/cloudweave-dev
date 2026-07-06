@@ -1,0 +1,369 @@
+
+please comment on the contents in nutanix.py: why       
+  sometimes values are derived (is it documented          
+  somewhere in Nutanix documentation) or is it part       
+  of linux/operating system feature and why               
+  sometimes nothing in substituted (eg, IP address)       
+  and perhaps highlight so.                               
+                                                          
+
+  Reviewing the Nutanix driver files to see how values
+  are derived vs. left unset, then adding clarifying
+  comments.
+
+    Read 2 files
+    Read nutanix.py
+    Read 
+    ...ix/libcloud/libcloud/compute/drivers/nutanix.py
+
+  Checking tests and docs for context on derived values
+   and IP handling.
+
+    Read, globbed, grepped 5 files, 1 glob, 1 grep
+    … 4 earlier items hidden
+    Read 
+    .../compute/fixtures/nutanix/get_vm_with_disk.json
+    Read 
+    ...er/nutanix/NUTANIX_LIBCLOUD_CONCEPTUAL_GUIDE.md
+    Grepped "...ic|IP|public|private|cloud-init|guest" 
+    in 
+    ...ibcloud_nutanix/libcloud/contrib/docker/nutanix
+
+  Checking how other Libcloud drivers handle IP mapping
+   and whether Nutanix documents NIC IP population:
+
+    Grepped 2 greps
+    Grepped "extract_ips|public_ips|private_ips" in 
+    ...cloud_nutanix/libcloud/libcloud/compute/drivers
+    Grepped "ipAddresses|networkInfo" in 
+    ...ibcloud_nutanix/libcloud/contrib/docker/nutanix
+
+  Here is a breakdown of where values in the Nutanix
+  driver come from, what is computed by the driver, and
+   what is deliberately left empty.
+
+  Three sources of truth
+
+  Values in nutanix.py fall into three buckets:
+
+  ┌────────┬───────────────────────┬──────────────────┐
+  │ Source │ Examples              │ Documented?      │
+  ├────────┼───────────────────────┼──────────────────┤
+  │ Nutani │ memorySizeBytes,      │ Yes — Nutanix v4 │
+  │ x      │ powerState,           │ OpenAPI / Prism  │
+  │ v4 API │ nics[].networkInfo,   │ Central REST     │
+  │        │ task entitiesAffected │                  │
+  ├────────┼───────────────────────┼──────────────────┤
+  │ Libclo │ SYNTHETIC_SIZES,      │ Driver design    │
+  │ ud     │ MiB↔bytes, volume     │ (see conceptual  │
+  │ adapte │ state from            │ guide)           │
+  │ r      │ attachments           │                  │
+  │ logic  │                       │                  │
+  ├────────┼───────────────────────┼──────────────────┤
+  │ Guest  │ SSH public key in     │ cloud-init spec; │
+  │ OS /   │ #cloud-config         │ Nutanix passes   │
+  │ cloud- │                       │ it via           │
+  │ init   │                       │ guestCustomizati │
+  │        │                       │ on               │
+  └────────┴───────────────────────┴──────────────────┘
+
+  ────────────────────────────────────────
+
+  1. Derived values — Nutanix API shape vs Libcloud 
+  shape
+
+  Unit conversions (Libcloud ↔ Nutanix)
+
+  Nutanix v4 uses bytes for memory and disk; Libcloud
+  NodeSize.ram uses MiB and volumes use GiB. The driver
+   converts at the boundary:
+
+   libcloud/common/nutanix.py lines 332-337
+
+  def mib_to_bytes(mib):
+      return mib * 1024 * 1024
+  def bytes_to_mib(value):
+      return int(value / (1024 * 1024))
+
+   libcloud/common/nutanix.py lines 371-371
+
+          "memorySizeBytes": mib_to_bytes(memory_mib),
+
+  That is not Nutanix-specific logic — it is standard
+  binary unit conversion so Libcloud callers can keep
+  using MiB/GiB while the API payload matches the
+  schema (memorySizeBytes, diskSizeBytes). Nutanix
+  documents those field names in the v4 OpenAPI
+  (referenced in your conceptual guide as
+  stoplight_mock/spec/openapi.json).
+
+  Synthetic sizes (not from Nutanix at all)
+
+   libcloud/common/nutanix.py lines 76-79
+
+  SYNTHETIC_SIZES = {
+      "small": {"vcpus": 1, "cores_per_vcpu": 1, 
+  "memory_mib": 2048, "disk_mib": 20480},
+      ...
+  }
+
+  Unlike AWS instance types or DigitalOcean droplet
+  sizes, Nutanix has no fixed “flavor catalog” in this 
+  driver. list_sizes() returns four hard-coded presets
+  purely so Libcloud’s portable create_node(name, size,
+   image, …) API has something to pass. Nutanix does
+  not expose an equivalent list endpoint; you specify
+  numSockets, numCoresPerSocket, and memorySizeBytes
+  directly on VM create. This is documented in
+  NUTANIX_LIBCLOUD_CONCEPTUAL_GUIDE.md §6.
+
+  State mapping (Nutanix enum → Libcloud enum)
+
+   libcloud/compute/drivers/nutanix.py lines 89-94
+
+      NODE_STATE_MAP = {
+          "ON": NodeState.RUNNING,
+          "POWERED_ON": NodeState.RUNNING,
+          "OFF": NodeState.STOPPED,
+          ...
+      }
+
+  powerState comes from the Nutanix VM API; the driver
+  maps it to portable NodeState. Same pattern for
+  volume/snapshot status fields.
+
+  Volume size and state (derived from related 
+  resources)
+
+   libcloud/compute/drivers/nutanix.py lines 1199-1207
+
+          total_bytes = 0
+          for disk in disks:
+              total_bytes += disk.get("diskSizeBytes") 
+  or 0
+          ...
+          state = (
+              StorageVolumeState.INUSE
+              if attached_vm_ext_ids
+              else StorageVolumeState.AVAILABLE
+          )
+
+  Volume group GET may not give a single “size” field
+  the way Libcloud expects, so size is summed from 
+  child disks. State is inferred from VM attachments
+  when the API status is absent or incomplete —
+  Libcloud convention, not a Nutanix catalog item.
+
+  Task completion → entity ID (Nutanix Prism, 
+  documented pattern)
+
+  Async creates return a task; the created
+  VM/image/snapshot ID is read from entitiesAffected or
+   completionDetails:
+
+   libcloud/common/nutanix.py lines 597-601
+
+  def extract_entity_ext_id_from_task(task):
+      affected = task.get("entitiesAffected") or 
+  task.get("entities_affected") or []
+      ...
+  def extract_task_completion_detail(task, key):
+      details = task.get("completionDetails") or 
+  task.get("completion_details") or []
+
+  This matches the Nutanix v4 async task model
+  described in your conceptual guide (§3.4).
+
+  SSH keys via cloud-init (OS feature, Nutanix as 
+  carrier)
+
+   libcloud/compute/drivers/nutanix.py lines 286-290
+
+          if auth is not None and hasattr(auth, 
+  "pubkey"):
+              guest_customization = guest_customization
+   or {}
+              
+  guest_customization.setdefault("cloudInit", 
+  {})["userData"] = (
+                  
+  "#cloud-config\nssh_authorized_keys:\n  - %s\n" % 
+  auth.pubkey
+              )
+
+  The format is cloud-init (#cloud-config,
+  ssh_authorized_keys) — a Linux/guest-OS convention.
+  Nutanix’s role is to accept it in
+  guestCustomization.cloudInit.userData on VM create
+  (documented in Nutanix guest customization /
+  cloud-init integration). Nutanix does not store or
+  return SSH keys as a first-class API resource; there
+  is no Nutanix “key pair” API in this driver.
+
+  ────────────────────────────────────────
+
+  2. Why IP addresses are often empty — nothing 
+  substituted
+
+  This is the most important “not substituted” case.
+
+  On create: subnet reference only, no static IP in 
+  payload
+
+   libcloud/common/nutanix.py lines 405-412
+
+      elif subnet_ext_id:
+          payload["nics"] = [
+              {
+                  "networkInfo": {
+                      "subnet": {"extId": 
+  subnet_ext_id},
+                  }
+              }
+          ]
+
+  You attach a subnet (extId), not an IP address.
+  Nutanix networking assigns addresses via IPAM/DHCP or
+   the guest configures them after boot. The v4 VM
+  create schema does not require (and often does not
+  accept) a static IP in this minimal NIC shape unless
+  you build a richer ex_nics payload yourself.
+
+  On read: IPs only if Nutanix populated 
+  nics[].networkInfo
+
+   libcloud/common/nutanix.py lines 309-316
+
+  def extract_ips_from_nics(nics):
+      public_ips = []
+      private_ips = []
+      ...
+                  if value:
+                      private_ips.append(value)
+      return public_ips, private_ips
+
+  IPs are read back from whatever Nutanix stored under
+  networkInfo.ipv4.ipAddresses / ipv6. That structure
+  is Nutanix v4 API schema. If the API returns no
+  addresses (VM off, guest not booted, DHCP not done,
+  Nutanix hasn’t learned the IP yet), nothing is 
+  substituted — you get empty lists.
+
+  Your fixtures illustrate this:
+
+  • web-01 has "ipAddresses": [{"value": 
+    "10.0.0.10"}] → appears in private_ips
+  • db-01 has "nics": [] → no IPs at all
+
+  public_ips is always empty
+
+   libcloud/common/nutanix.py lines 309-311
+
+      public_ips = []
+      ...
+      return public_ips, private_ips
+
+  Every address goes into private_ips. Nutanix v4 NIC
+  JSON does not label addresses as “public” vs
+  “private” the way AWS or Vultr do. Floating/external
+  IPs live under a separate floating-ips API
+  (ex_list_load_balancers), and that path is not wired 
+  into Node.public_ips. So public_ips stays [] even
+  when private IPs exist — a Libcloud mapping choice,
+  not something Nutanix documents as a VM NIC field.
+
+  Immediately after create_node: placeholder with empty
+   IPs
+
+   libcloud/compute/drivers/nutanix.py lines 328-334
+
+          return Node(
+              id=task_ext_id or name,
+              ...
+              public_ips=[],
+              private_ips=[],
+              ...
+          )
+
+  If task wait fails or entity ID isn’t resolved, the
+  driver returns a pending Node with no IPs. Even when
+  wait succeeds and ex_get_node runs, IPs still depend
+  on what Nutanix has in the GET response at that
+  moment — often still empty right after create.
+
+  ────────────────────────────────────────
+
+  3. Other “optional / not filled in” patterns
+
+  ┌────────────┬───────────────┬──────────────────────┐
+  │ Field      │ Behavior      │ Why                  │
+  ├────────────┼───────────────┼──────────────────────┤
+  │ NodeLocati │ Always None   │ Clusters have no     │
+  │ on.country │               │ country in Nutanix   │
+  │            │               │ API                  │
+  ├────────────┼───────────────┼──────────────────────┤
+  │ NodeSize.b │ None / 0.0    │ Not applicable       │
+  │ andwidth   │               │ on-prem              │
+  │ / price    │               │                      │
+  ├────────────┼───────────────┼──────────────────────┤
+  │ build_subn │ Only sent if  │ Subnet CIDR is       │
+  │ et_create_ │ ip_address    │ optional in API;     │
+  │ payload    │ and           │ omitted if caller    │
+  │ IP fields  │ prefix_length │ doesn’t pass them    │
+  │            │ provided      │                      │
+  ├────────────┼───────────────┼──────────────────────┤
+  │ ex_create_ │ Optional      │ Nutanix can          │
+  │ load_balan │               │ auto-assign floating │
+  │ cer        │               │ IP if omitted        │
+  │ external_i │               │                      │
+  │ p          │               │                      │
+  ├────────────┼───────────────┼──────────────────────┤
+  │ Default    │ Used when     │ Driver default, not  │
+  │ disk size  │ image set but │ Nutanix API default  │
+  │ 20480 MiB  │ no            │                      │
+  │            │ disk_size_mib │                      │
+  └────────────┴───────────────┴──────────────────────┘
+
+  ────────────────────────────────────────
+
+  Summary diagram
+
+  mermaid flowchart
+
+  flowchart LR
+    subgraph nutanix_api [Nutanix v4 API]
+      VM[VM JSON]
+      Task[Prism Task]
+      NIC[nics.networkInfo]
+    end
+    subgraph driver [Libcloud driver]
+      Convert[MiB/bytes, state maps]
+      Synthetic[SYNTHETIC_SIZES]
+      IPs[extract_ips_from_nics]
+    end
+    subgraph guest [Guest OS]
+      CI[cloud-init SSH keys]
+    end
+    VM --> Convert
+    VM --> IPs
+    Task --> Convert
+    Synthetic --> Convert
+    CI -->|guestCustomization| VM
+    NIC -->|"only if API populated"| IPs
+    IPs -->|"public_ips: never filled"| Empty[[]]
+
+  ────────────────────────────────────────
+
+  Where to read more
+
+  • In-repo: contrib/docker/nutanix/NUTANIX_LIBCLOUD_
+    CONCEPTUAL_GUIDE.md — synthetic sizes, async
+    tasks, IP/cloud-init limitations (§9)
+  • Nutanix: v4 OpenAPI for Vm, Nic, Subnet, Task
+    schemas (Prism Central developer portal or local
+    stoplight_mock/spec/openapi.json)
+  • cloud-init: cloud-init docs 
+    (https://cloudinit.readthedocs.io/) for
+    #cloud-config / ssh_authorized_keys
+
+  If you want these callouts in the source as comments

@@ -1,0 +1,29 @@
+# Read the Docs configuration file for Sphinx projects
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+
+# Required
+version: 2
+
+# Set the OS, Python version and other tools you might need
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.10"
+  jobs:
+    pre_create_environment:
+      - python -m pip install --upgrade pip uv
+    create_environment:
+      - python -m uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
+    install:
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" python -m uv sync --frozen --group docs --no-dev
+
+# Build documentation in the "docs/" directory with Sphinx
+sphinx:
+  configuration: docs/conf.py
+
+formats:
+   - pdf
+   - epub
+
+# NOTE: We need to use older version of sphinx otherwise bullet points won't be rendered correctly
+# on RTD using rtd theme.

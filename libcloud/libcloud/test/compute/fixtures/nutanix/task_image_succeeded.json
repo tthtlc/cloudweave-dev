@@ -1,0 +1,22 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "task-image-1111-1111-1111-111111111111",
+    "status": "SUCCEEDED",
+    "operation": "CreateImage",
+    "progressPercentage": 100,
+    "entitiesAffected": [
+      {
+        "extId": "img-new-1111-1111-1111-111111111111",
+        "name": "web-01-image",
+        "rel": "vmm:content:image"
+      }
+    ],
+    "completionDetails": [
+      {
+        "name": "imageExtId",
+        "value": "img-new-1111-1111-1111-111111111111"
+      }
+    ]
+  }
+}

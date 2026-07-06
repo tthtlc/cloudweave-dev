@@ -1,0 +1,25 @@
+    def list_nodes(self, **kwargs):
+    def list_images(self, location=None, **kwargs):
+    def list_sizes(self, location=None):
+    def list_locations(self):
+    def create_node(
+    def destroy_node(self, node, **kwargs):
+    def reboot_node(self, node, **kwargs):
+    def start_node(self, node, **kwargs):
+    def stop_node(self, node, **kwargs):
+    def ex_get_node(self, node_id):
+    def ex_get_task(self, task_id):
+    def ex_list_clusters(self, **kwargs):
+    def ex_list_subnets(self, **kwargs):
+    def ex_list_storage_containers(self, **kwargs):
+    def list_volumes(self, **kwargs):
+    def create_volume(self, size, name, location=None, snapshot=None, **kwargs):
+    def destroy_volume(self, volume, **kwargs):
+    def attach_volume(self, node, volume, device=None, **kwargs):
+    def detach_volume(self, volume, **kwargs):
+    def create_volume_snapshot(self, volume, name=None, **kwargs):
+    def list_volume_snapshots(self, volume, **kwargs):
+    def destroy_volume_snapshot(self, snapshot, **kwargs):
+    def ex_get_volume(self, volume_id):
+    def ex_get_volume_snapshot(self, recovery_point_id, volume=None):
+    def ex_list_volume_vm_attachments(self, volume_group_id, **kwargs):

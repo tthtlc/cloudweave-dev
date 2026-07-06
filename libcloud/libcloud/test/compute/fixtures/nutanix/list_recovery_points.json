@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "totalAvailableResults": 1
+  },
+  "data": [
+    {
+      "extId": "rp-11111111-1111-1111-1111-111111111111",
+      "name": "snapshot-data-volume-01",
+      "status": "COMPLETE",
+      "creationTime": "2024-01-15T10:00:00Z",
+      "volumeGroupRecoveryPoints": [
+        {
+          "extId": "vgrp-11111111-1111-1111-1111-111111111111",
+          "volumeGroupExtId": "vg-11111111-1111-1111-1111-111111111111"
+        }
+      ]
+    }
+  ]
+}

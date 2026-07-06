@@ -1,0 +1,12 @@
+{
+  "metadata": {},
+  "data": {
+    "extId": "img-11111111-1111-1111-1111-111111111111",
+    "name": "ubuntu-22.04-cloud",
+    "description": "Ubuntu 22.04 cloud image",
+    "type": "DISK_IMAGE",
+    "sizeBytes": 5368709120,
+    "createTime": "2024-01-15T08:00:00Z",
+    "lastUpdateTime": "2024-01-15T08:00:00Z"
+  }
+}
