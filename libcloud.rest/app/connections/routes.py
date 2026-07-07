@@ -1,25 +1,17 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import Request
 
-from app.auth.dependencies import require_scopes
-from app.auth.models import TokenClaims
-from app.auth.policy import policy_engine
+from app.auth.authorized_route import make_authorized_router
 from app.common.responses import success_response
-from app.connections.models import ProviderConnection
 from app.providers.factory import test_connection
 
-router = APIRouter(prefix="/v1/connections", tags=["connections"])
+router = make_authorized_router(prefix="/v1/connections", tags=["connections"])
 
 
 @router.post(":test")
-def test_connection_endpoint(
-    body: ProviderConnection,
-    request: Request,
-    claims: TokenClaims = Depends(require_scopes("compute:read")),
-):
-    # Enforce the same per-request OpenFGA authorization as every other
-    # sensitive endpoint so callers cannot bypass authz by hitting the
-    # connection-test path directly.
-    body = policy_engine.authorize_connection(claims, body, "compute:read")
-    _ = claims
-    result = test_connection(body)
+def test_connection_endpoint(request: Request):
+    # The provider connection is resolved + authorized by AuthorizedAPIRoute
+    # (entry "POST /v1/connections:test" in app/auth/policies.json) and exposed
+    # on request.state.connection — same path as every other endpoint.
+    connection = request.state.connection
+    result = test_connection(connection)
     return success_response(result, request)

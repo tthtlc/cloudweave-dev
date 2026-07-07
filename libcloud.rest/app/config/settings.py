@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     # Default DescribeImages name filter for AWS (EC2). Use name=* query param to disable.
     aws_default_image_name_filter: str = "*Ubuntu*"
 
+    # External policy table: maps "METHOD path_template" -> {scopes_any_of, capability,
+    # connection_required}. Loaded into memory by app.auth.policy_table and hot-reloaded
+    # on file change (or via POST /v1/admin/policies:reload). Editing this file changes
+    # authorization enforcement WITHOUT any source-code changes. See
+    # app/auth/authorized_route.py for how it is consulted.
+    policy_table_file: str = "app/auth/policies.json"
+
 
 @lru_cache
 def get_settings() -> Settings:

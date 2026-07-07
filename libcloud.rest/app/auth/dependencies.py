@@ -1,11 +1,14 @@
-from fastapi import Depends
+from fastapi import Depends, Header, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.requests import Request
 
 from app.auth.models import TokenClaims
 from app.auth.oidc_service import oidc_auth_service
 from app.auth.service import auth_service
 from app.common.errors import APIError
 from app.config.settings import get_settings
+from app.connections.dependencies import parse_connection_raw
+from app.connections.models import ProviderConnection
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -32,6 +35,56 @@ def _decode_token(token: str) -> TokenClaims:
         code="auth_misconfigured",
         message=f"Unsupported auth_mode: {settings.auth_mode}",
         status_code=500,
+    )
+
+
+def _bearer_token_from_request(request: Request) -> str:
+    """Extract the raw bearer token from the Authorization header (or raise)."""
+    header = request.headers.get("Authorization") or request.headers.get("authorization")
+    if not header:
+        raise APIError(
+            code="auth_invalid_token",
+            message="Bearer token required",
+            status_code=401,
+        )
+    parts = header.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
+        raise APIError(
+            code="auth_invalid_token",
+            message="Bearer token required",
+            status_code=401,
+        )
+    return parts[1]
+
+
+def claims_from_request(request: Request) -> TokenClaims:
+    """Resolve TokenClaims directly from a Starlette Request.
+
+    Used by ``AuthorizedAPIRoute`` (which runs before FastAPI resolves Depends).
+    The ``get_current_claims`` dependency below delegates here so auth-router
+    endpoints keep working unchanged.
+    """
+    return _decode_token(_bearer_token_from_request(request))
+
+
+def connection_from_request(request: Request) -> ProviderConnection:
+    """Resolve ProviderConnection directly from a Starlette Request.
+
+    Reads the ``X-Provider-Connection`` header (preferred) or the URL-encoded
+    ``connection`` query parameter. Same precedence as ``parse_connection_query``.
+    """
+    xpc = request.headers.get("X-Provider-Connection") or request.headers.get(
+        "x-provider-connection"
+    )
+    if xpc:
+        return parse_connection_raw(xpc, url_encoded=False)
+    raw = request.query_params.get("connection")
+    if raw:
+        return parse_connection_raw(raw, url_encoded=True)
+    raise APIError(
+        code="invalid_connection",
+        message="Missing provider connection; send X-Provider-Connection header or connection query parameter",
+        status_code=400,
     )
 
 

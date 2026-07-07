@@ -95,6 +95,23 @@ class PolicyEngine:
             if not fga.check(user, "can_read", backend, bearer=bearer):
                 fga.require(user, "can_provision", backend, bearer=bearer)
 
+    def check_scopes(self, claims: TokenClaims, scopes_any_of: list[str]) -> None:
+        """Scope-only gate for connection-less routes (e.g. GET /v1/jobs/{job_id}).
+
+        Does NOT touch OpenFGA or the provider connection — those routes have no
+        connection to authorize. The READ_SCOPE_ALIASES expansion in
+        ``_token_has_scope`` still applies, so ``compute:read`` implies the read
+        sub-scopes listed there.
+        """
+        token_scopes = set(claims.scope.split())
+        if not any(self._token_has_scope(token_scopes, s) for s in scopes_any_of):
+            raise APIError(
+                code="auth_insufficient_scope",
+                message="Token does not include any required scope",
+                status_code=403,
+                details={"required_any_of": list(scopes_any_of)},
+            )
+
     def authorize_connection(
         self,
         claims: TokenClaims,

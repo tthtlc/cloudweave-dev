@@ -2,11 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.connections.models import ProviderConnection
-
 
 class BucketCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     # Optional location/region hint (AWS LocationConstraint). Defaults to the
     # connection region when omitted.
@@ -15,7 +12,6 @@ class BucketCreateRequest(BaseModel):
 
 
 class ObjectUploadRequest(BaseModel):
-    connection: ProviderConnection
     bucket: str
     object_name: str
     # Base64-encoded object payload (for small uploads via the REST body).
@@ -25,7 +21,6 @@ class ObjectUploadRequest(BaseModel):
 
 
 class ObjectDownloadRequest(BaseModel):
-    connection: ProviderConnection
     bucket: str
     object_name: str
 

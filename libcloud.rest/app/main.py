@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.auth.routes import router as auth_router
+from app.admin.routes import router as admin_router
 from app.common.errors import APIError, api_error_handler
 from app.common.middleware import RequestIDMiddleware
 from app.compute.routes import router as compute_router
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
     app.include_router(network_router)
     app.include_router(storage_router)
     app.include_router(jobs_router)
+    app.include_router(admin_router)
 
     @app.get("/health")
     def health():

@@ -98,8 +98,10 @@
 
   Per-request policy + OpenFGA authorization
 
-  Inside each handler, policy_engine.authorize_connection(...) runs the deeper checks: scope re-check, allowed_providers claim check, credential-policy
-  enforcement (rejects client-supplied backend creds), and OpenFGA can_connect / can_use / can_read / can_provision checks. See app/auth/policy.py.
+  The deeper checks — scope re-check, allowed_providers claim check, credential-policy enforcement (rejects client-supplied backend creds), and OpenFGA
+  can_connect / can_use / can_read / can_provision — live in policy_engine.authorize_connection / check_driver_capability / check_scopes in
+  app/auth/policy.py. The route handlers themselves contain NO authorization logic; they are called by AuthorizedAPIRoute (see below) which invokes the
+  policy engine before the handler runs.
 
    libcloud.rest/app/auth/policy.py lines 98-131
 
@@ -137,31 +139,61 @@
 
   OpenFGA calls themselves: app/auth/fga_client.py (FgaClient.check / require), which forwards the caller's Dex JWT to OpenFGA when OIDC authn is enabled.
 
+  Externalized authorization: the policy table + AuthorizedAPIRoute
+
+  Authorization is data-driven and lives OUTSIDE route source code, so route handlers focus purely on cloud-resource provisioning. Two pieces:
+
+  1. app/auth/policies.json — a table keyed by "METHOD path_template" (e.g. "GET /v1/compute/locations"). Each entry declares:
+     • scopes_any_of — token must hold at least one (with READ_SCOPE_ALIASES expansion), replacing the old require_scopes / require_any_scopes args.
+     • authz_scope — the scope passed to policy_engine.authorize_connection (defaults to scopes_any_of[0]).
+     • authz_scope_by_body_field — optional: for action-conditional routes (e.g. PATCH /nodes/{node_id}), maps a body field value to an authz_scope.
+     • capability — optional driver capability passed to policy_engine.check_driver_capability (e.g. "create_node", "volumes").
+     • connection_required — default true; false for connection-less routes (jobs, admin) which use policy_engine.check_scopes instead.
+
+  2. app/auth/authorized_route.py — a custom FastAPI APIRoute subclass (AuthorizedAPIRoute) set as the route_class of every provisioning router via
+     make_authorized_router(prefix, tags). For each request it: looks up the table entry by "{method} {route.path}" (fail-closed 500
+     policy_unknown_operation if missing), resolves claims + the X-Provider-Connection header, runs the policy engine, and stashes
+     request.state.connection + request.state.authorized_claims before calling the handler. It also injects the X-Provider-Connection header into the
+     route's OpenAPI definition so Swagger still documents it.
+
+  The table is loaded into memory at startup by app/auth/policy_table.py and hot-reloaded: a cheap mtime check on every lookup re-reads the file when it
+  changes, and POST /v1/admin/policies:reload (scope admin:connections:read) forces a reload. Editing app/auth/policies.json therefore changes
+  authorization enforcement with NO source-code changes and NO restart. The path is configurable via the policy_table_file setting.
+
   How it's wired into routes
 
-  Each router (e.g. app/compute/routes.py) declares the scope dependency and then calls policy_engine.authorize_connection before doing any work:
+  Provisioning routers (compute, network, storage, connections, jobs, admin) are built with make_authorized_router, so every one of their routes is
+  auto-authorized. Handlers read the already-authorized connection from request.state and contain zero authz logic:
 
-   libcloud.rest/app/compute/routes.py lines 49-57
+   libcloud.rest/app/compute/routes.py
+
+  router = make_authorized_router(prefix="/v1/compute", tags=["compute"])
 
   @router.get("/locations")
-  def list_locations(
-      request: Request,
-      connection: ProviderConnection = Depends(parse_connection_query),
-      claims: TokenClaims = Depends(require_any_scopes("compute:location:read", "compute:read")),
-  ):
-      connection = policy_engine.authorize_connection(claims, connection, "compute:location:read")
+  def list_locations(request: Request):
+      connection = request.state.connection
       data = [loc.model_dump() for loc in compute_service.list_locations(connection)]
       return success_response(data, request)
 
-  app/main.py registers the routers; there is no global auth middleware — protection is per-endpoint via these dependencies. Only /health (in main.py) and
-  the /auth/* login/refresh/introspect endpoints in app/auth/routes.py are intentionally unauthenticated.
+  Exempt routers (no auto-authz, plain APIRouter): app/auth/routes.py (token-issuing surface: login/refresh/logout/me/introspect),
+  app/providers/routes.py (public metadata, no authz), and /health (in main.py). The auth router still uses get_current_claims / require_scopes
+  directly since it is the authentication surface, not a resource-provisioning surface.
+
+  Connection source: ALL endpoints now take the provider connection from the X-Provider-Connection header (or ?connection= query); the `connection`
+  field was removed from all create/update request body models, so POST/PATCH clients must send the connection header instead of embedding it in the
+  body (breaking change). POST /v1/connections:test is now body-less and uses the header too.
 
   Summary of the chain for a direct API call
 
-  1. HTTPBearer + get_current_claims (app/auth/dependencies.py) → 401 if no/invalid Bearer token.
-  2. _decode_token → auth_service (local) or oidc_auth_service (OIDC) verifies signature, exp, iss, aud, revocation, and resolves principal/scopes.
-  3. require_scopes / require_any_scopes → 403 if the token lacks the endpoint's scope.
-  4. policy_engine.authorize_connection (app/auth/policy.py) → scope re-check, allowed_providers check, enforce_credential_policy
-     (app/connections/credentials.py), then OpenFGA can_connect/can_use/can_read/can_provision via app/auth/fga_client.py → 403/503 on denial.
+  1. AuthorizedAPIRoute (app/auth/authorized_route.py) resolves the bearer token via claims_from_request → _decode_token (auth_service local or
+     oidc_auth_service OIDC) → 401 if no/invalid Bearer token.
+  2. It looks up the policy entry for "{METHOD} {path}" in app/auth/policies.json (loaded by app/auth/policy_table.py) → 500 policy_unknown_operation
+     if the route is not declared (fail-closed).
+  3. Scope gate: token must hold >=1 of entry.scopes_any_of (READ_SCOPE_ALIASES expansion applies) → 403 auth_insufficient_scope otherwise.
+  4. If connection_required: policy_engine.authorize_connection (app/auth/policy.py) → allowed_providers check, enforce_credential_policy
+     (app/connections/credentials.py), then OpenFGA can_connect/can_use/can_read/can_provision via app/auth/fga_client.py → 403/503 on denial; plus
+     policy_engine.check_driver_capability when entry.capability is set. The authorized connection is stashed on request.state.connection.
+     If connection_required=false: policy_engine.check_scopes (scope-only, no connection/FGA).
+  5. The route handler runs and reads request.state.connection / request.state.authorized_claims — pure provisioning logic, no authz code.
 
 

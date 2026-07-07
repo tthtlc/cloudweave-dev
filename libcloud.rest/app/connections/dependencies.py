@@ -7,7 +7,7 @@ from app.common.errors import APIError
 from app.connections.models import ProviderConnection
 
 
-def _parse_connection_raw(raw: str, *, url_encoded: bool) -> ProviderConnection:
+def parse_connection_raw(raw: str, *, url_encoded: bool) -> ProviderConnection:
     try:
         payload = unquote(raw) if url_encoded else raw
         data = json.loads(payload)
@@ -18,6 +18,10 @@ def _parse_connection_raw(raw: str, *, url_encoded: bool) -> ProviderConnection:
             message="Invalid provider connection; expected JSON object",
             status_code=400,
         ) from exc
+
+
+# Back-compat alias used internally by the legacy Depends path.
+_parse_connection_raw = parse_connection_raw
 
 
 def parse_connection_query(

@@ -1,5 +1,5 @@
 
-Based on ARCHITECTURE.md (the "API Endpoint Tables" section, lines 673–2202), the libcloud.rest project is a FastAPI wrapper around Apache Libcloud's
+  Based on ARCHITECTURE.md (the "API Endpoint Tables" section, lines 673–2202), the libcloud.rest project is a FastAPI wrapper around Apache Libcloud's
   Nutanix and AWS drivers. It exposes 52 REST endpoints grouped into 7 categories. The server is stateless for connections (no persistence — every call
   carries a connection object).
 
@@ -41,7 +41,8 @@ Based on ARCHITECTURE.md (the "API Endpoint Tables" section, lines 673–2202), 
 
   4. Compute APIs — /v1/compute (25 endpoints, #11–35)
 
-  All require a Bearer token + connection; every handler calls policy_engine.authorize_connection() first.
+  All require a Bearer token + X-Provider-Connection header. Authorization is enforced by AuthorizedAPIRoute (app/auth/authorized_route.py) from the
+  external app/auth/policies.json table BEFORE the handler runs; handlers themselves contain no authz logic and read request.state.connection.
 
   Locations / Images / Sizes (#11–15) — discovery
   • GET /v1/compute/locations — AWS regions/AZs via list_locations(); Nutanix clusters via ex_list_clusters()
@@ -118,11 +119,16 @@ Based on ARCHITECTURE.md (the "API Endpoint Tables" section, lines 673–2202), 
 
   • Uniform abstraction: every resource endpoint translates REST request models into the appropriate libcloud driver call (AWS EC2 vs Nutanix
     NutanixNodeDriver), normalizing provider differences behind one API surface.
-  • Authorization gate: policy_engine.authorize_connection() enforces JWT scopes + provider allowlists + OpenFGA relationship checks (can_connect,
-    can_use, can_provision/can_read) on every compute/network route.
+  • Authorization gate: enforced by AuthorizedAPIRoute (app/auth/authorized_route.py) using the external app/auth/policies.json table, which drives
+    policy_engine.authorize_connection() / check_driver_capability() / check_scopes() (JWT scopes + provider allowlists + OpenFGA can_connect,
+    can_use, can_provision/can_read) on every compute/network/storage/connections route. The table is hot-reloadable (edit + POST /v1/admin/policies:reload)
+    so policy changes need no source edit or restart.
   • Async support: POST /nodes, POST /volumes, POST /snapshots, POST /images, and DELETE /nodes/{id} accept execution.mode=async and return a job_id for
     polling via endpoint #51.
   • Capability probing: endpoint #7 lets clients discover what a connection supports before issuing resource calls.
 
   Note: the numbering jumps from 7 → 11 (no #8–10) in ARCHITECTURE.md, indicating some originally planned endpoints were removed — most notably the
   list/create/get/delete connection-persistence endpoints, which the doc explicitly notes have been removed ("The server does not persist connections").
+
+
+  To resume this session: agent --resume=2c0b262c-2f1a-4a06-878d-9f247dd9a2fc

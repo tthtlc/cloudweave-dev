@@ -2,8 +2,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.connections.models import ProviderConnection
-
 
 class ResourceRef(BaseModel):
     id: str
@@ -29,7 +27,6 @@ class ExecutionOptions(BaseModel):
 
 
 class NodeCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     size: ResourceRef
     image: ResourceRef
@@ -42,7 +39,6 @@ class NodeCreateRequest(BaseModel):
 
 
 class VolumeCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     size_gb: int
     location: ResourceRef | None = None
@@ -52,14 +48,12 @@ class VolumeCreateRequest(BaseModel):
 
 
 class SnapshotCreateRequest(BaseModel):
-    connection: ProviderConnection
     volume_id: str
     name: str | None = None
     execution: ExecutionOptions = Field(default_factory=ExecutionOptions)
 
 
 class NodeUpdateRequest(BaseModel):
-    connection: ProviderConnection
     action: Literal["update", "resize", "tag"] = "update"
     name: str | None = None
     description: str | None = None
@@ -70,7 +64,6 @@ class NodeUpdateRequest(BaseModel):
 
 
 class VolumeUpdateRequest(BaseModel):
-    connection: ProviderConnection
     action: Literal["modify", "tag"] = "modify"
     new_size_gb: int | None = None
     volume_type: str | None = None
@@ -80,7 +73,6 @@ class VolumeUpdateRequest(BaseModel):
 
 
 class ImageCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     url: str | None = None
     vm_id: str | None = None
@@ -89,13 +81,11 @@ class ImageCreateRequest(BaseModel):
 
 
 class VolumeAttachRequest(BaseModel):
-    connection: ProviderConnection
     node_id: str
     device: str | None = None
 
 
 class KeyPairCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     public_key: str | None = None
 

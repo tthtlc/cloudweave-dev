@@ -2,11 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.connections.models import ProviderConnection
-
 
 class NetworkCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     description: str | None = None
     cidr_block: str | None = None
@@ -17,7 +14,6 @@ class NetworkCreateRequest(BaseModel):
 
 
 class NetworkUpdateRequest(BaseModel):
-    connection: ProviderConnection
     name: str | None = None
     description: str | None = None
     tag_key: str | None = None
@@ -25,7 +21,6 @@ class NetworkUpdateRequest(BaseModel):
 
 
 class SubnetCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     subnet_type: Literal["VLAN", "OVERLAY"] = "VLAN"
     vpc_id: str | None = None
@@ -42,7 +37,6 @@ class SubnetCreateRequest(BaseModel):
 
 
 class SubnetUpdateRequest(BaseModel):
-    connection: ProviderConnection
     action: Literal["update", "nat", "auto_public_ip", "auto_ipv6", "tag"] = "update"
     name: str | None = None
     description: str | None = None
@@ -53,31 +47,26 @@ class SubnetUpdateRequest(BaseModel):
 
 
 class SecurityGroupCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     description: str | None = None
     vpc_id: str | None = None
 
 
 class LoadBalancerCreateRequest(BaseModel):
-    connection: ProviderConnection
     name: str
     vpc_id: str
     external_ip: str | None = None
 
 
 class FloatingIPAllocateRequest(BaseModel):
-    connection: ProviderConnection
     # EC2 address domain: "vpc" (default) or "standard" (EC2-Classic).
     domain: str = "vpc"
 
 
 class FloatingIPAssociateRequest(BaseModel):
-    connection: ProviderConnection
     node_id: str
     domain: str | None = None
 
 
 class FloatingIPDisassociateRequest(BaseModel):
-    connection: ProviderConnection
     domain: str | None = None
