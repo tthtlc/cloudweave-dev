@@ -14,12 +14,15 @@
 # LLDAP is on the shared libcloud_net network, so Dex reaches it at
 # ldap://lldap:3890. InsecureNoSSL is fine for the single-host dev network;
 # for production, enable LDAPS (startTLS or ssl) and a valid CA.
+#
+# Optional phase-2 federation (Google + GitHub) for the role portal
+# (../server) is appended by dex_bootstrap.py when DEX_GOOGLE_CLIENT_ID /
+# DEX_GITHUB_CLIENT_ID are set. The LDAP connector below stays the primary
+# directory for the libcloud REST API + OpenFGA; Google/GitHub are additional
+# upstream connectors used only by the portal's login buttons. The portal
+# OAuth client (libcloud-portal) is likewise appended when
+# DEX_PORTAL_REDIRECT_URI is set.
 
-# The issuer is the canonical in-container URL (http://dex:5556/dex) so that
-# in-cluster consumers (OpenFGA OIDC authn, libcloud REST API) can fetch JWKS
-# from `<issuer>/keys` over libcloud_net and the token `iss` matches. Host-side
-# clients use the published http://localhost:5556 port for the browser flow and
-# JWKS fetch (see ../openfga_my/dex_bootstrap.py -> generated/dex.env).
 issuer: http://dex:5556/dex
 
 storage:
@@ -40,10 +43,11 @@ oauth2:
 staticClients:
   - id: libcloud-rest
     name: libcloud REST API
-    secret: HbpzexeVfU0STxDY9f14Td3-T2OfmhTsJIFwXxQrFVs
+    secret: kPV2bAbb0oOIeUqqvAlZAvrZtqbOULlPILWZn4f5egk
     redirectURIs:
       - http://127.0.0.1:8766/oauth/callback
       - http://localhost:8765/oauth/callback
+
 
 connectors:
   - type: ldap
@@ -65,3 +69,4 @@ connectors:
         idAttr: uid
         emailAttr: mail
         nameAttr: cn
+

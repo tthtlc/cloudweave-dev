@@ -1,0 +1,71 @@
+# Sample Dex configuration for the libcloud role portal.
+#
+# NOTE: This file is an ILLUSTRATIVE REFERENCE for a portal-only Dex deployment.
+# For this stack, the REAL Dex already runs in ../dex (LLDAP-backed). The
+# portal reuses it: dex_bootstrap.py appends the google/github connectors and
+# the libcloud-portal client to ../dex/config.yaml when DEX_GOOGLE_CLIENT_ID /
+# DEX_GITHUB_CLIENT_ID / DEX_PORTAL_REDIRECT_URI are set. See ../README.md
+# "Running against real Dex + backend".
+#
+# This demonstrates Google + GitHub federation. Dex stays the stable OIDC
+# issuer; the portal is just an OAuth client of Dex. The portal backend
+# (identity service) performs the token exchange using the client secret.
+#
+# Fill in every TODO below before running. Never commit real secrets.
+
+issuer: http://localhost:5556/dex   # TODO: canonical in-cluster issuer is http://dex:5556/dex; use that for production
+
+storage:
+  type: memory                       # dev only; use postgres/etcd for HA
+
+web:
+  http: 0.0.0.0:5556
+
+logger:
+  level: info
+  format: json
+
+oauth2:
+  skipApprovalScreen: true           # safe: single first-party client
+  responseTypes: ["code"]
+  grantTypes: ["authorization_code", "refresh_token"]
+  # TODO: set strong signing keys for production (passwordSeed / alwaysShowLogin)
+
+staticClients:
+  - id: libcloud-portal              # must match REACT_APP_DEX_CLIENT_ID
+    name: libcloud Role Portal
+    secret: __PORTAL_CLIENT_SECRET__  # TODO: generate, keep server-side only (NOT in the browser bundle)
+    redirectURIs:
+      - http://localhost:3000/auth/callback   # TODO: must match REACT_APP_DEX_REDIRECT_URI exactly
+      # TODO: add production redirect URI(s) here
+
+connectors:
+  # --- Google federation ---
+  - type: google
+    id: google
+    name: Google
+    config:
+      clientID: __GOOGLE_CLIENT_ID__       # TODO: Google OAuth client ID
+      clientSecret: __GOOGLE_CLIENT_SECRET__ # TODO: Google OAuth client secret
+      # TODO: restrict to your org domain(s):
+      # hostedDomains: ["example.com"]
+      # TODO: map Google subject into OIDC sub; serviceAccountFilePath for
+      # group sync if you need group claims.
+
+  # --- GitHub federation ---
+  - type: github
+    id: github
+    name: GitHub
+    config:
+      clientID: __GITHUB_CLIENT_ID__         # TODO: GitHub OAuth App client ID
+      clientSecret: __GITHUB_CLIENT_SECRET__  # TODO: GitHub OAuth App client secret
+      # TODO: org/team restrictions:
+      # orgs:
+      #   - name: your-org
+      #     teams:
+      #       - platform-admins
+      # loadAllGroups: true   # if you want team claims for OpenFGA mapping
+
+# TODO: enable a persistent storage backend and TLS-terminating reverse proxy
+# for any non-local exposure. The cookie/session secrets below belong in the
+# backend, not the browser.

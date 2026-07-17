@@ -1,0 +1,201 @@
+{
+  "_comment": "Authorization policy table. Keyed by 'METHOD path_template'. Each entry: scopes_any_of (token must hold >=1, with READ_SCOPE_ALIASES expansion), authz_scope (scope passed to policy_engine.authorize_connection; defaults to scopes_any_of[0]), capability (optional driver capability check), connection_required (default true; false for connection-less routes). Hot-reloadable: edit this file then POST /v1/admin/policies:reload (or rely on auto mtime reload). No source-code changes required.",
+
+  "GET /v1/compute/locations": {
+    "scopes_any_of": ["compute:location:read", "compute:read"],
+    "authz_scope": "compute:location:read"
+  },
+  "GET /v1/compute/images": {
+    "scopes_any_of": ["compute:image:read", "compute:read"],
+    "authz_scope": "compute:image:read"
+  },
+  "GET /v1/compute/sizes": {
+    "scopes_any_of": ["compute:size:read", "compute:read"],
+    "authz_scope": "compute:size:read"
+  },
+  "GET /v1/compute/nodes": {
+    "scopes_any_of": ["compute:read"]
+  },
+  "GET /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:read"]
+  },
+  "POST /v1/compute/nodes": {
+    "scopes_any_of": ["compute:node:create"],
+    "capability": "create_node"
+  },
+  "PATCH /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:node:power", "compute:node:update"],
+    "authz_scope_by_body_field": {
+      "field": "action",
+      "map": {
+        "update": "compute:node:update",
+        "resize": "compute:node:power",
+        "tag": "compute:node:power"
+      }
+    }
+  },
+  "POST /v1/compute/nodes/{node_id}:start": {
+    "scopes_any_of": ["compute:node:power"]
+  },
+  "POST /v1/compute/nodes/{node_id}:stop": {
+    "scopes_any_of": ["compute:node:power"]
+  },
+  "POST /v1/compute/nodes/{node_id}:reboot": {
+    "scopes_any_of": ["compute:node:power"]
+  },
+  "DELETE /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:node:delete"],
+    "capability": "destroy_node"
+  },
+  "GET /v1/compute/volumes": {
+    "scopes_any_of": ["compute:volume:manage", "compute:read"],
+    "authz_scope": "compute:read"
+  },
+  "POST /v1/compute/volumes": {
+    "scopes_any_of": ["compute:volume:manage"],
+    "capability": "volumes"
+  },
+  "PATCH /v1/compute/volumes/{volume_id}": {
+    "scopes_any_of": ["compute:volume:manage"]
+  },
+  "DELETE /v1/compute/volumes/{volume_id}": {
+    "scopes_any_of": ["compute:volume:manage"]
+  },
+  "POST /v1/compute/volumes/{volume_id}:attach": {
+    "scopes_any_of": ["compute:volume:manage"]
+  },
+  "POST /v1/compute/volumes/{volume_id}:detach": {
+    "scopes_any_of": ["compute:volume:manage"]
+  },
+  "GET /v1/compute/snapshots": {
+    "scopes_any_of": ["compute:snapshot:manage", "compute:read"],
+    "authz_scope": "compute:read"
+  },
+  "POST /v1/compute/snapshots": {
+    "scopes_any_of": ["compute:snapshot:manage"],
+    "capability": "snapshots"
+  },
+  "DELETE /v1/compute/snapshots/{snapshot_id}": {
+    "scopes_any_of": ["compute:snapshot:manage"]
+  },
+  "POST /v1/compute/images": {
+    "scopes_any_of": ["compute:image:manage"]
+  },
+  "DELETE /v1/compute/images/{image_id}": {
+    "scopes_any_of": ["compute:image:manage"]
+  },
+  "GET /v1/compute/key-pairs": {
+    "scopes_any_of": ["compute:keypair:manage", "compute:read"],
+    "authz_scope": "compute:read"
+  },
+  "POST /v1/compute/key-pairs": {
+    "scopes_any_of": ["compute:keypair:manage"],
+    "capability": "key_pairs"
+  },
+  "DELETE /v1/compute/key-pairs/{name}": {
+    "scopes_any_of": ["compute:keypair:manage"],
+    "capability": "key_pairs"
+  },
+
+  "GET /v1/compute/networks": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/networks": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "PATCH /v1/compute/networks/{network_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/compute/networks/{network_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/subnets": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/subnets": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "PATCH /v1/compute/subnets/{subnet_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/compute/subnets/{subnet_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/storage-containers": {
+    "scopes_any_of": ["compute:read", "compute:network:read"]
+  },
+  "GET /v1/compute/security-groups": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/security-groups": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/compute/security-groups/{group_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/load-balancers": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/load-balancers": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/compute/load-balancers/{lb_id}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/floating-ips": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/floating-ips": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/compute/floating-ips/{address}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "POST /v1/compute/floating-ips/{address}:associate": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "POST /v1/compute/floating-ips/{address}:disassociate": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+
+  "GET /v1/storage/buckets": {
+    "scopes_any_of": ["compute:read", "compute:network:read"]
+  },
+  "POST /v1/storage/buckets": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "DELETE /v1/storage/buckets/{bucket_name}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/storage/buckets/{bucket_name}/objects": {
+    "scopes_any_of": ["compute:read", "compute:network:read"]
+  },
+  "POST /v1/storage/buckets/{bucket_name}/objects": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "POST /v1/storage/buckets/{bucket_name}/objects/{object_name:path}:download": {
+    "scopes_any_of": ["compute:read", "compute:network:read"]
+  },
+  "DELETE /v1/storage/buckets/{bucket_name}/objects/{object_name:path}": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+
+  "POST /v1/connections:test": {
+    "scopes_any_of": ["compute:read"]
+  },
+
+  "GET /v1/jobs/{job_id}": {
+    "scopes_any_of": ["jobs:read"],
+    "connection_required": false
+  },
+
+  "POST /v1/admin/policies:reload": {
+    "scopes_any_of": ["admin:connections:read"],
+    "connection_required": false
+  }
+}

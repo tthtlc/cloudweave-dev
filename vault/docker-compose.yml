@@ -67,8 +67,8 @@ services:
       # the tenant owner via scripts/set_tenant_credentials.py.
       SUPERADMIN_JWT: ${SUPERADMIN_JWT:-}
     volumes:
-      # The bootstrap script lives with the orchestrator (../openfga_my).
-      - ../openfga_my/vault_bootstrap.py:/bootstrap/vault_bootstrap.py:ro
+      # The bootstrap script lives with the OpenFGA orchestrator (../openfga_postgres).
+      - ../openfga_postgres/vault_bootstrap.py:/bootstrap/vault_bootstrap.py:ro
       - ./generated:/bootstrap/generated
     working_dir: /bootstrap
     command: ["python3", "vault_bootstrap.py"]

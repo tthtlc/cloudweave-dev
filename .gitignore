@@ -159,3 +159,53 @@ __pycache__/
 *.pyc
 .venv/
 data/users.json
+
+# --- Development / build artifacts (added for this repo) ---
+# Virtual environments (any depth)
+.venv/
+venv/
+env/
+ENV/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Generated output (codegen, build artifacts, mock/generated configs)
+generated/
+*_generated/
+**/generated/
+
+# Logs and log directories
+log/
+logs/
+*.log
+
+# Static build output
+_static/
+_static-*/
+
+# Temp / scratch directories
+tmp/
+tmp-*/
+*.tmp
+
+# Test / coverage caches
+.tox/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+coverage_html_report/
+
+# Editor / IDE
+.idea/
+.vscode/
+.DS_Store

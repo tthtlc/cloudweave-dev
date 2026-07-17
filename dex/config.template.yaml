@@ -14,6 +14,14 @@
 # LLDAP is on the shared libcloud_net network, so Dex reaches it at
 # ldap://lldap:3890. InsecureNoSSL is fine for the single-host dev network;
 # for production, enable LDAPS (startTLS or ssl) and a valid CA.
+#
+# Optional phase-2 federation (Google + GitHub) for the role portal
+# (../server) is appended by dex_bootstrap.py when DEX_GOOGLE_CLIENT_ID /
+# DEX_GITHUB_CLIENT_ID are set. The LDAP connector below stays the primary
+# directory for the libcloud REST API + OpenFGA; Google/GitHub are additional
+# upstream connectors used only by the portal's login buttons. The portal
+# OAuth client (libcloud-portal) is likewise appended when
+# DEX_PORTAL_REDIRECT_URI is set.
 
 issuer: __DEX_ISSUER__
 
@@ -39,6 +47,7 @@ staticClients:
     redirectURIs:
       - http://127.0.0.1:8766/oauth/callback
       - http://localhost:8765/oauth/callback
+__PORTAL_CLIENT__
 
 connectors:
   - type: ldap
@@ -60,3 +69,4 @@ connectors:
         idAttr: uid
         emailAttr: mail
         nameAttr: cn
+__EXTRA_CONNECTORS__

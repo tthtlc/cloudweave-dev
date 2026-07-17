@@ -20,8 +20,8 @@ services:
       OIDC_JWKS_URL: http://dex:5556/dex/keys
       FGA_API_URL: http://openfga:8080
       VAULT_ADDR: http://vault:8200
-      # VAULT_TOKEN is read from .env (synced from ../openfga_my/../vault/generated/vault.env
-      # by ../openfga_my/setup.sh). VAULT_KV_MOUNT / VAULT_KV_PREFIX come from .env when set.
+      # VAULT_TOKEN is read from .env (synced from ../vault/generated/vault.env
+      # by ../openfga_postgres/setup.sh). VAULT_KV_MOUNT / VAULT_KV_PREFIX come from .env when set.
     ports:
       - "${API_PORT:-8765}:8765"
     extra_hosts:

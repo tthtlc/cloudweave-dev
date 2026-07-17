@@ -5,9 +5,25 @@ from dotenv import load_dotenv
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+# App root: the libcloud.rest/ directory (the parent of app/). All file-path
+# settings below are resolved against this root so the app works regardless of
+# the current working directory (e.g. when scripts/generate_openapi.py is run
+# from $REPO_ROOT=/home/ubuntu/libcloud_nutanix rather than from libcloud.rest/).
+_APP_ROOT = Path(__file__).resolve().parents[2]
+
+_ENV_PATH = _APP_ROOT / ".env"
 if _ENV_PATH.exists():
     load_dotenv(_ENV_PATH)
+
+
+def _resolve(path: str) -> str:
+    """Resolve a path setting against the app root.
+
+    Absolute paths are used as-is; relative paths are anchored to the
+    libcloud.rest/ app root so they work from any cwd.
+    """
+    p = Path(path)
+    return str(p if p.is_absolute() else (_APP_ROOT / p))
 
 
 class Settings(BaseSettings):
@@ -117,6 +133,16 @@ class Settings(BaseSettings):
     # authorization enforcement WITHOUT any source-code changes. See
     # app/auth/authorized_route.py for how it is consulted.
     policy_table_file: str = "app/auth/policies.json"
+
+    def model_post_init(self, __context: object) -> None:
+        """Anchor file-path settings to the app root so they work from any cwd."""
+        for name in (
+            "users_file",
+            "principal_map_file",
+            "auth_audit_file",
+            "policy_table_file",
+        ):
+            setattr(self, name, _resolve(getattr(self, name)))
 
 
 @lru_cache

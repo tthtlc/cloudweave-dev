@@ -1,0 +1,152 @@
+# OpenFGA — standalone authorization service backed by PostgreSQL.
+#
+# This is the project's OpenFGA deployment. It supersedes the old SQLite-backed
+# openfga_my directory (removed): OpenFGA's SQLite datastore is flagged "beta /
+# single-node" and Postgres is the recommended production datastore. See
+# README.md for the consolidation rationale (design refs:
+# ../redesign_openfga_for_postgresql.md, ../adding_postgres_openfga.md).
+#
+# Sibling compose projects (../dex, ../vault, ../libcloud.rest) communicate
+# with OpenFGA over the shared external `libcloud_net` network (container-name
+# DNS). Host-side provisioning scripts reach OpenFGA via the published port
+# (http://localhost:8080).
+#
+# Datastore: a dedicated `postgres` service holds the OpenFGA schema, stores,
+# authorization models and relationship tuples. Migrations are applied by the
+# one-shot `openfga-migrate` service (runs `openfga migrate --datastore-engine
+# =postgres`) before `openfga` starts. OpenFGA is datastore-agnostic above the
+# storage layer, so openfga_bootstrap.py / scripts/ live in this directory.
+#
+# The `openfga-local:latest` image is built from ./Dockerfile (multi-stage:
+# downloads the official OpenFGA release tarball from GitHub and verifies its
+# checksum). The OpenFGA binary is NOT vendored into this directory — bump
+# OPENFGA_VERSION / OPENFGA_TARBALL_SHA256 in .env to upgrade.
+
+# Shared image definition for the openfga + openfga-migrate services. Both
+# need the same openfga binary; the anchor avoids duplicating the build spec.
+x-openfga-image: &openfga-image
+  image: openfga-local:latest
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      OPENFGA_VERSION: ${OPENFGA_VERSION:-v1.8.4}
+      OPENFGA_TARBALL_SHA256: ${OPENFGA_TARBALL_SHA256:-189b18e5798332edc8f00f1da8ca93a763b5ef19f08e7a9673c4b9e61c85dbaa}
+services:
+  postgres:
+    image: postgres:16
+    container_name: openfga-postgres
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openfga}
+      POSTGRES_USER: ${POSTGRES_USER:-openfga}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openfga}
+      # Default to a sane work_mem / shared_buffers for a small authz workload;
+      # tune via POSTGRES_INITDB_ARGS / a custom config for production.
+    volumes:
+      - openfga-pg-data:/var/lib/postgresql/data
+    # Do NOT publish 5432 to the host in production. PG_HOST_PORT is provided
+    # only for local debugging / running psql against the datastore.
+    ports:
+      - "${PG_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openfga} -d ${POSTGRES_DB:-openfga}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  openfga-migrate:
+    <<: *openfga-image
+    container_name: openfga-migrate
+    networks:
+      - libcloud_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - migrate
+      - --datastore-engine=postgres
+      - --datastore-uri=postgres://${POSTGRES_USER:-openfga}:${POSTGRES_PASSWORD:-openfga}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-openfga}?sslmode=${POSTGRES_SSLMODE:-disable}
+    restart: "no"
+
+  openfga:
+    <<: *openfga-image
+    container_name: openfga
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${FGA_HTTP_PORT:-8080}:8080"
+      - "${FGA_GRPC_PORT:-8081}:8081"
+      - "${FGA_METRICS_PORT:-2112}:2112"
+    command:
+      - run
+      - --datastore-engine=postgres
+      - --datastore-uri=postgres://${POSTGRES_USER:-openfga}:${POSTGRES_PASSWORD:-openfga}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-openfga}?sslmode=${POSTGRES_SSLMODE:-disable}
+      - --playground-enabled=false
+      # OIDC authentication: OpenFGA validates the Dex-issued JWT on every call.
+      # Reuses the same IdP (Dex) and the same audience (`libcloud-rest`) as the
+      # libcloud REST API, so the user's access token is accepted by OpenFGA too.
+      # The issuer is Dex's canonical in-container URL
+      # (http://dex:5556/dex) — this is the `iss` claim Dex puts in tokens AND
+      # the URL OpenFGA fetches JWKS from (reachable on libcloud_net). Host-side
+      # clients fetch JWKS via the host port (see dex_bootstrap.py / dex.env).
+      # See authorization.md §15.3 / rest_api_security.md.
+      - --authn-method=${OPENFGA_AUTHN_METHOD:-oidc}
+      - --authn-oidc-issuer=${OPENFGA_AUTHN_OIDC_ISSUER:-http://dex:5556/dex}
+      - --authn-oidc-audience=${OPENFGA_AUTHN_OIDC_AUDIENCE:-libcloud-rest}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # One-shot bootstrap: creates the store + authorization model, writes
+  # generated/fga.env (store/model IDs). Reach OpenFGA at http://openfga:8080
+  # on the shared network. Datastore-agnostic.
+  openfga-bootstrap:
+    image: python:3.12-slim
+    container_name: openfga-bootstrap
+    networks:
+      - libcloud_net
+    depends_on:
+      openfga:
+        condition: service_healthy
+    environment:
+      FGA_API_URL: http://openfga:8080
+      FGA_PUBLIC_API_URL: http://localhost:8080
+      FGA_STORE_NAME: ${FGA_STORE_NAME:-libcloud-rest-store}
+      FGA_LOG_LEVEL: INFO
+      # OpenFGA policy / privilege changes are gated on a superadmin Dex login.
+      # setup.sh obtains this via scripts/superadmin_auth.sh. Empty -> bootstrap
+      # refuses to run (see openfga_bootstrap.py main()).
+      SUPERADMIN_JWT: ${SUPERADMIN_JWT:-}
+    volumes:
+      - ./openfga_bootstrap.py:/bootstrap/openfga_bootstrap.py:ro
+      # fga.env is consumed by the test_script/scripts/ tools from
+      # ${REPO_ROOT}/openfga_postgres/generated/fga.env (see common.sh /
+      # openfga_pylib.py), so the bootstrap container writes it into this
+      # project's ./generated (mounted at /bootstrap/generated).
+      - ./generated:/bootstrap/generated
+    working_dir: /bootstrap
+    command: ["python3", "openfga_bootstrap.py"]
+    restart: "no"
+
+networks:
+  libcloud_net:
+    external: true
+
+# Persistent Postgres data volume (survives reboot / restart / `docker compose
+# down`). Use `docker compose down -v` only to intentionally wipe the datastore
+# (a fresh `openfga migrate` + bootstrap re-seeds it).
+volumes:
+  openfga-pg-data:
