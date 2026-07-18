@@ -56,6 +56,21 @@ class RoleUpdateRequest(BaseModel):
     role: str
 
 
+class EmailUpdateRequest(BaseModel):
+    email: str
+
+
+class TupleItem(BaseModel):
+    user: str
+    relation: str
+    object: str
+
+
+class TupleWriteRequest(BaseModel):
+    writes: list[TupleItem] = []
+    deletes: list[TupleItem] = []
+
+
 # --- /api/provision ---------------------------------------------------------
 class ProvisionRequest(BaseModel):
     vmName: str | None = None

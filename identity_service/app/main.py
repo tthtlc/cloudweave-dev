@@ -15,11 +15,13 @@ from app.libcloud_proxy import LibcloudProxy
 from app.lldap import LldapService
 from app.models import (
     CollapseRequest,
+    EmailUpdateRequest,
     ExchangeRequest,
     ExchangeResponse,
     ProvisionRequest,
     RoleUpdateRequest,
     SessionResponse,
+    TupleWriteRequest,
 )
 from app.session import SessionService
 from app.users import UserService
@@ -196,6 +198,42 @@ def create_app() -> FastAPI:
         _require_role(req, "superadmin")
         updated = users.set_role(internal_id, body.role)
         return updated
+
+    @app.post("/api/users/{internal_id}/disable")
+    def disable_user(internal_id: str, req: Request):
+        # System-scoped disable: revoke every managed role tuple for this user
+        # in OpenFGA. The user stays valid in LLDAP / the external IdP; they are
+        # simply denied everywhere in THIS system until re-granted a role.
+        _require_role(req, "superadmin")
+        users.disable_user(internal_id)
+        return {"internalUserId": internal_id, "disabled": True}
+
+    @app.patch("/api/users/{internal_id}/email")
+    def set_email(internal_id: str, body: EmailUpdateRequest, req: Request):
+        # Email is the platform's contact channel; the superadmin screen
+        # requires it. This updates the LLDAP user's mail attribute.
+        _require_role(req, "superadmin")
+        return users.set_email(internal_id, body.email)
+
+    # --- OpenFGA tuple CRUD (superadmin power screen) -----------------------
+    @app.get("/api/tuples")
+    def list_tuples(req: Request):
+        _require_role(req, "superadmin")
+        return {"tuples": fga.list_tuples()}
+
+    @app.post("/api/tuples")
+    def write_tuples(body: TupleWriteRequest, req: Request):
+        _require_role(req, "superadmin")
+        triples = [t.model_dump() for t in body.writes]
+        fga.write_tuples(triples)
+        return {"written": len(triples)}
+
+    @app.delete("/api/tuples")
+    def delete_tuples(body: TupleWriteRequest, req: Request):
+        _require_role(req, "superadmin")
+        triples = [t.model_dump() for t in body.deletes]
+        fga.delete_tuples(triples)
+        return {"deleted": len(triples)}
 
     @app.get("/api/resources/aws")
     def aws_resources(req: Request):

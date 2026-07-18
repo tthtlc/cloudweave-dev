@@ -38,6 +38,11 @@ CLOUD_OBJECTS = {"aws": "aws_region:aws", "nutanix": "nutanix_cluster:nutanix"}
 VIEW_RELATION = "can_read"        # viewer+: enumerate / read resources
 PROVISION_RELATION = "can_provision"  # admin+: provision
 
+# user->role tuples on tenant:/platform: that represent a portal role. These
+# are the only tuples clear_roles() will revoke (it leaves structural/infra
+# tuples like parent/provider/tenant alone).
+MANAGED_RELATIONS = {"owner", "admin", "viewer", "superadmin"}
+
 
 class FgaService:
     """OpenFGA REST client. OpenFGA is the source of truth for authorization;
@@ -141,6 +146,71 @@ class FgaService:
         # owner/admin/viewer: write the relation on both tenants.
         for relation, obj in mapping:
             self._write([{"user": user, "relation": relation, "object": obj}])
+
+    def _delete(self, triples: list[dict[str, str]]) -> None:
+        if not self.enabled or not triples:
+            return
+        self._post("/write", {
+            "authorization_model_id": self.model_id,
+            "deletes": {"tuple_keys": triples},
+        })
+
+    def _read_user_tuples(self, user: str) -> list[dict[str, str]]:
+        """All tuples where `user` is the subject.
+
+        This OpenFGA build's /read requires an object in the filter (it rejects
+        a user-only filter), so we read the whole store and filter client-side.
+        Fine for this store's size; for a large store, switch to /read per
+        (object-type, relation) or maintain a side index.
+        """
+        return [t for t in self.list_tuples() if t["user"] == user]
+
+    def clear_roles(self, principal: str) -> None:
+        """Revoke every managed role tuple for `principal`.
+
+        Reads the user's actual tuples first and deletes only the ones that
+        exist — this OpenFGA build rejects deleting a non-existent tuple with
+        `write_failed_due_to_invalid_input`, so a blind superset delete would
+        fail whenever the user doesn't hold every role. Used by set_role()
+        (drop old role before writing the new one) and by the portal's disable
+        action (revoke all access for this system only).
+        """
+        if not self.enabled:
+            return
+        user = f"user:{principal}"
+        managed = [
+            t for t in self._read_user_tuples(user)
+            if t["relation"] in MANAGED_RELATIONS
+            and (t["object"].startswith("tenant:") or t["object"].startswith("platform:"))
+        ]
+        self._delete(managed)
+
+    # --- raw tuple CRUD (superadmin tuples screen) --------------------------
+    def list_tuples(self) -> list[dict[str, str]]:
+        """Read every tuple in the store (paginated). Returns [{user,relation,object}]."""
+        out: list[dict[str, str]] = []
+        token = ""
+        while True:
+            payload: dict[str, Any] = {"page_size": 100}
+            if token:
+                payload["continuation_token"] = token
+            body = self._post("/read", payload)
+            for t in body.get("tuples", []):
+                k = t.get("key", {})
+                out.append({"user": k.get("user", ""), "relation": k.get("relation", ""), "object": k.get("object", "")})
+            token = body.get("continuation_token") or ""
+            if not token:
+                break
+        return out
+
+    def write_tuples(self, triples: list[dict[str, str]]) -> None:
+        if not self.enabled or not triples:
+            return
+        self._write(triples)
+
+    def delete_tuples(self, triples: list[dict[str, str]]) -> None:
+        self._delete(triples)
+
 
     # --- per-cloud authZ -----------------------------------------------------
     def can_view(self, principal: str, cloud: str) -> bool:

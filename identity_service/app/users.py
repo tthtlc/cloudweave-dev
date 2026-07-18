@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 import uuid
 from typing import Any
@@ -7,6 +8,35 @@ from typing import Any
 from app.errors import APIError
 from app.fga import FgaService
 from app.lldap import LldapService
+
+
+def _dex_lldap_uid(subject: str) -> str:
+    """Recover the LLDAP uid from a Dex LDAP-connector `sub` claim.
+
+    Dex does NOT put the raw uid in `sub`; it encodes the identity as
+    base64(protobuf{field1=UserID, field2=ConnectorID}). We walk the
+    length-delimited protobuf fields and return field 1 (the uid). Falls back
+    to the raw sub if it isn't in that shape (e.g. a future Dex change).
+    """
+    raw_sub = subject.split(":", 1)[1] if ":" in subject else subject
+    try:
+        data = base64.urlsafe_b64decode(raw_sub + "=" * (-len(raw_sub) % 4))
+    except (ValueError, base64.binascii.Error):
+        return raw_sub
+    i = 0
+    while i < len(data):
+        tag = data[i]
+        i += 1
+        if (tag & 0x07) != 2:  # only length-delimited fields
+            break
+        ln = data[i]
+        i += 1
+        val = data[i : i + ln]
+        i += ln
+        if tag >> 3 == 1:
+            return val.decode("utf-8", "replace")
+    return raw_sub
+
 
 # In-memory internal-user registry for identities that are NOT in LLDAP
 # (e.g. brand-new Google/GitHub logins that have not been linked yet). In a
@@ -61,6 +91,36 @@ class UserService:
         existing user, collapse required, or brand-new viewer.
         """
         subject = external["subject"]
+        provider = external.get("provider", "")
+
+        # LLDAP login == direct login as that LLDAP user. Dex's LDAP connector
+        # sets the id_token `sub` to base64(protobuf{UserID, ConnectorID}) — NOT
+        # the raw uid — so we recover the uid and map straight to internal user
+        # `int-<uid>` with the role OpenFGA holds for that uid. This MUST NOT go
+        # through the collapse flow: collapse is for federated identities
+        # (google/github) whose email happens to match an LLDAP user, not for
+        # the LLDAP user itself.
+        if provider == "lldap":
+            email = external.get("email", "")
+            candidates = self.lldap.find_by_email(email) if email else []
+            if candidates:
+                internal_user_id = candidates[0]["internalUserId"]  # "int-<uid>"
+                uid = internal_user_id[4:]
+            else:
+                # Fallback when the email claim is empty/missing: decode Dex's
+                # sub protobuf to recover the uid directly.
+                uid = _dex_lldap_uid(subject)
+                internal_user_id = f"int-{uid}"
+            role = self.fga.role_for(uid) or DEFAULT_ROLE
+            return {
+                "internalUserId": internal_user_id,
+                "role": role,
+                "linkedIdentities": [subject],
+                "email": email,
+                "needsIdentityCollapse": False,
+                "collapseCandidates": [],
+            }
+
         existing = self._find_by_subject(subject)
         if existing:
             return {
@@ -155,12 +215,33 @@ class UserService:
     # --- admin ---------------------------------------------------------------
     def list_all(self) -> list[dict[str, Any]]:
         users = self.lldap.list_users()
+        # OpenFGA is the source of truth for roles; lldap.list_users() only
+        # returns a placeholder "viewer". Derive the real role per user from
+        # OpenFGA (keyed by the LLDAP uid, i.e. internalUserId without "int-").
+        for u in users:
+            uid = u["internalUserId"][4:] if u["internalUserId"].startswith("int-") else u["internalUserId"]
+            u["role"] = self.fga.role_for(uid) or DEFAULT_ROLE
         # Merge in pending users not yet in LLDAP so superadmin sees everyone.
         seen = {u["internalUserId"] for u in users}
         for u in _pending_users.values():
             if u["internalUserId"] not in seen:
                 users.append(dict(u))
         return users
+
+    def _fga_principal(self, internal_user_id: str) -> str:
+        """The OpenFGA `user:` principal for an internal user.
+
+        LLDAP users are keyed in OpenFGA by their LLDAP uid (the bootstrap
+        seeds `user:superadmin`, `user:aws-admin`, …). Pending (non-LLDAP)
+        users are keyed by their internal id (`user:int-viewer-<hex>`) until
+        they are linked into LLDAP. Mixing these up is why role changes used
+        to write tuples for a non-existent principal and silently no-op.
+        """
+        if internal_user_id in _pending_users:
+            return internal_user_id
+        if internal_user_id.startswith("int-"):
+            return internal_user_id[4:]
+        return internal_user_id
 
     def set_role(self, internal_user_id: str, role: str) -> dict[str, Any]:
         if role not in ALLOWED_ROLES:
@@ -171,8 +252,45 @@ class UserService:
         user["role"] = role
         if internal_user_id in _pending_users:
             _pending_users[internal_user_id] = user
-        # OpenFGA is the source of truth for roles — re-key the tuple.
-        self.fga.assign_role(internal_user_id, role)
+        # OpenFGA is the source of truth for roles. Revoke the user's existing
+        # role tuples first, then write the new role's — otherwise the old
+        # (stronger) tuples remain and role_for() keeps returning the old role,
+        # so the change never takes effect.
+        principal = self._fga_principal(internal_user_id)
+        self.fga.clear_roles(principal)
+        self.fga.assign_role(principal, role)
+        return user
+
+    def disable_user(self, internal_user_id: str) -> None:
+        """System-scoped disable: revoke all of this user's managed role tuples
+        in OpenFGA. They stay in LLDAP / the external IdP but are denied here."""
+        user = self._find_by_internal_id(internal_user_id)
+        if not user:
+            raise APIError("user_not_found", "internal user not found", 404)
+        principal = self._fga_principal(internal_user_id)
+        self.fga.clear_roles(principal)
+        if internal_user_id in _pending_users:
+            _pending_users[internal_user_id]["role"] = "disabled"
+
+    def set_email(self, internal_user_id: str, email: str) -> dict[str, Any]:
+        """Set the email on an LLDAP user (email is the platform contact channel,
+        required on the superadmin screen). Only LLDAP-backed users have an
+        LLDAP record to update; pending federated users have no directory entry."""
+        email = (email or "").strip()
+        if not email or "@" not in email:
+            raise APIError("user_bad_email", "a valid email is required", 400)
+        user = self._find_by_internal_id(internal_user_id)
+        if not user:
+            raise APIError("user_not_found", "internal user not found", 404)
+        if internal_user_id not in _pending_users and internal_user_id.startswith("int-"):
+            uid = internal_user_id[4:]
+            self.lldap.set_email(uid, email)
+            user["email"] = email
+        else:
+            # Pending (non-LLDAP) user: store on the in-memory record.
+            user["email"] = email
+            if internal_user_id in _pending_users:
+                _pending_users[internal_user_id] = user
         return user
 
 

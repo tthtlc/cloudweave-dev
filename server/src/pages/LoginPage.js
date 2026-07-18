@@ -18,8 +18,10 @@ export default function LoginPage() {
       <div className="card login-card">
         <h1>libcloud Portal</h1>
         <p className="muted">
-          Sign in through the platform identity provider (Dex). Dex federates to
-          Google and GitHub; the portal never sees provider credentials.
+          Sign in through the platform identity provider (Dex). LLDAP users
+          (superadmin, aws-admin, …) sign in with their uid + password; Dex also
+          federates to Google and GitHub. The portal never sees provider
+          credentials.
         </p>
 
         {config.mockMode && (
@@ -29,6 +31,9 @@ export default function LoginPage() {
         )}
 
         <div className="providers">
+          <button className="primary" onClick={() => handleLogin("lldap", navigate)}>
+            Sign in with LLDAP
+          </button>
           <button className="primary" onClick={() => handleLogin("google", navigate)}>
             Sign in with Google
           </button>

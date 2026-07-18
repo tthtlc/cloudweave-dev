@@ -44,6 +44,21 @@ export const MOCK_USERS = [
   },
 ];
 
+// Seed OpenFGA tuples for the superadmin tuples screen in mock mode.
+export const MOCK_TUPLES = [
+  { user: "user:superadmin", relation: "superadmin", object: "platform:main" },
+  { user: "user:superadmin", relation: "owner", object: "tenant:aws" },
+  { user: "user:superadmin", relation: "owner", object: "tenant:nutanix" },
+  { user: "user:aws-owner", relation: "owner", object: "tenant:aws" },
+  { user: "user:aws-admin", relation: "admin", object: "tenant:aws" },
+  { user: "user:aws-viewer", relation: "viewer", object: "tenant:aws" },
+  { user: "user:ntnx-owner", relation: "owner", object: "tenant:nutanix" },
+  { user: "user:ntnx-admin", relation: "admin", object: "tenant:nutanix" },
+  { user: "user:ntnx-viewer", relation: "viewer", object: "tenant:nutanix" },
+  { user: "tenant:aws", relation: "parent", object: "libcloud_api:main" },
+  { user: "tenant:nutanix", relation: "parent", object: "libcloud_api:main" },
+];
+
 // Mock catalog/resource snapshots returned by GET /api/resources/{aws,nutanix}.
 export const MOCK_AWS_RESOURCES = {
   region: "ap-southeast-1",

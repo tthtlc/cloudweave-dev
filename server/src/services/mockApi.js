@@ -7,10 +7,12 @@ import {
   MOCK_AWS_RESOURCES,
   MOCK_NUTANIX_RESOURCES,
   MOCK_PROVISION_RESULT,
+  MOCK_TUPLES,
 } from "./mockData";
 
 // Clone so mock mutations don't leak across HMR reloads.
 let users = MOCK_USERS.map((u) => ({ ...u, linkedIdentities: [...u.linkedIdentities] }));
+let mockTuples = MOCK_TUPLES.map((t) => ({ ...t }));
 let currentSession = null;
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
@@ -33,6 +35,22 @@ export const mockApi = {
   // payload: { provider, code, state, redirectUri }
   async exchange({ provider }) {
     await delay();
+
+    // LLDAP login == direct login as that LLDAP user (mirrors the backend:
+    // resolve_on_login maps `lldap:<uid>` straight to the internal user, no
+    // collapse). In mock mode we sign in as the pregenerated superadmin so the
+    // portal's superadmin dashboard is reachable without a live Dex/LLDAP.
+    if (provider === "lldap") {
+      const target = users.find((u) => u.internalUserId === "int-superadmin-0000");
+      currentSession = {
+        internalUserId: target.internalUserId,
+        role: target.role,
+        linkedIdentities: [...target.linkedIdentities, "lldap:superadmin"],
+        email: target.email,
+      };
+      return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
+    }
+
     // Simulate Dex returning a subject for the chosen provider.
     const subjectSeed = Math.floor(Math.random() * 1e9).toString();
     const subject = provider === "google" ? `google:108214000000000${subjectSeed}` : `github:${subjectSeed}`;
@@ -118,6 +136,47 @@ export const mockApi = {
     u.role = role;
     if (currentSession && currentSession.internalUserId === id) currentSession.role = role;
     return u;
+  },
+
+  async setEmail(id, email) {
+    await delay();
+    const u = users.find((x) => x.internalUserId === id);
+    if (!u) throw new Error("404 user not found");
+    if (!email || !email.includes("@")) throw new Error("400 a valid email is required");
+    u.email = email;
+    return u;
+  },
+
+  async disableUser(id) {
+    await delay();
+    const u = users.find((x) => x.internalUserId === id);
+    if (!u) throw new Error("404 user not found");
+    u.role = "disabled";
+    if (currentSession && currentSession.internalUserId === id) currentSession.role = "disabled";
+    return { internalUserId: id, disabled: true };
+  },
+
+  // --- OpenFGA tuple CRUD (mock) ---
+  async listTuples() {
+    await delay();
+    return { tuples: mockTuples.map((t) => ({ ...t })) };
+  },
+  async writeTuples(writes) {
+    await delay();
+    for (const t of writes || []) {
+      if (!mockTuples.some((x) => x.user === t.user && x.relation === t.relation && x.object === t.object)) {
+        mockTuples.push({ ...t });
+      }
+    }
+    return { written: (writes || []).length };
+  },
+  async deleteTuples(deletes) {
+    await delay();
+    for (const t of deletes || []) {
+      const i = mockTuples.findIndex((x) => x.user === t.user && x.relation === t.relation && x.object === t.object);
+      if (i >= 0) mockTuples.splice(i, 1);
+    }
+    return { deleted: (deletes || []).length };
   },
 
   async awsResources() {

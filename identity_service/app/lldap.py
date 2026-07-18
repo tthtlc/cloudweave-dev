@@ -1,12 +1,34 @@
 from __future__ import annotations
 
+import json
 import logging
+import urllib.error
+import urllib.request
 from typing import Any
 
 from app.config import get_settings
 from app.errors import APIError
 
 log = logging.getLogger(__name__)
+
+
+def _admin_token() -> str:
+    """Log in to the LLDAP HTTP API as the admin user and return the JWT."""
+    s = get_settings()
+    body = json.dumps({"username": s.lldap_admin_user, "password": s.lldap_ldap_user_pass}).encode()
+    req = urllib.request.Request(
+        f"{s.lldap_http_url.rstrip('/')}/auth/simple/login",
+        data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            token = json.loads(resp.read().decode() or "{}").get("token", "")
+    except urllib.error.HTTPError as exc:
+        raise APIError("ldap_bind_failed", "LLDAP admin login failed", 503, {"detail": exc.read().decode("utf-8", "replace")}) from exc
+    if not token:
+        raise APIError("ldap_bind_failed", "LLDAP admin login returned no token", 503)
+    return token
 
 
 def _ldap_connect():
@@ -84,3 +106,31 @@ class LldapService:
             })
         conn.unbind()
         return out
+
+    def set_email(self, uid: str, email: str) -> None:
+        """Set the mail attribute on an LLDAP user (GraphQL updateUser).
+
+        Email is the contact channel for the platform; the superadmin screen
+        requires it, so this is how a missing email is filled in.
+        """
+        if not email:
+            raise APIError("user_bad_email", "email must be non-empty", 400)
+        token = _admin_token()
+        mutation = (
+            "mutation UpdateUser($user: UpdateUserInput!) {"
+            "  updateUser(user: $user) { ok }"
+            "}"
+        )
+        payload = json.dumps({"query": mutation, "variables": {"user": {"id": uid, "email": email}}}).encode()
+        req = urllib.request.Request(
+            f"{get_settings().lldap_http_url.rstrip('/')}/api/graphql",
+            data=payload, method="POST",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                body = json.loads(resp.read().decode() or "{}")
+        except urllib.error.HTTPError as exc:
+            raise APIError("ldap_update_failed", "LLDAP updateUser failed", 503, {"detail": exc.read().decode("utf-8", "replace")}) from exc
+        if body.get("errors"):
+            raise APIError("ldap_update_failed", "LLDAP updateUser rejected", 400, {"detail": body["errors"]})

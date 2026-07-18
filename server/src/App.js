@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import AuthCallbackPage from "./pages/AuthCallbackPage";
 import IdentityCollapsePage from "./pages/IdentityCollapsePage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import OpenFgaTuplesPage from "./pages/OpenFgaTuplesPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import OwnerDashboard from "./pages/OwnerDashboard";
 import ViewerDashboard from "./pages/ViewerDashboard";
@@ -42,6 +43,16 @@ export default function App() {
           <RequireRole roles={["superadmin"]}>
             <Layout>
               <SuperAdminDashboard />
+            </Layout>
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/superadmin/tuples"
+        element={
+          <RequireRole roles={["superadmin"]}>
+            <Layout>
+              <OpenFgaTuplesPage />
             </Layout>
           </RequireRole>
         }

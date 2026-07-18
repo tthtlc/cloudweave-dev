@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     lldap_admin_user: str = "admin"
     lldap_ldap_user_pass: str = ""
     lldap_ldap_base_dn: str = "dc=libcloud,dc=local"
+    # HTTP/GraphQL endpoint for admin mutations (updateUser to set email).
+    # Default is the in-container URL on the shared libcloud_net network.
+    lldap_http_url: str = "http://lldap:17170"
 
     @model_validator(mode="after")
     def _derive_lldap_bind(self) -> "Settings":

@@ -14,6 +14,7 @@ export default function Layout({ children }) {
     { to: "/admin", label: "Admin", roles: ["admin", "superadmin"] },
     { to: "/owner", label: "Owner", roles: ["owner", "superadmin"] },
     { to: "/superadmin", label: "Superadmin", roles: ["superadmin"] },
+    { to: "/superadmin/tuples", label: "Tuples", roles: ["superadmin"] },
   ].filter((l) => l.roles.includes(role));
 
   async function onLogout() {
