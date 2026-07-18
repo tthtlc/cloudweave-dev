@@ -1,0 +1,55 @@
+# Portal identity service — backend for ../server (the role portal).
+#
+# Serves the /api/* contract documented in ../server/README.md by orchestrating
+# Dex (token exchange), LLDAP (user directory), OpenFGA (authorization), and
+# the libcloud REST API (cloud resources/provisioning).
+#
+# env_file pulls SECRETS + ids from the sibling stacks; `environment:` overrides
+# the host-side URLs in those files with in-container forms (dex:5556, openfga:8080,
+# lldap, libcloud-rest-api:8765) since `environment:` takes precedence over
+# `env_file` in compose.
+services:
+  identity-service:
+    build: .
+    image: libcloud-identity-service:latest
+    container_name: identity-service
+    restart: unless-stopped
+    networks:
+      - libcloud_net
+    ports:
+      - "${IDENTITY_HTTP_PORT:-8766}:8766"
+    env_file:
+      # DEX_PORTAL_CLIENT_SECRET, DEX_PORTAL_REDIRECT_URI, DEX_GOOGLE/GITHUB_CLIENT_ID
+      - ../dex/generated/dex.env
+      # FGA_STORE_ID, FGA_MODEL_ID
+      - ../openfga_postgres/generated/fga.env
+      # LLDAP_LDAP_USER_PASS, LLDAP_LDAP_BASE_DN, LLDAP_ADMIN_USER
+      - ../lldap/.env
+    environment:
+      # Override host-side URLs from the env_files with in-container forms.
+      DEX_BASE_URL: http://dex:5556/dex
+      DEX_TOKEN_URL: http://dex:5556/dex/token
+      DEX_JWKS_URL: http://dex:5556/dex/keys
+      DEX_ISSUER: http://dex:5556/dex
+      DEX_PORTAL_CLIENT_ID: libcloud-portal
+      FGA_ENABLED: "true"
+      FGA_API_URL: http://openfga:8080
+      LLDAP_HOST: lldap
+      LLDAP_PORT: "3890"
+      LLDAP_USE_SSL: "false"
+      LLDAP_BASE_DN: ou=people,dc=libcloud,dc=local
+      LIBCLOUD_REST_URL: http://libcloud-rest-api:8765
+      # Generate with: python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      SESSION_SECURE: "false"
+      SESSION_SAMESITE: lax
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8766/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+networks:
+  libcloud_net:
+    external: true
