@@ -47,6 +47,11 @@ staticClients:
     redirectURIs:
       - http://127.0.0.1:8766/oauth/callback
       - http://localhost:8765/oauth/callback
+  - id: libcloud-portal
+    name: libcloud Role Portal
+    secret: l33WEHol5lO3CkSXZv7Bw14587VgIHWB_YbxO0oll74
+    redirectURIs:
+      - http://login.quest4science.xyz:3000/auth/callback
 
 
 connectors:
@@ -69,4 +74,18 @@ connectors:
         idAttr: uid
         emailAttr: mail
         nameAttr: cn
+  - type: google
+    id: google
+    name: Google
+    config:
+      clientID: 21475866709-orc64alpcr7b62vnnejhverisi79j2hu.apps.googleusercontent.com
+      clientSecret: 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
+      # TODO: restrict to your org domain(s) via hostedDomains.
+  - type: github
+    id: github
+    name: GitHub
+    config:
+      clientID: Ov23liBwYgY2Fub4RuV4
+      clientSecret: 5616d1ff9ef70994589c68e76cba10dad4d68f95
+      # TODO: restrict via orgs/teams if you want group claims.
 

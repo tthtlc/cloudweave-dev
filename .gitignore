@@ -155,6 +155,8 @@ benchmark_histograms/
 .python-version
 .venv
 .env
+dex.env
+postgres.env
 __pycache__/
 *.pyc
 .venv/

@@ -3,6 +3,18 @@
 # stage 2 (runtime) is small nginx with no node/npm at all.
 FROM node:18-alpine AS build
 WORKDIR /app
+# CRA bakes REACT_APP_* vars into the static bundle at build time. server/.env
+# is dockerignored, so pass these as build args instead.
+ARG REACT_APP_DEX_BASE_URL
+ARG REACT_APP_DEX_CLIENT_ID
+ARG REACT_APP_DEX_REDIRECT_URI
+ARG REACT_APP_API_BASE_URL
+ARG REACT_APP_MOCK_MODE
+ENV REACT_APP_DEX_BASE_URL=${REACT_APP_DEX_BASE_URL} \
+    REACT_APP_DEX_CLIENT_ID=${REACT_APP_DEX_CLIENT_ID} \
+    REACT_APP_DEX_REDIRECT_URI=${REACT_APP_DEX_REDIRECT_URI} \
+    REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL} \
+    REACT_APP_MOCK_MODE=${REACT_APP_MOCK_MODE}
 # Copy lockfile + manifest first for layer caching; install is reproducible.
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
