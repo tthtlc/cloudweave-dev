@@ -10,7 +10,7 @@ class ExchangeRequest(BaseModel):
     provider: str | None = None
     code: str
     state: str
-    redirectUri: str = Field(alias="redirectUri")
+    redirectUri: str | None = Field(default=None, alias="redirectUri")
 
 
 class CollapseCandidate(BaseModel):
@@ -29,6 +29,10 @@ class ExchangeResponse(BaseModel):
     needsIdentityCollapse: bool = False
     collapseCandidates: list[CollapseCandidate] = []
     pendingIdentity: dict[str, str] | None = None
+    # Server-issued, single-use token binding the Dex-verified pending identity
+    # to this collapse attempt. Required by /api/auth/collapse when
+    # needsIdentityCollapse is true. The client must NOT supply its own subject.
+    pendingToken: str | None = None
 
 
 # --- /api/auth/collapse -----------------------------------------------------
@@ -40,8 +44,11 @@ class PendingIdentity(BaseModel):
 
 class CollapseRequest(BaseModel):
     targetInternalUserId: str | None = None
-    pendingIdentity: PendingIdentity
+    pendingIdentity: PendingIdentity | None = None  # ignored by the server; kept for API symmetry
     decision: str  # "link" | "keep"
+    # Required: the server-issued token from /api/auth/exchange proving the
+    # caller actually authenticated this identity via Dex.
+    pendingToken: str
 
 
 # --- /api/users -------------------------------------------------------------

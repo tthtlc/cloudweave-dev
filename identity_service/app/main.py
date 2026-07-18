@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth_state import AuthService
 from app.config import get_settings
 from app.dex import DexService
 from app.errors import APIError, api_error_handler
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     sessions = SessionService()
     users = UserService(lldap=lldap, fga=fga)
     proxy = LibcloudProxy()
+    auth = AuthService()
 
     def _principal(claims: dict[str, Any]) -> str:
         # OpenFGA tuples are keyed by LLDAP uid; for pending users we use the
@@ -88,29 +90,54 @@ def create_app() -> FastAPI:
             email=claims["email"],
         )
 
+    @app.get("/api/auth/begin")
+    def auth_begin(provider: str, redirect_uri: str | None = None) -> dict[str, str]:
+        """Start a login: mint a server-issued `state` + PKCE verifier, store
+        them, and return the Dex authorize URL (with `state` + `code_challenge`
+        + `connector_id`). The browser redirects to `authorizeUrl`; on callback
+        it sends `state` + `code` to /api/auth/exchange, which consumes them."""
+        redir = redirect_uri or settings.dex_portal_redirect_uri
+        return auth.begin(provider=provider, redirect_uri=redir)
+
     @app.post("/api/auth/exchange")
     def exchange(body: ExchangeRequest, req: Request, resp: Response) -> ExchangeResponse:
-        # 1. CSRF/state: the browser only sanity-checked state; full validation
-        #    belongs here. TODO: verify `body.state` against a server-issued
-        #    nonce stored before the Dex redirect (PKCE challenge too).
+        # 1. CSRF/state + PKCE: the server issued `state` and a PKCE verifier at
+        #    /api/auth/begin and stored them. Consume them here (single-use,
+        #    TTL-bounded). The browser's client-side state check is only
+        #    defense-in-depth; this is the authoritative check.
+        state_entry = auth.consume_state(body.state)
+        # The provider the user actually picked is the one bound at begin time;
+        # prefer it over the client-supplied one.
+        provider = state_entry["provider"] or body.provider
+        redirect_uri = body.redirectUri or state_entry["redirect_uri"] or settings.dex_portal_redirect_uri
+        code_verifier = state_entry["code_verifier"]
+
         if not body.code:
             raise APIError("auth_missing_code", "authorization code required", 400)
 
-        # 2. Token exchange with Dex (server-side client secret).
-        redirect_uri = body.redirectUri or settings.dex_portal_redirect_uri
-        tokens = dex.exchange_code(code=body.code, redirect_uri=redirect_uri, provider=body.provider)
+        # 2. Token exchange with Dex (server-side client secret + PKCE verifier).
+        tokens = dex.exchange_code(
+            code=body.code,
+            redirect_uri=redirect_uri,
+            provider=provider,
+            code_verifier=code_verifier,
+        )
         id_token = tokens.get("id_token")
         if not id_token:
             raise APIError("auth_no_id_token", "Dex did not return an id_token", 502)
         claims = dex.verify_id_token(id_token)
 
-        # 3. Build the canonical external identity.
-        external = dex.external_identity(claims, body.provider)
+        # 3. Build the canonical external identity from the VERIFIED id token.
+        external = dex.external_identity(claims, provider)
 
         # 4. Resolve internal user (existing / collapse / brand-new viewer).
         outcome = users.resolve_on_login(external)
 
         if outcome["needsIdentityCollapse"]:
+            # Issue a single-use pending token binding the Dex-verified identity
+            # to this collapse attempt. The browser carries it to /collapse;
+            # the client-supplied subject is no longer trusted.
+            outcome["pendingToken"] = auth.issue_pending(external)
             return ExchangeResponse(**outcome)
 
         # 5. Mint the httpOnly session cookie. The Dex refresh token is kept
@@ -130,14 +157,18 @@ def create_app() -> FastAPI:
 
     @app.post("/api/auth/collapse")
     def collapse(body: CollapseRequest, req: Request, resp: Response) -> SessionResponse:
-        # The pending identity must have been verified in /api/auth/exchange
-        # (a real Dex token exchange). We do NOT trust a client-supplied subject
-        # without that proof; the caller must have a valid (pre-session) state.
-        # TODO: bind the pending identity to a server-side pending token issued
-        # at exchange time so collapse can't be called out of band.
+        # The pending identity MUST come from the server-issued pending token
+        # (consumed here, single-use), NOT from the client-supplied
+        # pendingIdentity. This proves the caller authenticated this identity
+        # via Dex at exchange time and prevents account-takeover by linking an
+        # arbitrary subject into a victim's internal user.
+        if not body.pendingToken:
+            raise APIError("auth_missing_pending_token", "pendingToken required", 400)
+        verified_identity = auth.consume_pending(body.pendingToken)
+
         user = users.apply_collapse(
             target_internal_user_id=body.targetInternalUserId or "",
-            pending_identity=body.pendingIdentity.model_dump(),
+            pending_identity=verified_identity,
             decision=body.decision,
         )
         sessions.create(resp, internal_user=user, refresh_token=None)

@@ -23,7 +23,7 @@
 # OAuth client (libcloud-portal) is likewise appended when
 # DEX_PORTAL_REDIRECT_URI is set.
 
-issuer: http://dex:5556/dex
+issuer: http://login.quest4science.xyz:5556/dex
 
 storage:
   type: memory
@@ -80,6 +80,7 @@ connectors:
     config:
       clientID: 21475866709-orc64alpcr7b62vnnejhverisi79j2hu.apps.googleusercontent.com
       clientSecret: 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
+      redirectURI: http://login.quest4science.xyz:5556/dex/callback
       # TODO: restrict to your org domain(s) via hostedDomains.
   - type: github
     id: github
@@ -87,5 +88,6 @@ connectors:
     config:
       clientID: Ov23liBwYgY2Fub4RuV4
       clientSecret: 5616d1ff9ef70994589c68e76cba10dad4d68f95
+      redirectURI: http://login.quest4science.xyz:5556/dex/callback
       # TODO: restrict via orgs/teams if you want group claims.
 

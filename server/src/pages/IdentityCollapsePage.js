@@ -34,6 +34,7 @@ export default function IdentityCollapsePage() {
       const session = await api.collapse({
         targetInternalUserId: targetId,
         pendingIdentity: result.pendingIdentity,
+        pendingToken: result.pendingToken,
         decision,
       });
       sessionStorage.removeItem("libcloud.portal.collapse");

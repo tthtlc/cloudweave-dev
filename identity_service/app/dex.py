@@ -29,11 +29,13 @@ class DexService:
             self._jwks = PyJWKClient(self._settings().dex_jwks_url)
         return self._jwks
 
-    def exchange_code(self, *, code: str, redirect_uri: str, provider: str | None) -> dict[str, Any]:
+    def exchange_code(self, *, code: str, redirect_uri: str, provider: str | None, code_verifier: str | None = None) -> dict[str, Any]:
         """POST /dex/token with the authorization_code grant.
 
         Mirrors test_script/scripts/idp_login.py: the portal is a confidential
-        OAuth2 client, so the secret is required here.
+        OAuth2 client, so the secret is required here. When the begin step used
+        PKCE (S256), the server-held `code_verifier` is sent here so Dex can
+        recompute the challenge — protecting the code from interception.
         """
         s = self._settings()
         data = {
@@ -43,6 +45,8 @@ class DexService:
             "client_id": s.dex_portal_client_id,
             "client_secret": s.dex_portal_client_secret,
         }
+        if code_verifier:
+            data["code_verifier"] = code_verifier
         # Dex selects the upstream connector by `connector_id` at the authorize
         # step, not at token; we keep provider for logging only.
         log.info("Exchanging authorization code with Dex (provider=%s)", provider)

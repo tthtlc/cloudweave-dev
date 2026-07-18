@@ -102,12 +102,19 @@ def _portal_client_block(
 
 def _extra_connectors_block(
     *,
+    issuer: str,
     google_client_id: str,
     google_client_secret: str,
     github_client_id: str,
     github_client_secret: str,
 ) -> str:
     # Appended after the ldap connector inside the `connectors:` list.
+    # Dex's google/github connectors validate that the configured `redirectURI`
+    # equals `{issuer}/callback` (empty fails validation), and they send that
+    # exact URL to the upstream IdP — so it MUST be the browser-public callback
+    # the user registered in their Google/GitHub OAuth app. With a public issuer
+    # (see main()), `{issuer}/callback` is browser-reachable.
+    callback = issuer.rstrip("/") + "/callback"
     parts = []
     if google_client_id and google_client_secret:
         parts.append(
@@ -117,6 +124,7 @@ def _extra_connectors_block(
             "    config:\n"
             f"      clientID: {google_client_id}\n"
             f"      clientSecret: {google_client_secret}\n"
+            f"      redirectURI: {callback}\n"
             "      # TODO: restrict to your org domain(s) via hostedDomains.\n"
         )
     if github_client_id and github_client_secret:
@@ -127,6 +135,7 @@ def _extra_connectors_block(
             "    config:\n"
             f"      clientID: {github_client_id}\n"
             f"      clientSecret: {github_client_secret}\n"
+            f"      redirectURI: {callback}\n"
             "      # TODO: restrict via orgs/teams if you want group claims.\n"
         )
     return "".join(parts)
@@ -147,7 +156,9 @@ def write_env(
     portal_client_secret: str = "",
     portal_redirect_uri: str = "",
     google_client_id: str = "",
+    google_client_secret: str = "",
     github_client_id: str = "",
+    github_client_secret: str = "",
 ) -> Path:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     # `public_url` is host-reachable (http://localhost:5556) — used for the
@@ -188,7 +199,9 @@ def write_env(
         f"DEX_ISSUER_URL={issuer}",
         # JWKS + discovery use the HOST-reachable URL (host scripts cannot
         # resolve the in-container `dex` DNS name). The issuer string above is
-        # the canonical in-container value used for `iss` validation.
+        # now the public URL (so federated connector callbacks are
+        # browser-reachable); in-container consumers override OIDC_JWKS_URL to
+        # http://dex:5556/dex/keys in their own compose files for fast JWKS.
         f"DEX_JWKS_URL={host_base}/keys",
         f"DEX_OIDC_DISCOVERY={host_base}/.well-known/openid-configuration",
         f"LIBCLOUD_OIDC_CLIENT_ID={client_id}",
@@ -215,8 +228,15 @@ def write_env(
         lines.append(f"DEX_PORTAL_REDIRECT_URI={portal_redirect_uri}")
     if google_client_id:
         lines.append(f"DEX_GOOGLE_CLIENT_ID={google_client_id}")
+        # Persist the secret too — otherwise a re-run of dex_bootstrap.py (which
+        # reads DEX_GOOGLE_CLIENT_SECRET from the environment, normally sourced
+        # from this very file) would drop the google connector on the next render.
+        if google_client_secret:
+            lines.append(f"DEX_GOOGLE_CLIENT_SECRET={google_client_secret}")
     if github_client_id:
         lines.append(f"DEX_GITHUB_CLIENT_ID={github_client_id}")
+        if github_client_secret:
+            lines.append(f"DEX_GITHUB_CLIENT_SECRET={github_client_secret}")
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log.info("Wrote %s", env_path)
     return env_path
@@ -229,18 +249,22 @@ def main() -> int:
     client_secret = os.environ.get("LIBCLOUD_OIDC_CLIENT_SECRET") or secrets.token_urlsafe(32)
 
     issuer_public = public_url + "/dex"
-    # Canonical issuer = the in-container DNS URL (http://dex:5556/dex). Dex
-    # puts this in the token `iss` claim; OpenFGA (in-container) fetches JWKS
-    # from `<issuer>/keys`. Host-side JWKS/discovery use public_url (see
-    # write_env). Override the in-container URL via DEX_INTERNAL_URL, or the
-    # whole issuer string via DEX_ISSUER. NOTE: do NOT read DEX_URL here —
-    # host-side scripts (idp_login.py, verify_superadmin_jwt.py) and dex.env
-    # itself use DEX_URL for the HOST-reachable URL (http://localhost:5556);
-    # reading it here would let a stale dex.env (sourced by setup.sh before
-    # the second dex_bootstrap.py call) overwrite the canonical in-container
-    # issuer with the host URL, making OpenFGA reject tokens with
-    # `invalid_claims`.
-    issuer = os.environ.get("DEX_ISSUER", internal_url.rstrip("/") + "/dex").rstrip("/")
+    # Canonical issuer = the PUBLIC URL (http://login.quest4science.xyz:5556/dex).
+    # Dex puts this in the token `iss` claim AND derives every federated
+    # connector's callback URL as `{issuer}/callback`. For Google/GitHub
+    # federation to work, that callback MUST be browser-reachable and match
+    # the redirect URI registered in the upstream OAuth app — so the issuer
+    # cannot be the in-container `http://dex:5556/dex`. OpenFGA / the REST API /
+    # the identity service validate the token `iss` against this same string
+    # (string match, no DNS), and fetch JWKS via `<issuer>/keys`; containers
+    # reach the public URL because :5556 is published on the host. Override
+    # via DEX_ISSUER (whole string) or DEX_PUBLIC_URL (host[:port]). NOTE: do
+    # NOT read DEX_URL here — host-side scripts (idp_login.py,
+    # verify_superadmin_jwt.py) and dex.env itself use DEX_URL for the
+    # HOST-reachable URL; reading it here would let a stale dex.env (sourced
+    # by setup.sh before the second dex_bootstrap.py call) overwrite the
+    # canonical issuer, making OpenFGA reject tokens with `invalid_claims`.
+    issuer = os.environ.get("DEX_ISSUER", issuer_public).rstrip("/")
     # LLDAP bind credentials (users live in LLDAP, Dex authenticates via LDAP).
     # Defaults assume dc=libcloud,dc=local; override via env (setup.sh sources
     # ../lldap/.env and exports these).
@@ -271,6 +295,7 @@ def main() -> int:
         portal_redirect_uri=portal_redirect_uri,
     )
     extra_connectors_block = _extra_connectors_block(
+        issuer=issuer,
         google_client_id=google_client_id,
         google_client_secret=google_client_secret,
         github_client_id=github_client_id,
@@ -295,7 +320,9 @@ def main() -> int:
         portal_client_secret=portal_client_secret,
         portal_redirect_uri=portal_redirect_uri,
         google_client_id=google_client_id,
+        google_client_secret=google_client_secret,
         github_client_id=github_client_id,
+        github_client_secret=github_client_secret,
     )
 
     # When run after Dex container starts, verify discovery endpoint.

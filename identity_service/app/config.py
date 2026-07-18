@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _APP_ROOT = Path(__file__).resolve().parents[1]
@@ -29,10 +30,19 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
 
     # --- Dex (OIDC issuer) ---
-    dex_base_url: str = "http://dex:5556/dex"
+    # dex_base_url is the SERVER-side URL the identity service uses to build the
+    # authorize URL it returns to the browser. It MUST be browser-reachable
+    # (public hostname), because the browser navigates to it. The token/JWKS
+    # URLs below are server-to-server (in-container DNS) and stay as dex:5556.
+    dex_base_url: str = "http://login.quest4science.xyz:5556/dex"
     dex_token_url: str = "http://dex:5556/dex/token"
     dex_jwks_url: str = "http://dex:5556/dex/keys"
-    dex_issuer: str = "http://dex:5556/dex"
+    # dex_issuer is the canonical `iss` claim Dex puts in ID tokens. It MUST
+    # match Dex's configured issuer (now the PUBLIC URL, so federated connector
+    # callbacks {issuer}/callback are browser-reachable). The identity service
+    # validates ID-token `iss` against this; the key comes from dex_jwks_url
+    # (in-container, fast) — same key regardless of which URL fetched it.
+    dex_issuer: str = "http://login.quest4science.xyz:5556/dex"
     dex_portal_client_id: str = "libcloud-portal"
     dex_portal_client_secret: str = ""
     dex_portal_redirect_uri: str = "http://localhost:3000/auth/callback"
@@ -49,12 +59,55 @@ class Settings(BaseSettings):
     lldap_host: str = "lldap"
     lldap_port: int = 3890
     lldap_use_ssl: bool = False
+    # bind_dn / bind_pw are the service-account credentials the identity service
+    # uses to search LLDAP for the identity-collapse heuristic. They're NOT in
+    # lldap/.env directly (that file has LLDAP_LDAP_USER_PASS / LLDAP_ADMIN_USER /
+    # LLDAP_LDAP_BASE_DN); setup.sh derives LLDAP_BIND_DN/PW from those, but the
+    # identity-service compose is often run standalone (without setup.sh's
+    # exports), so we also accept the raw lldap/.env vars and derive below.
     lldap_bind_dn: str = ""
     lldap_bind_pw: str = ""
     lldap_base_dn: str = "ou=people,dc=libcloud,dc=local"
+    # Raw lldap/.env vars (loaded into the container via docker-compose env_file).
+    lldap_admin_user: str = "admin"
+    lldap_ldap_user_pass: str = ""
+    lldap_ldap_base_dn: str = "dc=libcloud,dc=local"
+
+    @model_validator(mode="after")
+    def _derive_lldap_bind(self) -> "Settings":
+        if not self.lldap_bind_dn:
+            self.lldap_bind_dn = f"uid={self.lldap_admin_user},ou=people,{self.lldap_ldap_base_dn}"
+        if not self.lldap_bind_pw:
+            self.lldap_bind_pw = self.lldap_ldap_user_pass
+        return self
 
     # --- libcloud REST API (cloud orchestration) ---
     libcloud_rest_url: str = "http://libcloud-rest-api:8765"
+
+    # --- Provisioner service-account login (libcloud-rest-audience token) ---
+    # The portal user authenticates via the libcloud-portal client (audience
+    # libcloud-portal), but the REST API validates tokens with audience
+    # libcloud-rest. To bridge this, the identity service performs the same
+    # Dex LDAP login flow as test_script/scripts/idp_login.py (no ephemeral
+    # callback server: we capture the code from the 302 Location header) as a
+    # per-cloud provisioner LLDAP user. Portal-user authorization is still
+    # enforced by the identity service via OpenFGA before these calls run.
+    dex_url: str = "http://dex:5556"  # base without /dex (login form + /dex/token)
+    libcloud_oidc_client_id: str = Field(default="libcloud-rest", validation_alias=AliasChoices("LIBCLOUD_OIDC_CLIENT_ID"))
+    libcloud_oidc_client_secret: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_OIDC_CLIENT_SECRET"))
+    libcloud_oidc_redirect_uri: str = "http://127.0.0.1:8766/oauth/callback"
+    provisioner_aws_user: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_USER_AWS_ADMIN"))
+    provisioner_aws_password: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_PASSWORD_AWS_ADMIN"))
+    provisioner_ntnx_user: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_USER_NTNX_ADMIN"))
+    provisioner_ntnx_password: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_PASSWORD_NTNX_ADMIN"))
+    aws_region: str = Field(default="ap-southeast-1", validation_alias=AliasChoices("AWS_REGION"))
+    aws_auth_binding: str = "aws"
+    ntnx_auth_binding: str = "nutanix"
+    ntnx_host: str = Field(default="host.docker.internal", validation_alias=AliasChoices("NUTANIX_HOST"))
+    ntnx_port: int = Field(default=9440, validation_alias=AliasChoices("NUTANIX_PORT"))
+    ntnx_api_version: str = Field(default="v4.0", validation_alias=AliasChoices("NUTANIX_API_VERSION"))
+    ntnx_verify_ssl: bool = False
+    provisioner_connector_id: str = "lldap"
 
     # --- Session cookie ---
     session_secret: str = "change-me"

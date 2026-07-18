@@ -41,11 +41,16 @@ export default function LoginPage() {
   );
 }
 
-function handleLogin(provider, navigate) {
+async function handleLogin(provider, navigate) {
   if (config.mockMode) {
     // Simulate the full Dex redirect -> callback round trip.
     navigate(`/auth/callback?mock_provider=${provider}`);
     return;
   }
-  redirectToDex(provider);
+  try {
+    await redirectToDex(provider);
+  } catch (e) {
+    // eslint-disable-next-line no-alert
+    alert(`Failed to start sign-in: ${e.message}`);
+  }
 }

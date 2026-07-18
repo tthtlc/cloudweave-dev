@@ -189,6 +189,9 @@ def dex_login(username: str, password: str) -> dict:
             "response_type": "code",
             "scope": "openid email profile",
             "state": state,
+            # With multiple connectors (google/github/lldap) Dex shows a chooser
+            # page; pin to LDAP so the login form is served directly.
+            "connector_id": os.environ.get("DEX_CONNECTOR_ID", "lldap"),
         }
     )
     authorize_url = f"{DEX_URL}/dex/auth?{params}"

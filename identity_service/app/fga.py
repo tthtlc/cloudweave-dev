@@ -8,6 +8,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.errors import APIError
+from app.idp_login import ProvisionerAuth
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +29,13 @@ ROLE_TUPLES = {
     "viewer": [("viewer", "tenant:aws"), ("viewer", "tenant:nutanix")],
 }
 
-# Per-cloud authZ relations (see VALIDATION_CHECKS in openfga_bootstrap.py).
+# Per-cloud authZ relations (see VALIDATION_CHECKS in openfga_bootstrap.py and
+# libcloud.rest/app/auth/policy.py). The REST API gates read operations on
+# `can_read` over the backend object (aws_region:nutanix_cluster), and write
+# operations on `can_provision`. (`can_use` is a provider:* gate the REST API
+# also enforces; the portal mirrors the backend-level read/provision check.)
 CLOUD_OBJECTS = {"aws": "aws_region:aws", "nutanix": "nutanix_cluster:nutanix"}
-VIEW_RELATION = "can_use"        # viewer+: enumerate / read resources
+VIEW_RELATION = "can_read"        # viewer+: enumerate / read resources
 PROVISION_RELATION = "can_provision"  # admin+: provision
 
 
@@ -45,6 +50,21 @@ class FgaService:
         self.base_url = s.fga_api_url.rstrip("/")
         self.store_id = s.fga_store_id
         self.model_id = s.fga_model_id
+        # OpenFGA is configured with --authn-method=oidc (issuer=Dex, audience=
+        # libcloud-rest), so every API call needs a bearer token. We reuse the
+        # provisioner service-account token (ProvisionerAuth performs a Dex
+        # LDAP login for the aws-admin/ntnx-admin service users and caches it).
+        # OpenFGA only authenticates the API caller via the JWT (iss+aud+sig);
+        # the actual authz decision is on the tuple's `user` principal, so the
+        # provisioner's subject is fine here.
+        self._auth = ProvisionerAuth()
+
+    def _bearer(self) -> str:
+        try:
+            return self._auth.get_token("aws")
+        except Exception as exc:
+            log.warning("provisioner token unavailable for FGA: %s", exc)
+            return ""
 
     @property
     def enabled(self) -> bool:
@@ -55,7 +75,11 @@ class FgaService:
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/stores/{self.store_id}{path}"
         body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        token = self._bearer()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, data=body, method="POST", headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 return json.loads(resp.read().decode("utf-8") or "{}")

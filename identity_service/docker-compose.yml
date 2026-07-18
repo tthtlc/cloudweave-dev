@@ -27,10 +27,18 @@ services:
       - ../lldap/.env
     environment:
       # Override host-side URLs from the env_files with in-container forms.
-      DEX_BASE_URL: http://dex:5556/dex
+      # NOTE: DEX_BASE_URL stays browser-facing (public hostname) because the
+      # identity service returns it to the browser as the authorize URL.
+      # DEX_ISSUER is also the PUBLIC URL — it must match the `iss` claim Dex
+      # puts in ID tokens (Dex's issuer is now public so federated connector
+      # callbacks {issuer}/callback are browser-reachable). DEX_TOKEN_URL and
+      # DEX_JWKS_URL stay in-container (dex:5556) for fast server-to-server
+      # token exchange and JWKS fetch; the key is identical regardless of
+      # which URL fetched it.
+      DEX_BASE_URL: http://login.quest4science.xyz:5556/dex
       DEX_TOKEN_URL: http://dex:5556/dex/token
       DEX_JWKS_URL: http://dex:5556/dex/keys
-      DEX_ISSUER: http://dex:5556/dex
+      DEX_ISSUER: http://login.quest4science.xyz:5556/dex
       DEX_PORTAL_CLIENT_ID: libcloud-portal
       FGA_ENABLED: "true"
       FGA_API_URL: http://openfga:8080
@@ -39,6 +47,14 @@ services:
       LLDAP_USE_SSL: "false"
       LLDAP_BASE_DN: ou=people,dc=libcloud,dc=local
       LIBCLOUD_REST_URL: http://libcloud-rest-api:8765
+      # Provisioner service-account login (libcloud-rest-audience token).
+      DEX_URL: http://dex:5556
+      LIBCLOUD_OIDC_CLIENT_ID: libcloud-rest
+      LIBCLOUD_OIDC_REDIRECT_URI: http://127.0.0.1:8766/oauth/callback
+      AWS_REGION: ap-southeast-1
+      NUTANIX_HOST: host.docker.internal
+      NUTANIX_PORT: "9440"
+      NUTANIX_API_VERSION: v4.0
       # Generate with: python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
       SESSION_SECURE: "false"

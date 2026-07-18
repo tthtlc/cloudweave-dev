@@ -71,19 +71,51 @@ which takes precedence over `env_file`.
 
 ## What is stubbed (TODOs in code)
 
-- **`state`/PKCE validation** in `exchange`: verify a server-issued nonce.
+- **`state`/PKCE validation**: verify a server-issued nonce. *(done in Path 1)*
 - **Pending-identity binding** in `collapse`: bind the pending identity to a
   server-side pending token issued at exchange time so collapse can't be called
-  out of band.
+  out of band. *(done in Path 1)*
 - **Refresh-token revocation** in `logout`: call Dex's revocation endpoint.
 - **LLDAP `linkedIdentities`**: map provider subjects onto LLDAP users (custom
   attribute or side table) so subject linking survives restarts; today the
   in-memory `_pending_users` registry tracks new logins.
-- **Provisioning replay** in `libcloud_proxy.provision`: replay the exact step
-  order from `test_script/scripts/provision_{aws,nutanix}.sh` against the
-  libcloud REST API. Today it returns the contract-shaped "queued" result so the
-  portal UX works end-to-end.
 - **Session store**: in-memory `_refresh_store`; move to Redis for multi-replica.
+
+## Provisioning replay (Path 2 — implemented)
+
+`libcloud_proxy.provision()` replays the exact orchestration order from
+`test_script/scripts/provision_{aws,nutanix}.sh` against the libcloud REST API
+(`:8765`):
+
+1. `idp_login` — the identity service logs into Dex as a per-cloud provisioner
+   LLDAP user (`aws-admin` / `ntnx-admin`) via the LDAP connector, obtaining a
+   `libcloud-rest`-audience OIDC token. This is the same flow
+   `test_script/scripts/idp_login.py` uses, but WITHOUT an ephemeral callback
+   server: the login form is POSTed with redirects disabled and the auth code
+   is read from the 302 `Location` header (reusing the already-registered
+   `http://127.0.0.1:8766/oauth/callback` redirect URI). Tokens are cached with
+   refresh.
+2. `build_{aws,nutanix}_connection_param` — the `X-Provider-Connection` header
+   (provider + region/host + `auth_binding`, **no credentials in client**).
+3. `GET /v1/auth/me` (token validation) → `POST /v1/connections:test`.
+4. catalog discovery (`locations`, `sizes`, `images`, `storage-containers` for Nutanix).
+5. `GET /v1/compute/nodes` + `GET /v1/compute/subnets`.
+6. resolve image/size/subnet (and cluster for Nutanix). AWS uses a port of
+   `aws_resolve_catalog.py` to pick an architecture-compatible (x86_64) AMI +
+   instance type pair so AWS doesn't reject the create.
+7. `POST /v1/compute/nodes`.
+
+Portal-user authorization is enforced by the identity service via OpenFGA
+(`can_provision` on the cloud's backend object) BEFORE the replay runs; the
+REST API then does its own OpenFGA check against the provisioner token subject.
+
+**Note on OpenFGA JWKS:** Dex rotates its signing keys every 6h (in-memory
+storage). OpenFGA caches the JWKS at startup and doesn't reliably refresh on an
+unknown `kid`, so after a Dex key rotation the REST API's OpenFGA check fails
+with `invalid_claims` (surfaced as `authz_fga_error` / 502). The fix is to
+restart OpenFGA to flush the cache — `test_script/scripts/openfga_ensure_fresh.sh`
+automates this for the CLI scripts. If provisioning fails with `invalid_claims`,
+run `docker restart openfga` and retry.
 
 ## Files
 
@@ -98,7 +130,9 @@ identity_service/
 │   ├── users.py           # external->internal resolution + collapse + role set
 │   ├── lldap.py           # LLDAP user directory (ldap3)
 │   ├── fga.py             # OpenFGA check + write; role<->relation mapping
-│   ├── libcloud_proxy.py  # proxy to libcloud-rest :8765; provision step contract
+│   ├── libcloud_proxy.py  # real provision_*.sh replay against libcloud-rest :8765
+│   ├── idp_login.py       # provisioner Dex LDAP login (libcloud-rest token), no ephemeral server
+│   ├── aws_resolve.py     # arch-compatible AMI + instance-type picker (port of aws_resolve_catalog.py)
 │   └── errors.py          # APIError + handler
 ├── Dockerfile
 ├── docker-compose.yml

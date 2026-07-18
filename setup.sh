@@ -80,6 +80,13 @@ export LLDAP_BIND_PW="${LLDAP_LDAP_USER_PASS:-}"
 export HOST_UID="$(id -u)"
 export HOST_GID="$(id -g)"
 
+# Public hostname the browser uses to reach Dex (:5556) and the portal (:3000).
+# dex_bootstrap.py derives the canonical OIDC issuer from this (the issuer MUST
+# be browser-public so federated connector callbacks {issuer}/callback match
+# the redirect URI registered in Google/GitHub OAuth apps). Override per-run
+# with `DEX_PUBLIC_URL=https://your.host:5556 ./setup.sh`.
+export DEX_PUBLIC_URL="${DEX_PUBLIC_URL:-http://login.quest4science.xyz:5556}"
+
 mkdir -p generated "${DEX_DIR}/generated" "${VAULT_DIR}/generated" generated/tokens \
          "${OPENFGA_DIR}/generated"
 

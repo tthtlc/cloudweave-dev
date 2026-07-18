@@ -10,39 +10,24 @@ import config from "../config";
 
 const SESSION_KEY = "libcloud.portal.session";
 
-// PKCE-style state: random + stored so the callback can validate it.
-// NOTE: full PKCE + nonce + S256 challenge verification belongs in the backend
-// exchange step; the browser only needs `state` for CSRF protection of the
-// redirect itself.
-function randomString(len = 24) {
-  const arr = new Uint8Array(len);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-export function buildAuthUrl(provider) {
-  const { baseUrl, clientId, redirectUri } = config.dex;
-  const state = randomString();
-  const nonce = randomString();
-  sessionStorage.setItem("libcloud.portal.oauth", JSON.stringify({ state, nonce, provider }));
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: "openid profile email",
-    state,
-    nonce,
-  });
-  // Dex selects the upstream connector by id via `connector_id`. The backend
-  // Dex config registers connectors with ids "google" and "github".
-  if (provider) params.set("connector_id", provider);
-
-  return `${baseUrl}/auth?${params.toString()}`;
-}
-
-export function redirectToDex(provider) {
-  window.location.href = buildAuthUrl(provider);
+export async function redirectToDex(provider) {
+  // Ask the identity service to mint a server-issued `state` + PKCE verifier
+  // and return the Dex authorize URL. The browser no longer generates state
+  // itself; the server is the authoritative validator on callback.
+  const base = config.api.baseUrl.replace(/\/$/, "");
+  const beginUrl = `${base}/api/auth/begin?provider=${encodeURIComponent(provider)}&redirect_uri=${encodeURIComponent(config.dex.redirectUri)}`;
+  let res;
+  try {
+    res = await fetch(beginUrl, { credentials: "include" });
+  } catch (e) {
+    throw new Error(`Cannot reach identity service at ${base}: ${e.message}`);
+  }
+  if (!res.ok) {
+    throw new Error(`auth/begin failed (${res.status})`);
+  }
+  const { authorizeUrl, state } = await res.json();
+  sessionStorage.setItem("libcloud.portal.oauth", JSON.stringify({ state, provider }));
+  window.location.href = authorizeUrl;
 }
 
 export function consumeOAuthState() {
