@@ -15,6 +15,7 @@ from app.libcloud_proxy import LibcloudProxy
 from app.lldap import LldapService
 from app.models import (
     CollapseRequest,
+    DeprovisionRequest,
     EmailUpdateRequest,
     ExchangeRequest,
     ExchangeResponse,
@@ -22,6 +23,7 @@ from app.models import (
     RoleUpdateRequest,
     SessionResponse,
     TupleWriteRequest,
+    UpdateRequest,
 )
 from app.session import SessionService
 from app.users import UserService
@@ -62,6 +64,13 @@ def create_app() -> FastAPI:
         iid = claims["internalUserId"]
         return iid[4:] if iid.startswith("int-") else iid
 
+    def _clouds_for(internal_user_id: str) -> list[dict[str, Any]]:
+        # Live per-cloud capabilities from OpenFGA, so the portal renders only
+        # the tenant(s) the user can access (rbac_design.md). Pending users are
+        # keyed in OpenFGA by their full internal id; LLDAP users by their uid.
+        principal = users._fga_principal(internal_user_id)
+        return fga.cloud_capabilities(principal)
+
     def _require_session(req: Request) -> dict[str, Any]:
         return sessions.read(req)
 
@@ -90,6 +99,7 @@ def create_app() -> FastAPI:
             role=claims["role"],
             linkedIdentities=claims["linkedIdentities"],
             email=claims["email"],
+            clouds=_clouds_for(claims["internalUserId"]),
         )
 
     @app.get("/api/auth/begin")
@@ -155,6 +165,7 @@ def create_app() -> FastAPI:
             internal_user=internal_user,
             refresh_token=tokens.get("refresh_token"),
         )
+        outcome["clouds"] = _clouds_for(outcome["internalUserId"])
         return ExchangeResponse(**outcome)
 
     @app.post("/api/auth/collapse")
@@ -179,6 +190,7 @@ def create_app() -> FastAPI:
             role=user["role"],
             linkedIdentities=user["linkedIdentities"],
             email=user["email"],
+            clouds=_clouds_for(user["internalUserId"]),
         )
 
     @app.post("/api/logout")
@@ -266,6 +278,38 @@ def create_app() -> FastAPI:
         if not fga.can_provision(principal, "nutanix"):
             raise APIError("authz_forbidden", "Cannot provision Nutanix", 403)
         return proxy.provision("nutanix", body.vmName or f"libcloud-ntnx-{int(__import__('time').time())}")
+
+    @app.post("/api/deprovision/aws")
+    def deprovision_aws(body: DeprovisionRequest, req: Request):
+        # Deprovisioning is a write scope (compute:node:delete), so we require
+        # the same can_provision grant as provisioning. The proxy then shells
+        # out to test_script/scripts/deprovision_aws.sh, which re-runs the FGA
+        # check and DELETEs /v1/compute/nodes/{id} — the script is the single
+        # source of truth for the deprovisioning sequence.
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.can_provision(principal, "aws"):
+            raise APIError("authz_forbidden", "Cannot deprovision AWS", 403)
+        return proxy.deprovision("aws", body.vmName, body.vmId)
+
+    @app.post("/api/update/aws")
+    def update_aws(body: UpdateRequest, req: Request):
+        # Editing a VM is a write scope distinct from create/delete. We require
+        # the OpenFGA can_update grant (Owner ∪ Admin; Viewer and SuperAdmin-by-
+        # default cannot — rbac_design.md changelog #10). The proxy then PATCHes
+        # /v1/compute/nodes/{id} on the libcloud REST API.
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.can_update(principal, "aws"):
+            raise APIError("authz_forbidden", "Cannot update AWS VM", 403)
+        updates = {
+            "name": body.name,
+            "new_size_id": body.newSizeId,
+            "memory_mib": body.memoryMib,
+            "tag_key": body.tagKey,
+            "tag_value": body.tagValue,
+        }
+        return proxy.update_node("aws", body.vmId, updates)
 
     return app
 

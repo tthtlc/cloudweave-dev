@@ -43,21 +43,26 @@ FGA_STORE_ID="${FGA_STORE_ID:?Set FGA_STORE_ID (run setup.sh)}"
 FGA_MODEL_ID="${FGA_MODEL_ID:?Set FGA_MODEL_ID (run setup.sh)}"
 FGA_API_OBJECT="${FGA_API_OBJECT:-libcloud_api:main}"
 
-# Ensure OpenFGA's cached Dex JWKS is fresh before any Check. Dex rotates its
-# OIDC signing keys every 6h (storage: memory); a stale OpenFGA keyset makes
-# every Check fail with `invalid_claims`. Throttled + skippable; no-op when
-# already refreshed recently (e.g. by a myrun_* script). Set OPENFGA_SKIP_RESTART=1
-# to disable.
+# OpenFGA JWKS freshness.
 #
-# The helper is best-effort: it never aborts this (sourced) script. But its
-# failure modes are surfaced on stderr instead of swallowed — in particular a
-# missing helper (which previously hid silently behind `|| true`) now logs a
-# clear warning so the gap can't regress unnoticed.
-if [[ "${OPENFGA_SKIP_RESTART:-0}" != "1" ]]; then
+# As of OpenFGA v1.8.8+ (we pin v1.8.16 — see openfga_postgres/Dockerfile), the
+# OIDC authenticator sets `RefreshUnknownKID: true` (rate-limited to 1/min) on
+# the keyfunc JWKS cache, plus a 48h periodic refresh. So when Dex rotates its
+# signing key (every 6h, storage: memory), the next token Dex mints carries a
+# `kid` OpenFGA's cache doesn't know, and OpenFGA refetches Dex's JWKS itself
+# — no container restart needed. This is the suggestion.md "dynamically pull
+# keys" best practice, done in-process.
+#
+# The restart-based openfga_ensure_fresh.sh workaround below is therefore a
+# FALLBACK, not the primary mechanism. It is opt-in: set OPENFGA_ENSURE_FRESH=1
+# to run it (e.g. on an older OpenFGA image that lacks RefreshUnknownKID, or to
+# force a clean JWKS pull). OPENFGA_SKIP_RESTART=1 is still honored as a hard
+# skip for backward compatibility.
+if [[ "${OPENFGA_SKIP_RESTART:-0}" != "1" && "${OPENFGA_ENSURE_FRESH:-0}" == "1" ]]; then
   _ief="${SCRIPT_DIR}/openfga_ensure_fresh.sh"
   if [[ ! -x "${_ief}" ]]; then
     echo "[common] WARN: ${_ief} missing or not executable — OpenFGA JWKS refresh skipped." >&2
-    echo "[common]        (Dex rotates signing keys every 6h; a stale OpenFGA keyset makes every Check fail with invalid_claims.)" >&2
+    echo "[common]        (OpenFGA v1.8.8+ self-refreshes JWKS on kid-miss, so this is only a fallback.)" >&2
   elif ! bash "${_ief}" >/dev/null; then
     # stdout suppressed (throttle-skip chatter); stderr from the helper is shown.
     echo "[common] WARN: openfga_ensure_fresh.sh returned non-zero — OpenFGA JWKS may be stale." >&2

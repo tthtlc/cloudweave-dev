@@ -47,10 +47,19 @@ services:
       LLDAP_USE_SSL: "false"
       LLDAP_BASE_DN: ou=people,dc=libcloud,dc=local
       LIBCLOUD_REST_URL: http://libcloud-rest-api:8765
-      # Provisioner service-account login (libcloud-rest-audience token).
       DEX_URL: http://dex:5556
       LIBCLOUD_OIDC_CLIENT_ID: libcloud-rest
       LIBCLOUD_OIDC_REDIRECT_URI: http://127.0.0.1:8766/oauth/callback
+      # Provisioner service-account login (libcloud-rest-audience token). The
+      # identity service performs a Dex LDAP login as the per-cloud admin to
+      # obtain the token it forwards to the libcloud REST API for both provision
+      # and deprovision. Provide these via the host environment or a .env file
+      # next to docker-compose.yml; defaults to the dev password when
+      # ALLOW_DEV_DEFAULTS=1 is set in common.sh on the host side.
+      LIBCLOUD_USER_AWS_ADMIN: ${LIBCLOUD_USER_AWS_ADMIN:-aws-admin}
+      LIBCLOUD_PASSWORD_AWS_ADMIN: ${LIBCLOUD_PASSWORD_AWS_ADMIN:-}
+      LIBCLOUD_USER_NTNX_ADMIN: ${LIBCLOUD_USER_NTNX_ADMIN:-ntnx-admin}
+      LIBCLOUD_PASSWORD_NTNX_ADMIN: ${LIBCLOUD_PASSWORD_NTNX_ADMIN:-}
       AWS_REGION: ap-southeast-1
       NUTANIX_HOST: host.docker.internal
       NUTANIX_PORT: "9440"
@@ -59,6 +68,18 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
       SESSION_SECURE: "false"
       SESSION_SAMESITE: lax
+      # Deprovisioning shells out to test_script/scripts/deprovision_aws.sh.
+      # The repo's scripts dir is mounted at /opt/libcloud-scripts/scripts (see
+      # volumes below) so the script + common.sh are available without baking
+      # the whole repo into the image. REPO_ROOT inside the script then resolves
+      # to /opt, which has no .env/dex.env/fga.env, so the env vars passed by the
+      # identity service (DEX_URL, FGA_*, LIBCLOUD_REST_URL, ...) are the ones
+      # common.sh actually uses.
+      DEPROVISION_AWS_SCRIPT: /opt/libcloud-scripts/scripts/deprovision_aws.sh
+    volumes:
+      # Only the scripts the identity service shells out to (deprovision_aws.sh
+      # + common.sh). Read-only: the service never writes here.
+      - ../test_script/scripts:/opt/libcloud-scripts/scripts:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8766/health"]
       interval: 10s

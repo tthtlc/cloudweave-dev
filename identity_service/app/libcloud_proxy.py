@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -203,3 +207,191 @@ class LibcloudProxy:
         subnet_id = subnet_resp[0].get("id", "") if subnet_resp else ""
         steps.append(f"resolve CLUSTER_ID={cluster_id} IMAGE_ID={image_id} SIZE_ID={size_id} SUBNET_ID={subnet_id}")
         return image_id, size_id, subnet_id, cluster_id
+
+    # --- public: deprovision (shells out to deprovision_aws.sh) ---------------
+    # The portal's per-row Deprovision button calls this. We do NOT reimplement
+    # the curl DELETE flow here; we invoke test_script/scripts/deprovision_aws.sh
+    # so the script remains the single source of truth for the deprovisioning
+    # sequence (OpenFGA can_provision check + curl DELETE /v1/compute/nodes/{id}).
+    #
+    # The script's require_token() reads a token cache file; we populate one
+    # from our own ProvisionerAuth token so the script works without a
+    # host-side generated/tokens/<user>.json having been written first.
+    def deprovision(self, cloud: str, vm_name: str | None, vm_id: str | None) -> dict[str, Any]:
+        if cloud != "aws":
+            raise APIError("not_supported", f"deprovision not implemented for {cloud}", 400)
+        if not vm_id and not vm_name:
+            raise APIError("bad_request", "vmId or vmName is required", 400)
+
+        s = self._settings()
+        script = s.deprovision_aws_script
+        if not script or not os.path.isfile(script):
+            raise APIError(
+                "deprovision_script_missing",
+                "deprovision_aws.sh not found on this server",
+                500,
+                {"script": script},
+            )
+
+        # Acquire a libcloud-rest-audience token (same one the script would
+        # obtain via idp_login.py) and hand it to the script via a temp cache.
+        token = self._auth.get_token_full(cloud)
+        cache_dir = tempfile.mkdtemp(prefix="deprovision-tokens-")
+        user = s.provisioner_aws_user or "aws-admin"
+        cache_path = os.path.join(cache_dir, f"{user}.json")
+        try:
+            with open(cache_path, "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "access_token": token.get("access_token", ""),
+                        "refresh_token": token.get("refresh_token", ""),
+                    },
+                    fh,
+                )
+        except OSError as exc:
+            self._cleanup_cache(cache_path, cache_dir)
+            raise APIError("deprovision_token_cache", "could not write token cache", 500) from exc
+
+        env = {
+            "PATH": os.environ.get(
+                "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ),
+            "HOME": os.environ.get("HOME", "/tmp"),
+            # Suppress common.sh's openfga_ensure_fresh.sh call (the identity
+            # service already keeps OpenFGA's JWKS fresh; the helper is not
+            # mounted in the container and would just emit a warning).
+            "OPENFGA_SKIP_RESTART": "1",
+            "LIBCLOUD_USER": user,
+            # common.sh resolves the IdP password at SOURCE time and `:?`-aborts
+            # if it's empty. We already hold a valid provisioner token (otherwise
+            # get_token_full() above would have raised), so hand the password
+            # through to satisfy that check. The script never logs it.
+            "LIBCLOUD_PASSWORD": s.provisioner_aws_password,
+            "LIBCLOUD_PASSWORD_AWS_ADMIN": s.provisioner_aws_password,
+            "AWS_REGION": s.aws_region,
+            "LIBCLOUD_AWS_AUTH_BINDING": s.aws_auth_binding,
+            "LIBCLOUD_REST_URL": s.libcloud_rest_url,
+            "DEX_URL": s.dex_url,
+            "DEX_TOKEN_URL": s.dex_token_url,
+            "LIBCLOUD_OIDC_CLIENT_ID": s.libcloud_oidc_client_id,
+            "LIBCLOUD_OIDC_CLIENT_SECRET": s.libcloud_oidc_client_secret,
+            "FGA_API_URL": s.fga_api_url,
+            "FGA_STORE_ID": s.fga_store_id,
+            "FGA_MODEL_ID": s.fga_model_id,
+            "FGA_API_OBJECT": "libcloud_api:main",
+            "IDP_TOKEN_CACHE_DIR": cache_dir,
+        }
+        if vm_id:
+            env["VM_ID"] = vm_id
+        if vm_name:
+            env["VM_NAME"] = vm_name
+
+        # Run from the script's repo root so common.sh's REPO_ROOT-relative
+        # paths (if any) resolve. When the container mounts only the scripts
+        # dir, REPO_ROOT resolves to a parent without .env/dex.env/fga.env, so
+        # the env vars we pass here are the ones common.sh uses.
+        cwd = str(Path(script).resolve().parent.parent)
+
+        try:
+            proc = subprocess.run(
+                ["bash", script],
+                env=env,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=s.deprovision_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise APIError(
+                "deprovision_timeout",
+                "deprovision_aws.sh timed out",
+                504,
+                {"timeout_seconds": s.deprovision_timeout_seconds},
+            ) from exc
+        finally:
+            self._cleanup_cache(cache_path, cache_dir)
+
+        ok = proc.returncode == 0
+        return {
+            "provider": cloud,
+            "vmId": vm_id or "",
+            "vmName": vm_name or "",
+            "status": "deprovisioned" if ok else "failed",
+            "message": f"deprovision_aws.sh exit={proc.returncode}",
+            "exitCode": proc.returncode,
+            # Truncate so a chatty script run doesn't blow up the JSON response.
+            "stdout": (proc.stdout or "")[-4000:],
+            "stderr": (proc.stderr or "")[-4000:],
+        }
+
+    # --- public: update (edit) a VM's parameters -----------------------------
+    # The portal's per-row Edit button calls this. The identity service has
+    # already run the OpenFGA can_update check; this method just replays the
+    # libcloud REST PATCH /v1/compute/nodes/{id} (NodeUpdateRequest). Only the
+    # fields the caller supplied are forwarded, so a partial edit is allowed.
+    def update_node(self, cloud: str, vm_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        if cloud != "aws":
+            raise APIError("not_supported", f"update not implemented for {cloud}", 400)
+        if not vm_id:
+            raise APIError("bad_request", "vmId is required", 400)
+
+        body: dict[str, Any] = {"action": "update"}
+        if updates.get("name") is not None:
+            body["name"] = updates["name"]
+        if updates.get("new_size_id") is not None:
+            body["new_size_id"] = updates["new_size_id"]
+        if updates.get("memory_mib") is not None:
+            body["memory_mib"] = updates["memory_mib"]
+        if updates.get("tag_key") is not None:
+            body["tag_key"] = updates["tag_key"]
+            body["tag_value"] = updates.get("tag_value") or ""
+        # Nothing to change -> no-op rather than an empty PATCH.
+        if not any(k in body for k in ("name", "new_size_id", "memory_mib", "tag_key")):
+            return {
+                "provider": cloud,
+                "vmId": vm_id,
+                "status": "noop",
+                "message": "No editable fields supplied; nothing to update.",
+            }
+
+        token = self._auth.get_token(cloud)
+        conn = self._connection(cloud)
+        headers = self._headers(token, conn)
+        steps: list[str] = [f"idp_login (Dex -> OIDC token, audience libcloud-rest)"]
+        try:
+            with httpx.Client(timeout=60) as client:
+                self._call(client, "/v1/auth/me", headers, steps)
+                updated = self._call(
+                    client, f"/v1/compute/nodes/{vm_id}", headers, steps,
+                    method="PATCH", json_body=body,
+                ).get("data", {})
+        except APIError as exc:
+            return {
+                "provider": cloud,
+                "vmId": vm_id,
+                "status": "failed",
+                "message": exc.message,
+                "steps": steps,
+                "error": exc.code,
+                "details": exc.details,
+            }
+        return {
+            "provider": cloud,
+            "vmId": vm_id,
+            "status": "updated",
+            "message": f"Updated VM {vm_id} via libcloud REST PATCH /v1/compute/nodes/{vm_id}",
+            "steps": steps,
+            "node": updated,
+        }
+
+    @staticmethod
+    def _cleanup_cache(cache_path: str, cache_dir: str) -> None:
+        # Best-effort removal of the temp token cache (it contains a bearer
+        # token); never raise on failure.
+        try:
+            if os.path.isfile(cache_path):
+                os.unlink(cache_path)
+            if os.path.isdir(cache_dir):
+                os.rmdir(cache_dir)
+        except OSError:
+            pass

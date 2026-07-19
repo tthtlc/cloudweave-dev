@@ -9,10 +9,15 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const role = session?.role;
 
+  // SuperAdmin has no resource-management functionality (rbac_design.md
+  // §SuperAdmin: "None (by default)" for resource mgmt), so the Admin and
+  // Owner dashboards — which are provisioning/deprovisioning surfaces — are
+  // hidden from SuperAdmin and its routes are blocked. Real admin/owner users
+  // still see their own tab.
   const links = [
     { to: "/viewer", label: "Viewer", roles: ["viewer", "admin", "owner", "superadmin"] },
-    { to: "/admin", label: "Admin", roles: ["admin", "superadmin"] },
-    { to: "/owner", label: "Owner", roles: ["owner", "superadmin"] },
+    { to: "/admin", label: "Admin", roles: ["admin"] },
+    { to: "/owner", label: "Owner", roles: ["owner"] },
     { to: "/superadmin", label: "Superadmin", roles: ["superadmin"] },
     { to: "/superadmin/tuples", label: "Tuples", roles: ["superadmin"] },
   ].filter((l) => l.roles.includes(role));

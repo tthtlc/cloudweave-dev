@@ -6,20 +6,26 @@
 # the binary, so the tarball's `assets/` tree is not needed at runtime).
 #
 # This makes openfga_postgres fully self-contained: it no longer depends on
-# ../openfga_my to build the `openfga-local:latest` image. The downloaded
-# v1.8.4 binary is byte-identical (sha256 76d9209b…) to the one previously
-# vendored by ../openfga_my, so the resulting image is equivalent.
+# ../openfga_my to build the `openfga-local:latest` image.
 #
-# Bump OPENFGA_VERSION + OPENFGA_CHECKSUM to upgrade. The checksum is pinned
-# (not auto-fetched) so a tampered/republished release cannot silently replace
-# the binary — the build fails fast on a checksum mismatch.
+# Why >= v1.8.8: OpenFGA's OIDC authenticator sets `RefreshUnknownKID: true`
+# (rate-limited 1/min) on the keyfunc JWKS cache, so it refetches Dex's JWKS
+# on a `kid` not in cache — adapting to Dex's 6h signing-key rotation without
+# a container restart (the suggestion.md "dynamically pull keys" best
+# practice). v1.8.4 lacked this and required openfga_ensure_fresh.sh restarts.
+# v1.8.16 also ships CVE-2025-46331 / CVE-2025-48371 fixes and stays on the
+# 1.8.x datastore schema (migrations 001–005 unchanged from v1.8.4).
+#
+# Bump OPENFGA_VERSION + OPENFGA_TARBALL_SHA256 to upgrade. The checksum is
+# pinned (not auto-fetched) so a tampered/republished release cannot silently
+# replace the binary — the build fails fast on a checksum mismatch.
 
 # Build args can be overridden via docker-compose `build.args` or `--build-arg`.
 ARG ALPINE_TAG=3.21
-ARG OPENFGA_VERSION=v1.8.4
+ARG OPENFGA_VERSION=v1.8.16
 # sha256 of openfga_${OPENFGA_VERSION_NO_V}_linux_amd64.tar.gz, taken from the
 # release's checksums.txt. Pinned per release to fail the build on tampering.
-ARG OPENFGA_TARBALL_SHA256=189b18e5798332edc8f00f1da8ca93a763b5ef19f08e7a9673c4b9e61c85dbaa
+ARG OPENFGA_TARBALL_SHA256=ba9ef4b05d7290978fdeaf4ddc98db019da96ef345b3e512e7dcacec90beb72e
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 

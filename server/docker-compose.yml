@@ -30,6 +30,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # CRA bakes REACT_APP_* into the static bundle at BUILD time, so these
+      # must be passed as build args (not just runtime environment). Values are
+      # sourced from server/.env, which docker compose auto-loads for variable
+      # substitution in this file. Keep them in sync with server/.env.
+      args:
+        REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL}
+        REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID}
+        REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI}
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL}
+        REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE}
     container_name: portal
     restart: unless-stopped
     depends_on:
@@ -38,12 +48,14 @@ services:
       - libcloud_net
     ports:
       - "${PORTAL_HTTP_PORT:-3000}:3000"
+    # nginx serves a pre-built static bundle, so these runtime env vars have no
+    # effect on the served app; kept only for operator introspection.
     environment:
-      REACT_APP_DEX_BASE_URL: http://localhost:5556/dex   # TODO: in-cluster use http://dex:5556/dex
-      REACT_APP_DEX_CLIENT_ID: libcloud-portal
-      REACT_APP_DEX_REDIRECT_URI: http://localhost:3000/auth/callback
-      REACT_APP_API_BASE_URL: http://localhost:8766       # TODO: identity service URL
-      REACT_APP_MOCK_MODE: "true"                          # set "false" once backend is live
+      REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL}
+      REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID}
+      REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI}
+      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL}
+      REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE}
 
 networks:
   libcloud_net:

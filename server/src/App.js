@@ -60,7 +60,7 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <RequireRole roles={["admin", "superadmin"]}>
+          <RequireRole roles={["admin"]}>
             <Layout>
               <AdminDashboard />
             </Layout>
@@ -70,7 +70,7 @@ export default function App() {
       <Route
         path="/owner"
         element={
-          <RequireRole roles={["owner", "superadmin"]}>
+          <RequireRole roles={["owner"]}>
             <Layout>
               <OwnerDashboard />
             </Layout>

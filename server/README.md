@@ -179,6 +179,7 @@ GET    /api/resources/aws
 GET    /api/resources/nutanix
 POST   /api/provision/aws
 POST   /api/provision/nutanix
+POST   /api/deprovision/aws
 ```
 
 ### `POST /api/auth/exchange` response
@@ -229,6 +230,17 @@ contract reminder; the backend owns the real workflow:
 
 The REST API holds the backend cloud identity (server-side IAM role /
 auth_binding + Vault secret); the client never handles cloud credentials.
+
+## Deprovisioning contract
+
+The AWS resources table's per-row **Deprovision** button calls
+`POST /api/deprovision/aws` with `{ vmId, vmName }`. The backend enforces the
+same `can_provision` OpenFGA check as provisioning, then **shells out to
+`test_script/scripts/deprovision_aws.sh`** (passing `VM_ID`), which re-runs the
+FGA check and `curl DELETE /v1/compute/nodes/{id}`. The script remains the
+single source of truth for the deprovisioning sequence; the portal never
+invents cloud API calls. On success the frontend refreshes the resource list
+so the deleted VM disappears.
 
 ## Project structure
 

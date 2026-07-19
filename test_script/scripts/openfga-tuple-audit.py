@@ -38,7 +38,7 @@ def classify(t: dict, expected: Dict[Tuple[str, str, str], str]):
     # Structural / infra tuples (not user->role on tenant:/platform:).
     if not (u and u.startswith("user:")):
         return "infra", ""
-    if r in ("parent", "provider", "tenant", "allowed"):
+    if r in ("parent", "provider", "tenant", "platform", "resource_class"):
         return "infra", ""
     if r in lib.MANAGED_RELATIONS and o and (o.startswith("tenant:") or o.startswith("platform:")):
         key = (u, r, o)

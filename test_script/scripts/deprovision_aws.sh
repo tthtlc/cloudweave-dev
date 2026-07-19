@@ -16,12 +16,16 @@
 # owner/admin hold that — viewers are denied by OpenFGA and by the REST policy.
 #
 # By default it deletes every VM whose name starts with "libcloud-demo-"
-# (exactly the VMs provision_aws.sh creates). Set VM_NAME to delete one VM.
+# (exactly the VMs provision_aws.sh creates). Set VM_NAME to delete one VM by
+# name, or VM_ID to delete one VM by its libcloud REST node id (precise: no
+# list+filter pass, the DELETE is issued directly against that id). VM_ID takes
+# precedence over VM_NAME when both are set.
 #
 # Usage:
 #   LIBCLOUD_USER=aws-admin ./scripts/deprovision_aws.sh
 #   LIBCLOUD_AWS_AUTH_BINDING=aws-dev LIBCLOUD_USER=aws-dev-admin ./scripts/deprovision_aws.sh
 #   VM_NAME=libcloud-demo-1234567890 LIBCLOUD_USER=aws-admin ./scripts/deprovision_aws.sh
+#   VM_ID=i-0abc123            LIBCLOUD_USER=aws-admin ./scripts/deprovision_aws.sh
 #
 # Prerequisites:
 #   ./setup.sh  and  a token cache for the user at generated/tokens/<user>.json
@@ -151,26 +155,38 @@ step "3" "List compute nodes (curl GET /v1/compute/nodes)"
 NODES=$(rest GET "/v1/compute/nodes")
 printf '%s\n' "${NODES}" | jq .
 
-step "4" "Delete libcloud demo VMs (curl DELETE /v1/compute/nodes/{id})"
-VM_NAME_FILTER="${VM_NAME:-}"
-IDS=$(printf '%s' "${NODES}" | jq -r --arg filter "${VM_NAME_FILTER}" '
-  (.data // .) | .[] | select(.id and .name) |
-  if ($filter | length) > 0
-  then select(.name == $filter)
-  else select(.name | startswith("libcloud-demo-"))
-  end | "\(.id)\t\(.name)"' 2>/dev/null || true)
-
-if [[ -z "${IDS}" ]]; then
-  echo "No matching libcloud demo VMs found to delete."
+# VM_ID: precise single-VM delete — skip the list/filter pass and DELETE the
+# exact id the caller supplied. This is what the portal's per-row Deprovision
+# button uses (it already has the VM id from GET /v1/compute/nodes). VM_ID takes
+# precedence over VM_NAME when both are set.
+VM_ID_FILTER="${VM_ID:-}"
+if [[ -n "${VM_ID_FILTER}" ]]; then
+  step "4" "Delete libcloud VM by id (curl DELETE /v1/compute/nodes/${VM_ID_FILTER})"
+  echo "Deleting node id=${VM_ID_FILTER}"
+  rest DELETE "/v1/compute/nodes/${VM_ID_FILTER}" | jq . 2>/dev/null || true
+  echo "Deleted 1 libcloud VM by id (${VM_ID_FILTER})."
 else
-  count=0
-  while IFS=$'\t' read -r id name; do
-    [[ -z "${id}" ]] && continue
-    count=$((count + 1))
-    echo "Deleting node id=${id} name=${name}"
-    rest DELETE "/v1/compute/nodes/${id}" | jq . 2>/dev/null || true
-  done <<<"${IDS}"
-  echo "Deleted ${count} libcloud demo VM(s)."
+  step "4" "Delete libcloud demo VMs (curl DELETE /v1/compute/nodes/{id})"
+  VM_NAME_FILTER="${VM_NAME:-}"
+  IDS=$(printf '%s\n' "${NODES}" | jq -r --arg filter "${VM_NAME_FILTER}" '
+    (.data // .) | .[] | select(.id and .name) |
+    if ($filter | length) > 0
+    then select(.name == $filter)
+    else select(.name | startswith("libcloud-demo-"))
+    end | "\(.id)\t\(.name)"' 2>/dev/null || true)
+
+  if [[ -z "${IDS}" ]]; then
+    echo "No matching libcloud demo VMs found to delete."
+  else
+    count=0
+    while IFS=$'\t' read -r id name; do
+      [[ -z "${id}" ]] && continue
+      count=$((count + 1))
+      echo "Deleting node id=${id} name=${name}"
+      rest DELETE "/v1/compute/nodes/${id}" | jq . 2>/dev/null || true
+    done <<<"${IDS}"
+    echo "Deleted ${count} libcloud demo VM(s)."
+  fi
 fi
 
 echo

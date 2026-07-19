@@ -11,6 +11,7 @@
 //   GET  /api/resources/nutanix
 //   POST /api/provision/aws
 //   POST /api/provision/nutanix
+//   POST /api/deprovision/aws
 //
 // In mock mode these calls are answered locally (see mockData.js + mockApi.js)
 // so the UI is fully demonstrable without a live backend.
@@ -58,6 +59,8 @@ export const api = config.mockMode
       nutanixResources: () => http("/api/resources/nutanix"),
       provisionAws: (payload) => http("/api/provision/aws", body("POST", payload)),
       provisionNutanix: (payload) => http("/api/provision/nutanix", body("POST", payload)),
+      deprovisionAws: (payload) => http("/api/deprovision/aws", body("POST", payload)),
+      updateAws: (payload) => http("/api/update/aws", body("POST", payload)),
     };
 
 export default api;

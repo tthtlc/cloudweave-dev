@@ -1,6 +1,7 @@
 import React from "react";
 import { useAuth } from "../context/AuthContext";
 import IdentityBadges from "../components/IdentityBadges";
+import { CloudDashboard } from "./AdminDashboard";
 
 export default function ViewerDashboard() {
   const { session } = useAuth();
@@ -12,8 +13,9 @@ export default function ViewerDashboard() {
     <div>
       <h1>Viewer — Read-only</h1>
       <p className="muted">
-        Viewers can see their own profile, role, and linked identities. All
-        mutating actions are gated by the backend.
+        Viewers can see their own profile, role, and linked identities, plus a
+        read-only view of the resources in their tenant. All mutating actions
+        are gated by the backend.
       </p>
 
       <div className="card">
@@ -28,6 +30,14 @@ export default function ViewerDashboard() {
           </tbody>
         </table>
       </div>
+
+      {/* Read-only resource view for the viewer's tenant(s). CloudDashboard in
+          readOnly mode renders only the "View <Cloud> Resources" controls and
+          the resource tables — no Provision / Deprovision. The cloud set comes
+          from session.clouds (live OpenFGA can_read), so an aws-viewer sees
+          only AWS and an ntnx-viewer only Nutanix. */}
+      <CloudDashboard role="viewer" readOnly />
     </div>
   );
 }
+

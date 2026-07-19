@@ -69,6 +69,18 @@ class ProvisionerAuth:
         _token_cache[cloud] = tok
         return tok["access_token"]
 
+    def get_token_full(self, cloud: str) -> dict[str, Any]:
+        """Same as get_token() but returns the full token dict
+        ({access_token, refresh_token, exp}) so callers that hand the token to
+        external processes (e.g. deprovision_aws.sh's token cache) get the
+        refresh_token too."""
+        # Ensure the cache is populated/refreshed.
+        access = self.get_token(cloud)
+        cached = _token_cache.get(cloud, {})
+        if not cached.get("access_token"):
+            cached = {"access_token": access, "refresh_token": "", "exp": 0}
+        return cached
+
     def _full_login(self, cloud: str) -> dict[str, Any]:
         s = self._settings()
         user, password = self._provisioner(cloud)

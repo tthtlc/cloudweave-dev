@@ -1,16 +1,5 @@
-
-  Cursor Agent
-  v2026.07.16-899851b
-  Tip: Use /mcp to connect Cursor to your tools and data sources.
-
-                                                                                                                                                               
   the login URL at the portal (currently login.quest4science.xyz) did not have a login box for local user at Dex. is that correct?                             
                                                                                                                                                                
-
-    Grepped, read 1 grep, 1 file
-    Grepped "...nce|local.*connector|enablePasswordDB" in .
-    Read dex/config.yaml
-
   Yes, that's correct — and it's intentional.
 
   Looking at dex/config.yaml:

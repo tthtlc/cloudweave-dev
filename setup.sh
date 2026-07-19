@@ -126,8 +126,8 @@ chmod 600 "${PG_ENV}"
 #     Rebuild only when the Dockerfile or the pinned version/checksum changes
 #     (tracked via a stamp file) to keep re-runs fast.
 # ---------------------------------------------------------------------------
-export OPENFGA_VERSION="${OPENFGA_VERSION:-v1.8.4}"
-export OPENFGA_TARBALL_SHA256="${OPENFGA_TARBALL_SHA256:-189b18e5798332edc8f00f1da8ca93a763b5ef19f08e7a9673c4b9e61c85dbaa}"
+export OPENFGA_VERSION="${OPENFGA_VERSION:-v1.8.16}"
+export OPENFGA_TARBALL_SHA256="${OPENFGA_TARBALL_SHA256:-ba9ef4b05d7290978fdeaf4ddc98db019da96ef345b3e512e7dcacec90beb72e}"
 IMG_STAMP="${REPO_ROOT}/generated/.openfga_image_stamp"
 IMG_HASH=$(printf '%s|%s|' "${OPENFGA_VERSION}" "${OPENFGA_TARBALL_SHA256}" | cat - "${OPENFGA_DIR}/Dockerfile" 2>/dev/null | sha256sum | awk '{print $1}')
 SAVED_HASH=""

@@ -84,8 +84,32 @@ class Settings(BaseSettings):
             self.lldap_bind_pw = self.lldap_ldap_user_pass
         return self
 
+    @model_validator(mode="after")
+    def _derive_deprovision_paths(self) -> "Settings":
+        # config.py lives at <repo_root>/identity_service/app/config.py, so
+        # parents[2] is the repo root that contains test_script/.
+        if not self.repo_root:
+            self.repo_root = str(Path(__file__).resolve().parents[2])
+        if not self.deprovision_aws_script:
+            self.deprovision_aws_script = str(
+                Path(self.repo_root) / "test_script" / "scripts" / "deprovision_aws.sh"
+            )
+        return self
+
     # --- libcloud REST API (cloud orchestration) ---
     libcloud_rest_url: str = "http://libcloud-rest-api:8765"
+
+    # --- Deprovisioning via test_script/scripts/deprovision_aws.sh ---
+    # The identity service shells out to this script (curl DELETE
+    # /v1/compute/nodes/{id}) rather than reimplementing the flow, so the
+    # script stays the single source of truth for the deprovisioning sequence.
+    # Defaults to <repo_root>/test_script/scripts/deprovision_aws.sh where
+    # repo_root is two parents above the identity_service package.
+    repo_root: str = ""
+    deprovision_aws_script: str = ""
+    # Seconds before a deprovision_aws.sh run is killed (curl DELETE + FGA
+    # checks should be well under this).
+    deprovision_timeout_seconds: int = 180
 
     # --- Provisioner service-account login (libcloud-rest-audience token) ---
     # The portal user authenticates via the libcloud-portal client (audience

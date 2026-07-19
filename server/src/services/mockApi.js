@@ -7,12 +7,17 @@ import {
   MOCK_AWS_RESOURCES,
   MOCK_NUTANIX_RESOURCES,
   MOCK_PROVISION_RESULT,
+  MOCK_DEPROVISION_RESULT,
+  MOCK_UPDATE_RESULT,
   MOCK_TUPLES,
 } from "./mockData";
 
 // Clone so mock mutations don't leak across HMR reloads.
 let users = MOCK_USERS.map((u) => ({ ...u, linkedIdentities: [...u.linkedIdentities] }));
 let mockTuples = MOCK_TUPLES.map((t) => ({ ...t }));
+// Mutable copy of the AWS resource list so the Deprovision button can remove a
+// row in mock mode (mirrors the backend's deprovision_aws.sh DELETE).
+let awsNodes = MOCK_AWS_RESOURCES.nodes.map((n) => ({ ...n }));
 let currentSession = null;
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
@@ -23,6 +28,19 @@ function findCollapseCandidates(external) {
   const email = external.email?.toLowerCase();
   if (!email) return [];
   return users.filter((u) => u.email.toLowerCase() === email);
+}
+
+// Per-cloud capabilities for a mock user, mirroring the backend's live OpenFGA
+// derivation (rbac_design.md: roles are per-tenant). superadmin gets global
+// read-only (canView both, canProvision none); a tenant user only sees its own
+// cloud; a user with no tenant (e.g. a brand-new viewer) sees nothing.
+function mockClouds(user) {
+  const all = ["aws", "nutanix"];
+  if (!user) return all.map((cloud) => ({ cloud, canView: false, canProvision: false }));
+  if (user.role === "superadmin") return all.map((cloud) => ({ cloud, canView: true, canProvision: false }));
+  const t = user.tenant;
+  const canProv = user.role === "owner" || user.role === "admin";
+  return all.map((cloud) => ({ cloud, canView: cloud === t, canProvision: cloud === t && canProv }));
 }
 
 export const mockApi = {
@@ -47,6 +65,7 @@ export const mockApi = {
         role: target.role,
         linkedIdentities: [...target.linkedIdentities, "lldap:superadmin"],
         email: target.email,
+        clouds: mockClouds(target),
       };
       return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
     }
@@ -60,7 +79,7 @@ export const mockApi = {
     // First login: no existing user has this external identity.
     const existing = users.find((u) => u.linkedIdentities.includes(subject));
     if (existing) {
-      currentSession = { internalUserId: existing.internalUserId, role: existing.role, linkedIdentities: existing.linkedIdentities, email: existing.email };
+      currentSession = { internalUserId: existing.internalUserId, role: existing.role, linkedIdentities: existing.linkedIdentities, email: existing.email, clouds: mockClouds(existing) };
       return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
     }
 
@@ -88,7 +107,7 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
     };
     users.push(newUser);
-    currentSession = { internalUserId: newUser.internalUserId, role: newUser.role, linkedIdentities: newUser.linkedIdentities, email: newUser.email };
+    currentSession = { internalUserId: newUser.internalUserId, role: newUser.role, linkedIdentities: newUser.linkedIdentities, email: newUser.email, clouds: mockClouds(newUser) };
     return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
   },
 
@@ -101,7 +120,7 @@ export const mockApi = {
       if (!target.linkedIdentities.includes(pendingIdentity.subject)) {
         target.linkedIdentities.push(pendingIdentity.subject);
       }
-      currentSession = { internalUserId: target.internalUserId, role: target.role, linkedIdentities: target.linkedIdentities, email: target.email };
+      currentSession = { internalUserId: target.internalUserId, role: target.role, linkedIdentities: target.linkedIdentities, email: target.email, clouds: mockClouds(target) };
       return currentSession;
     }
     // "keep" -> create a fresh viewer account for the pending identity.
@@ -114,7 +133,7 @@ export const mockApi = {
       createdAt: new Date().toISOString(),
     };
     users.push(newUser);
-    currentSession = { internalUserId: newUser.internalUserId, role: newUser.role, linkedIdentities: newUser.linkedIdentities, email: newUser.email };
+    currentSession = { internalUserId: newUser.internalUserId, role: newUser.role, linkedIdentities: newUser.linkedIdentities, email: newUser.email, clouds: mockClouds(newUser) };
     return currentSession;
   },
 
@@ -181,7 +200,7 @@ export const mockApi = {
 
   async awsResources() {
     await delay();
-    return MOCK_AWS_RESOURCES;
+    return { region: MOCK_AWS_RESOURCES.region, nodes: awsNodes.map((n) => ({ ...n })) };
   },
 
   async nutanixResources() {
@@ -197,5 +216,41 @@ export const mockApi = {
   async provisionNutanix(payload) {
     await delay(400);
     return MOCK_PROVISION_RESULT("nutanix", payload?.vmName || `libcloud-ntnx-${Date.now()}`);
+  },
+
+  async deprovisionAws(payload) {
+    await delay(400);
+    const vmId = payload?.vmId;
+    const vmName = payload?.vmName;
+    // Remove the matching node from the mock list (by id, falling back to name)
+    // so a follow-up "View AWS Resources" reflects the deletion — same effect
+    // the real backend's deprovision_aws.sh has via DELETE /v1/compute/nodes/{id}.
+    const before = awsNodes.length;
+    awsNodes = awsNodes.filter((n) => {
+      const matchById = vmId && n.id === vmId;
+      const matchByName = !vmId && vmName && n.name === vmName;
+      return !(matchById || matchByName);
+    });
+    if (awsNodes.length === before) {
+      return { ...MOCK_DEPROVISION_RESULT(vmId, vmName), status: "failed", message: `No AWS VM matched id=${vmId || ""} name=${vmName || ""} (mock).`, exitCode: 1 };
+    }
+    return MOCK_DEPROVISION_RESULT(vmId, vmName);
+  },
+
+  async updateAws(payload) {
+    await delay(400);
+    const vmId = payload?.vmId;
+    if (!vmId) throw new Error("400 vmId is required");
+    const fields = {};
+    if (payload?.name != null) fields.name = payload.name;
+    if (payload?.newSizeId != null) fields.size = payload.newSizeId;
+    if (payload?.memoryMib != null) fields.memory_mib = payload.memoryMib;
+    if (payload?.tagKey != null) { fields.tag_key = payload.tagKey; fields.tag_value = payload.tagValue || ""; }
+    // Apply the edit to the in-memory node so a follow-up "View AWS Resources"
+    // reflects the change — same effect the real backend's PATCH has.
+    for (const n of awsNodes) {
+      if (n.id === vmId) Object.assign(n, fields);
+    }
+    return MOCK_UPDATE_RESULT(vmId, fields);
   },
 };

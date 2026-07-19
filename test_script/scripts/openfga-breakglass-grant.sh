@@ -16,8 +16,14 @@
 #       --ttl <minutes> --reason "<why>" [--actor <user>] [--dry-run]
 #
 # Example:
-#   openfga-breakglass-grant.sh --user user:aws-viewer --relation operator \
-#       --object aws_region:aws --ttl 60 --reason "INC-123 prod hotfix"
+#   openfga-breakglass-grant.sh --user user:aws-viewer --relation admin \
+#       --object tenant:aws --ttl 60 --reason "INC-123 prod hotfix"
+#
+# NOTE: the deployed model exposes only the documented four-role taxonomy
+# (superadmin/owner/admin/viewer) plus the can_* verbs. There is no longer an
+# out-of-band "operator" or provider "allowed" relation. For break-glass
+# provisioning power, grant "admin" on the tenant (tenant-wide) or "admin" on
+# a resource_class (per-class) for the TTL window.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

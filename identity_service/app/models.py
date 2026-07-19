@@ -6,6 +6,17 @@ from pydantic import BaseModel, Field
 
 
 # --- /api/auth/exchange -----------------------------------------------------
+# Per-cloud authorization the portal uses to render only the tenant(s) the
+# logged-in user can access (rbac_design.md: roles are per-tenant, so the UI must
+# match the user's tenant). Computed live from OpenFGA so it stays correct after
+# role changes.
+class CloudCapability(BaseModel):
+    cloud: str
+    canView: bool
+    canProvision: bool
+    canUpdate: bool = False
+
+
 class ExchangeRequest(BaseModel):
     provider: str | None = None
     code: str
@@ -33,6 +44,8 @@ class ExchangeResponse(BaseModel):
     # to this collapse attempt. Required by /api/auth/collapse when
     # needsIdentityCollapse is true. The client must NOT supply its own subject.
     pendingToken: str | None = None
+    # Per-cloud capabilities for the resolved user (empty during collapse flow).
+    clouds: list[CloudCapability] = []
 
 
 # --- /api/auth/collapse -----------------------------------------------------
@@ -76,12 +89,37 @@ class ProvisionRequest(BaseModel):
     vmName: str | None = None
 
 
+# --- /api/deprovision -------------------------------------------------------
+# The portal's per-row Deprovision button sends the VM id (preferred, precise)
+# and name. The backend forwards VM_ID to test_script/scripts/deprovision_aws.sh
+# which DELETEs /v1/compute/nodes/{id} after re-running the OpenFGA can_provision
+# check. Either field may be omitted; VM_ID takes precedence when both are set.
+class DeprovisionRequest(BaseModel):
+    vmId: str | None = None
+    vmName: str | None = None
+
+
+# --- /api/update -------------------------------------------------------------
+# The portal's per-row Edit button sends the VM id plus the editable VM
+# parameters. The backend re-runs the OpenFGA can_update check, then PATCHes
+# /v1/compute/nodes/{id} on the libcloud REST API (NodeUpdateRequest). All
+# fields except vmId are optional; only the supplied fields are forwarded.
+class UpdateRequest(BaseModel):
+    vmId: str
+    name: str | None = None
+    newSizeId: str | None = None
+    memoryMib: int | None = None
+    tagKey: str | None = None
+    tagValue: str | None = None
+
+
 # --- /api/session -----------------------------------------------------------
 class SessionResponse(BaseModel):
     internalUserId: str
     role: str
     linkedIdentities: list[str]
     email: str
+    clouds: list[CloudCapability] = []
 
 
 # Generic OK envelope used by several endpoints.

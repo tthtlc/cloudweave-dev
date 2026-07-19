@@ -18,16 +18,29 @@ What it does
 
 Authorization model
 -------------------
-The model mirrors ../libcloud.rest access control:
+The model mirrors ../libcloud.rest access control and the four-role taxonomy
+in rbac_design.md (SuperAdmin / Owner / Admin / Viewer) with per-resource-class
+sub-roles:
 
   user -> tenant -> libcloud_api.can_connect
-  user -> tenant -> provider.can_use -> nutanix_cluster.can_provision
+  user -> tenant -> provider.can_use -> (aws_region|nutanix_cluster).can_provision
+  user -> tenant -> provider.can_use -> (aws_region|nutanix_cluster).can_update   (edit; owner∪admin)
+  user -> resource_class -> (aws_region|nutanix_cluster).can_provision   (per-class)
+  user -> resource_class -> (aws_region|nutanix_cluster).can_update        (per-class edit)
+  user -> platform:main#superadmin -> global_reader -> can_read everywhere
 
 Sample users seeded by this script (stable OpenFGA principal slugs):
 
-  cloud-admin     full API + provisioning on aws_region / nutanix_cluster
-  cloud-readonly  API read-only (no provisioning)
-  cloud-denied    authenticated in Dex but no OpenFGA tuples (denied)
+  superadmin     platform SuperAdmin (global read-only + governance; not a tenant owner)
+  aws-owner      owner  of tenant:aws      -> full AWS CRUD + membership
+  aws-admin      admin  of tenant:aws       -> provision AWS, no membership changes
+  aws-viewer     viewer of tenant:aws       -> enumerate AWS only
+  ntnx-owner     owner  of tenant:nutanix
+  ntnx-admin     admin  of tenant:nutanix
+  ntnx-viewer    viewer of tenant:nutanix
+  cloud-denied   authenticated in Dex but no OpenFGA tuples (denied)
+  aws-compute-admin   OpenFGA-only principal: admin  on resource_class:aws-compute
+  ntnx-compute-viewer OpenFGA-only principal: viewer on resource_class:nutanix-compute
 
 Design notes
 ------------
@@ -173,20 +186,34 @@ class FgaClient:
 # --------------------------------------------------------------------------- #
 # libcloud REST API authorization model (schema 1.1)
 # --------------------------------------------------------------------------- #
-# Hierarchical privilege model (per privilege.md / privilege0.md):
+# Hierarchical privilege model (per rbac_design.md):
 #
 #   platform:main
-#     superadmin   -> bootstrap identity (LLDAP uid=superadmin). Gates Vault
-#                     seeding, OpenFGA tuple changes, and LLDAP user CRUD.
+#     superadmin   -> bootstrap identity (LLDAP uid=superadmin). Meta-operator:
+#                     gates Vault seeding, OpenFGA tuple changes, LLDAP user
+#                     CRUD, tenant lifecycle, global policy, IAM mappings, and
+#                     owner assignment on every tenant. NOT a tenant owner by
+#                     default — gets global read-only visibility instead.
+#     global_reader -> computedUserset(superadmin); feeds can_connect /
+#                     can_use / can_read everywhere, but NOT can_provision.
 #   tenant:aws / tenant:nutanix
-#     owner        -> per-cloud owner; can assign admin/viewer; can provision
-#     admin        -> per-cloud admin; can assign viewer; can provision
-#     viewer       -> per-cloud viewer; read / enumerate only
+#     owner        -> per-cloud owner; can assign admin/viewer; can provision.
+#                     can_assign_owner is SuperAdmin-gated, NOT owner-grantable.
+#     admin        -> per-cloud admin; can provision; CANNOT change membership
+#                     (no assign-owner/admin/viewer).
+#     viewer       -> per-cloud viewer; read / enumerate only.
+#   resource_class:<tenant>-<class>
+#     admin / viewer -> per-class Admin/Viewer sub-roles (compute/network/data/
+#                     platform). Backends union their can_provision/can_read with
+#                     the bound resource_class's, so an Admin can be narrowed to
+#                     a single resource class.
 #
 # Runtime relations enforced by ../libcloud.rest/app/auth/policy.py are
 # preserved: can_connect (libcloud_api:main), can_use (provider:*),
 # can_provision / can_read (aws_region:* / nutanix_cluster:*). Tenant roles
-# propagate to backends via the `tenant` relation on each backend object.
+# propagate to backends via the `tenant` relation on each backend object;
+# platform:main parents every object so SuperAdmin's global_reader and
+# can_manage_platform reach them.
 LIBCLOUD_MODEL: Dict[str, Any] = {
     "schema_version": "1.1",
     "type_definitions": [
@@ -195,7 +222,27 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "type": "platform",
             "relations": {
                 "superadmin": {"this": {}},
+                # Global read-only visibility of every tenant and its resources,
+                # granted by virtue of being SuperAdmin (rbac_design.md:32-34).
+                # Feeds can_connect / can_use / can_read on tenants, providers,
+                # backends and resource classes — but NOT can_provision, so a
+                # SuperAdmin can observe all tenants yet cannot provision inside
+                # any of them unless explicitly granted a tenant role.
+                "global_reader": {"computedUserset": {"relation": "superadmin"}},
                 "can_manage_platform": {"computedUserset": {"relation": "superadmin"}},
+                # Tenant lifecycle: create / onboard / decommission tenants
+                # (register AWS accounts, Nutanix projects). rbac_design.md:27-29
+                "can_manage_tenant_lifecycle": {
+                    "computedUserset": {"relation": "superadmin"}
+                },
+                # Global policies: password/SSO/IdP, logging, guardrails, quotas,
+                # compliance baselines, RBAC templates. rbac_design.md:30, 37
+                "can_manage_global_policy": {
+                    "computedUserset": {"relation": "superadmin"}
+                },
+                # Mappings between this RBAC engine and AWS IAM / Nutanix Prism
+                # roles. rbac_design.md:38
+                "can_manage_iam_mapping": {"computedUserset": {"relation": "superadmin"}},
             },
             "metadata": {
                 "relations": {
@@ -208,6 +255,9 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
         {
             "type": "tenant",
             "relations": {
+                # platform:main is the parent that gates cross-tenant SuperAdmin
+                # capabilities (assign-owner, global read) on this tenant.
+                "platform": {"this": {}},
                 "owner": {"this": {}},
                 "admin": {"this": {}},
                 "viewer": {"this": {}},
@@ -221,21 +271,40 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                         ]
                     }
                 },
-                "can_assign_owner": {"computedUserset": {"relation": "owner"}},
+                # Assigning/revokeing tenant Owners is reserved for SuperAdmin
+                # (rbac_design.md:28-29). A tenant Owner can no longer mint
+                # co-Owners (closes the privilege-escalation path noted in
+                # rbac_design_modified1.md contradiction #2).
+                "can_assign_owner": {
+                    "tupleToUserset": {
+                        "tupleset": {"relation": "platform"},
+                        "computedUserset": {"relation": "can_manage_platform"},
+                    }
+                },
                 "can_assign_admin": {"computedUserset": {"relation": "owner"}},
-                "can_assign_viewer": {
+                # Only Owners assign/revoke Viewer. Admins cannot change tenant
+                # membership at all (rbac_design.md:93-97), so the admin arm is
+                # dropped (rbac_design_modified1.md contradiction #3).
+                "can_assign_viewer": {"computedUserset": {"relation": "owner"}},
+                # Backend cloud credentials for this tenant may only be updated
+                # by the tenant owner. SuperAdmin is no longer seeded as an
+                # owner, so it must be explicitly granted the owner role on a
+                # tenant to manage that tenant's credentials (break-glass).
+                "can_manage_credentials": {"computedUserset": {"relation": "owner"}},
+                "can_provision": {
                     "union": {
                         "child": [
-                            {"computedUserset": {"relation": "owner"}},
                             {"computedUserset": {"relation": "admin"}},
+                            {"computedUserset": {"relation": "owner"}},
                         ]
                     }
                 },
-                # Backend cloud credentials for this tenant may only be updated
-                # by the tenant owner (and superadmin, who is owner on both
-                # tenants as break-glass). admins/viewers cannot.
-                "can_manage_credentials": {"computedUserset": {"relation": "owner"}},
-                "can_provision": {
+                # Update (edit) is a distinct write verb from create/delete
+                # (rbac_design.md §Deprovisioning / changelog #10). At present
+                # Owner and Admin can update; Viewer and SuperAdmin (by default)
+                # cannot. Modeled parallel to can_provision so a per-class Admin
+                # also gains can_update via the resource_class arm on backends.
+                "can_update": {
                     "union": {
                         "child": [
                             {"computedUserset": {"relation": "admin"}},
@@ -249,12 +318,22 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                             {"computedUserset": {"relation": "viewer"}},
                             {"computedUserset": {"relation": "admin"}},
                             {"computedUserset": {"relation": "owner"}},
+                            # SuperAdmin global read-only visibility.
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
                         ]
                     }
                 },
             },
             "metadata": {
                 "relations": {
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
+                    },
                     "owner": {"directly_related_user_types": [{"type": "user"}]},
                     "admin": {"directly_related_user_types": [{"type": "user"}]},
                     "viewer": {"directly_related_user_types": [{"type": "user"}]},
@@ -268,6 +347,7 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "type": "libcloud_api",
             "relations": {
                 "parent": {"this": {}},
+                "platform": {"this": {}},
                 "can_connect": {
                     "union": {
                         "child": [
@@ -278,6 +358,14 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                     "computedUserset": {"relation": "member"},
                                 }
                             },
+                            # SuperAdmin connects to the API gateway for global
+                            # read-only visibility (rbac_design.md:32-34).
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
                         ]
                     }
                 },
@@ -285,6 +373,9 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "metadata": {
                 "relations": {
                     "parent": {"directly_related_user_types": [{"type": "tenant"}]},
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
+                    },
                     "can_connect": {
                         "directly_related_user_types": [{"type": "user"}]
                     },
@@ -295,16 +386,26 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "type": "provider",
             "relations": {
                 "parent": {"this": {}},
-                "allowed": {"this": {}},
+                "platform": {"this": {}},
                 "can_use": {
                     "union": {
                         "child": [
                             {"this": {}},
-                            {"computedUserset": {"relation": "allowed"}},
                             {
                                 "tupleToUserset": {
                                     "tupleset": {"relation": "parent"},
                                     "computedUserset": {"relation": "member"},
+                                }
+                            },
+                            # SuperAdmin may use every provider for read-only
+                            # visibility. This does NOT grant can_provision on
+                            # backends, because can_provision additionally
+                            # requires a tenant role (owner/admin) via the
+                            # intersection on each backend.
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
                                 }
                             },
                         ]
@@ -314,8 +415,8 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "metadata": {
                 "relations": {
                     "parent": {"directly_related_user_types": [{"type": "tenant"}]},
-                    "allowed": {
-                        "directly_related_user_types": [{"type": "user"}]
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
                     },
                     "can_use": {
                         "directly_related_user_types": [{"type": "user"}]
@@ -324,12 +425,98 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             },
         },
         {
+            "type": "resource_class",
+            "relations": {
+                # A resource_class object is a (tenant, class) pair, e.g.
+                # resource_class:aws-compute or resource_class:nutanix-network.
+                # It is the first-class scope for per-class Admin/Viewer
+                # sub-roles (rbac_design.md:7-15, 63-114).
+                "tenant": {"this": {}},
+                "platform": {"this": {}},
+                "admin": {"this": {}},
+                "viewer": {"this": {}},
+                "tenant_admin": {
+                    "tupleToUserset": {
+                        "tupleset": {"relation": "tenant"},
+                        "computedUserset": {"relation": "admin"},
+                    }
+                },
+                "tenant_owner": {
+                    "tupleToUserset": {
+                        "tupleset": {"relation": "tenant"},
+                        "computedUserset": {"relation": "owner"},
+                    }
+                },
+                "tenant_viewer": {
+                    "tupleToUserset": {
+                        "tupleset": {"relation": "tenant"},
+                        "computedUserset": {"relation": "viewer"},
+                    }
+                },
+                # A per-class Admin (direct `admin` grant on this object) OR a
+                # tenant-wide Owner/Admin can provision within this class. This
+                # is the relation that backends intersect/union with can_use to
+                # express "Compute Admin but not Network Admin".
+                "can_provision": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {"computedUserset": {"relation": "tenant_admin"}},
+                            {"computedUserset": {"relation": "tenant_owner"}},
+                        ]
+                    }
+                },
+                # Per-class update (edit) — mirrors can_provision so a per-class
+                # Admin, a tenant Admin, or a tenant Owner can update within this
+                # class (rbac_design.md changelog #10).
+                "can_update": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {"computedUserset": {"relation": "tenant_admin"}},
+                            {"computedUserset": {"relation": "tenant_owner"}},
+                        ]
+                    }
+                },
+                "can_read": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "viewer"}},
+                            {"computedUserset": {"relation": "tenant_viewer"}},
+                            {"computedUserset": {"relation": "admin"}},
+                            {"computedUserset": {"relation": "tenant_admin"}},
+                            {"computedUserset": {"relation": "tenant_owner"}},
+                            # SuperAdmin global read-only visibility.
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
+                        ]
+                    }
+                },
+            },
+            "metadata": {
+                "relations": {
+                    "tenant": {
+                        "directly_related_user_types": [{"type": "tenant"}]
+                    },
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
+                    },
+                    "admin": {"directly_related_user_types": [{"type": "user"}]},
+                    "viewer": {"directly_related_user_types": [{"type": "user"}]},
+                }
+            },
+        },
+        {
             "type": "aws_region",
             "relations": {
                 "provider": {"this": {}},
                 "tenant": {"this": {}},
-                "operator": {"this": {}},
-                "viewer": {"this": {}},
+                "platform": {"this": {}},
+                "resource_class": {"this": {}},
                 "tenant_admin": {
                     "tupleToUserset": {
                         "tupleset": {"relation": "tenant"},
@@ -351,8 +538,6 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 "can_read": {
                     "union": {
                         "child": [
-                            {"computedUserset": {"relation": "viewer"}},
-                            {"computedUserset": {"relation": "operator"}},
                             {"computedUserset": {"relation": "tenant_viewer"}},
                             {"computedUserset": {"relation": "tenant_admin"}},
                             {"computedUserset": {"relation": "tenant_owner"}},
@@ -362,25 +547,111 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                     "computedUserset": {"relation": "can_use"},
                                 }
                             },
+                            # Per-class Viewer bindings (resource_class.can_read).
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_read"},
+                                }
+                            },
+                            # SuperAdmin global read-only visibility.
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
                         ]
                     }
                 },
                 "can_provision": {
-                    "intersection": {
+                    "union": {
+                        "child": [
+                            # Tenant-wide Owner/Admin, gated by the provider
+                            # can_use intersection for cross-cloud isolation.
+                            {
+                                "intersection": {
+                                    "child": [
+                                        {
+                                            "union": {
+                                                "child": [
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_admin"
+                                                        }
+                                                    },
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "tupleToUserset": {
+                                                "tupleset": {"relation": "provider"},
+                                                "computedUserset": {
+                                                    "relation": "can_use"
+                                                },
+                                            }
+                                        },
+                                    ]
+                                }
+                            },
+                            # Per-class Admin bindings (resource_class.can_provision).
+                            # The resource_class is itself tenant-scoped, so this
+                            # arm cannot escape the tenant boundary.
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_provision"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # Update (edit) on the backend — mirrors can_provision: tenant
+                # Owner/Admin gated by the provider can_use intersection
+                # for cross-cloud isolation, OR a per-class Admin via the bound
+                # resource_class's can_update (rbac_design.md changelog #10).
+                "can_update": {
+                    "union": {
                         "child": [
                             {
-                                "union": {
+                                "intersection": {
                                     "child": [
-                                        {"computedUserset": {"relation": "operator"}},
-                                        {"computedUserset": {"relation": "tenant_admin"}},
-                                        {"computedUserset": {"relation": "tenant_owner"}},
+                                        {
+                                            "union": {
+                                                "child": [
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_admin"
+                                                        }
+                                                    },
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "tupleToUserset": {
+                                                "tupleset": {"relation": "provider"},
+                                                "computedUserset": {
+                                                    "relation": "can_use"
+                                                },
+                                            }
+                                        },
                                     ]
                                 }
                             },
                             {
                                 "tupleToUserset": {
-                                    "tupleset": {"relation": "provider"},
-                                    "computedUserset": {"relation": "can_use"},
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_update"},
                                 }
                             },
                         ]
@@ -395,11 +666,11 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                     "tenant": {
                         "directly_related_user_types": [{"type": "tenant"}]
                     },
-                    "operator": {
-                        "directly_related_user_types": [{"type": "user"}]
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
                     },
-                    "viewer": {
-                        "directly_related_user_types": [{"type": "user"}]
+                    "resource_class": {
+                        "directly_related_user_types": [{"type": "resource_class"}]
                     }
                 }
             },
@@ -409,8 +680,8 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "relations": {
                 "provider": {"this": {}},
                 "tenant": {"this": {}},
-                "operator": {"this": {}},
-                "viewer": {"this": {}},
+                "platform": {"this": {}},
+                "resource_class": {"this": {}},
                 "tenant_admin": {
                     "tupleToUserset": {
                         "tupleset": {"relation": "tenant"},
@@ -432,8 +703,6 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 "can_read": {
                     "union": {
                         "child": [
-                            {"computedUserset": {"relation": "viewer"}},
-                            {"computedUserset": {"relation": "operator"}},
                             {"computedUserset": {"relation": "tenant_viewer"}},
                             {"computedUserset": {"relation": "tenant_admin"}},
                             {"computedUserset": {"relation": "tenant_owner"}},
@@ -443,25 +712,104 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                     "computedUserset": {"relation": "can_use"},
                                 }
                             },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_read"},
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
                         ]
                     }
                 },
                 "can_provision": {
-                    "intersection": {
+                    "union": {
                         "child": [
                             {
-                                "union": {
+                                "intersection": {
                                     "child": [
-                                        {"computedUserset": {"relation": "operator"}},
-                                        {"computedUserset": {"relation": "tenant_admin"}},
-                                        {"computedUserset": {"relation": "tenant_owner"}},
+                                        {
+                                            "union": {
+                                                "child": [
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_admin"
+                                                        }
+                                                    },
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "tupleToUserset": {
+                                                "tupleset": {"relation": "provider"},
+                                                "computedUserset": {
+                                                    "relation": "can_use"
+                                                },
+                                            }
+                                        },
                                     ]
                                 }
                             },
                             {
                                 "tupleToUserset": {
-                                    "tupleset": {"relation": "provider"},
-                                    "computedUserset": {"relation": "can_use"},
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_provision"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # Update (edit) on the backend — mirrors can_provision: tenant
+                # Owner/Admin gated by the provider can_use intersection
+                # for cross-cloud isolation, OR a per-class Admin via the bound
+                # resource_class's can_update (rbac_design.md changelog #10).
+                "can_update": {
+                    "union": {
+                        "child": [
+                            {
+                                "intersection": {
+                                    "child": [
+                                        {
+                                            "union": {
+                                                "child": [
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_admin"
+                                                        }
+                                                    },
+                                                    {
+                                                        "computedUserset": {
+                                                            "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "tupleToUserset": {
+                                                "tupleset": {"relation": "provider"},
+                                                "computedUserset": {
+                                                    "relation": "can_use"
+                                                },
+                                            }
+                                        },
+                                    ]
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "resource_class"},
+                                    "computedUserset": {"relation": "can_update"},
                                 }
                             },
                         ]
@@ -476,11 +824,11 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                     "tenant": {
                         "directly_related_user_types": [{"type": "tenant"}]
                     },
-                    "operator": {
-                        "directly_related_user_types": [{"type": "user"}]
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
                     },
-                    "viewer": {
-                        "directly_related_user_types": [{"type": "user"}]
+                    "resource_class": {
+                        "directly_related_user_types": [{"type": "resource_class"}]
                     }
                 }
             },
@@ -499,13 +847,29 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
 #   ntnx-admin    admin  on tenant:nutanix -> can provision Nutanix
 #   ntnx-viewer   viewer on tenant:nutanix -> enumerate Nutanix only
 #   cloud-denied  authenticated in Dex but NO tuples -> denied everywhere
+#
+# Per-class demo principals (OpenFGA-only, used to validate the resource_class
+# surface; not backed by LLDAP/Dex logins):
+#   aws-compute-admin   admin  on resource_class:aws-compute  -> provision AWS compute only
+#   ntnx-compute-viewer viewer on resource_class:nutanix-compute -> read Nutanix compute only
 INITIAL_TUPLES: List[Dict[str, str]] = [
-    # Platform superadmin (bootstrap identity)
+    # Platform superadmin (bootstrap identity). SuperAdmin is NO LONGER seeded
+    # as an owner on any tenant (rbac_design.md:40, 124). It instead gets global
+    # read-only visibility via platform.global_reader, and gates owner
+    # assignment + tenant lifecycle + global policy via the platform relations
+    # below. To provision inside a tenant it must be explicitly granted that
+    # tenant's owner/admin role (break-glass).
     {"user": "user:superadmin", "relation": "superadmin", "object": "platform:main"},
-    # superadmin is also owner on each tenant (break-glass + lets it pass
-    # can_connect / can_use / can_provision like a normal cloud owner).
-    {"user": "user:superadmin", "relation": "owner", "object": "tenant:aws"},
-    {"user": "user:superadmin", "relation": "owner", "object": "tenant:nutanix"},
+    # platform:main parents every tenant / api / provider / backend /
+    # resource_class so the SuperAdmin-gated relations (global_reader,
+    # can_manage_platform -> can_assign_owner) can resolve onto them.
+    {"user": "platform:main", "relation": "platform", "object": "tenant:aws"},
+    {"user": "platform:main", "relation": "platform", "object": "tenant:nutanix"},
+    {"user": "platform:main", "relation": "platform", "object": "libcloud_api:main"},
+    {"user": "platform:main", "relation": "platform", "object": "provider:aws"},
+    {"user": "platform:main", "relation": "platform", "object": "provider:nutanix"},
+    {"user": "platform:main", "relation": "platform", "object": "aws_region:aws"},
+    {"user": "platform:main", "relation": "platform", "object": "nutanix_cluster:nutanix"},
     # tenant:aws membership
     {"user": "user:aws-owner", "relation": "owner", "object": "tenant:aws"},
     {"user": "user:aws-admin", "relation": "admin", "object": "tenant:aws"},
@@ -530,35 +894,86 @@ INITIAL_TUPLES: List[Dict[str, str]] = [
     {"user": "tenant:aws", "relation": "tenant", "object": "aws_region:aws"},
     {"user": "provider:nutanix", "relation": "provider", "object": "nutanix_cluster:nutanix"},
     {"user": "tenant:nutanix", "relation": "tenant", "object": "nutanix_cluster:nutanix"},
+    # Resource classes (rbac_design.md:7-15). Each is a (tenant, class) pair.
+    # platform:main parents each so SuperAdmin global_reader can read them.
+    {"user": "tenant:aws", "relation": "tenant", "object": "resource_class:aws-compute"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:aws-compute"},
+    {"user": "tenant:aws", "relation": "tenant", "object": "resource_class:aws-network"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:aws-network"},
+    {"user": "tenant:aws", "relation": "tenant", "object": "resource_class:aws-data"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:aws-data"},
+    {"user": "tenant:aws", "relation": "tenant", "object": "resource_class:aws-platform"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:aws-platform"},
+    {"user": "tenant:nutanix", "relation": "tenant", "object": "resource_class:nutanix-compute"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:nutanix-compute"},
+    {"user": "tenant:nutanix", "relation": "tenant", "object": "resource_class:nutanix-network"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:nutanix-network"},
+    {"user": "tenant:nutanix", "relation": "tenant", "object": "resource_class:nutanix-data"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:nutanix-data"},
+    {"user": "tenant:nutanix", "relation": "tenant", "object": "resource_class:nutanix-platform"},
+    {"user": "platform:main", "relation": "platform", "object": "resource_class:nutanix-platform"},
+    # Bind each backend to its tenant's resource classes. A per-class Admin on
+    # any bound class gains can_provision on the backend; a per-class Viewer
+    # gains can_read. (With a single backend per cloud this demonstrates the
+    # wiring; per-class isolation becomes observable once separate backends
+    # exist per class.)
+    {"user": "resource_class:aws-compute", "relation": "resource_class", "object": "aws_region:aws"},
+    {"user": "resource_class:aws-network", "relation": "resource_class", "object": "aws_region:aws"},
+    {"user": "resource_class:aws-data", "relation": "resource_class", "object": "aws_region:aws"},
+    {"user": "resource_class:aws-platform", "relation": "resource_class", "object": "aws_region:aws"},
+    {"user": "resource_class:nutanix-compute", "relation": "resource_class", "object": "nutanix_cluster:nutanix"},
+    {"user": "resource_class:nutanix-network", "relation": "resource_class", "object": "nutanix_cluster:nutanix"},
+    {"user": "resource_class:nutanix-data", "relation": "resource_class", "object": "nutanix_cluster:nutanix"},
+    {"user": "resource_class:nutanix-platform", "relation": "resource_class", "object": "nutanix_cluster:nutanix"},
+    # Per-class demo bindings (OpenFGA-only validation principals).
+    {"user": "user:aws-compute-admin", "relation": "admin", "object": "resource_class:aws-compute"},
+    {"user": "user:ntnx-compute-viewer", "relation": "viewer", "object": "resource_class:nutanix-compute"},
 ]
 
 # Validation expectations: (user, relation, object, expected_allowed)
 VALIDATION_CHECKS: List[Tuple[str, str, str, bool]] = [
-    # Platform superadmin
+    # Platform superadmin: global governance + global read-only visibility,
+    # but NO provisioning inside any tenant by default (rbac_design.md:124).
     ("user:superadmin", "can_manage_platform", "platform:main", True),
+    ("user:superadmin", "can_manage_tenant_lifecycle", "platform:main", True),
+    ("user:superadmin", "can_manage_global_policy", "platform:main", True),
+    ("user:superadmin", "can_manage_iam_mapping", "platform:main", True),
     ("user:superadmin", "can_connect", "libcloud_api:main", True),
     ("user:superadmin", "can_use", "provider:aws", True),
     ("user:superadmin", "can_use", "provider:nutanix", True),
-    ("user:superadmin", "can_provision", "aws_region:aws", True),
-    ("user:superadmin", "can_provision", "nutanix_cluster:nutanix", True),
+    ("user:superadmin", "can_read", "tenant:aws", True),
+    ("user:superadmin", "can_read", "tenant:nutanix", True),
+    ("user:superadmin", "can_read", "aws_region:aws", True),
+    ("user:superadmin", "can_read", "nutanix_cluster:nutanix", True),
+    ("user:superadmin", "can_read", "resource_class:aws-compute", True),
+    ("user:superadmin", "can_provision", "aws_region:aws", False),
+    ("user:superadmin", "can_provision", "nutanix_cluster:nutanix", False),
+    # SuperAdmin gates owner assignment on every tenant; tenant Owners do not.
+    ("user:superadmin", "can_assign_owner", "tenant:aws", True),
+    ("user:superadmin", "can_assign_owner", "tenant:nutanix", True),
+    ("user:aws-owner", "can_assign_owner", "tenant:aws", False),
     # tenant:aws — owner
     ("user:aws-owner", "can_connect", "libcloud_api:main", True),
     ("user:aws-owner", "can_use", "provider:aws", True),
     ("user:aws-owner", "can_provision", "aws_region:aws", True),
     ("user:aws-owner", "can_assign_admin", "tenant:aws", True),
-    # tenant:aws — admin (provision + assign viewer, cannot assign admin)
+    ("user:aws-owner", "can_assign_viewer", "tenant:aws", True),
+    # tenant:aws — admin (provision, but NO membership changes at all)
     ("user:aws-admin", "can_use", "provider:aws", True),
     ("user:aws-admin", "can_provision", "aws_region:aws", True),
     ("user:aws-admin", "can_assign_admin", "tenant:aws", False),
-    ("user:aws-admin", "can_assign_viewer", "tenant:aws", True),
-    # Credential management is owner-only (admins/viewers cannot update creds)
+    ("user:aws-admin", "can_assign_owner", "tenant:aws", False),
+    ("user:aws-admin", "can_assign_viewer", "tenant:aws", False),
+    # Credential management is owner-only (admins/viewers/superadmin-by-default
+    # cannot update creds; superadmin must be explicitly granted owner for
+    # break-glass).
     ("user:aws-owner", "can_manage_credentials", "tenant:aws", True),
     ("user:aws-admin", "can_manage_credentials", "tenant:aws", False),
     ("user:aws-viewer", "can_manage_credentials", "tenant:aws", False),
     ("user:ntnx-owner", "can_manage_credentials", "tenant:nutanix", True),
     ("user:ntnx-admin", "can_manage_credentials", "tenant:nutanix", False),
-    ("user:superadmin", "can_manage_credentials", "tenant:aws", True),
-    ("user:superadmin", "can_manage_credentials", "tenant:nutanix", True),
+    ("user:superadmin", "can_manage_credentials", "tenant:aws", False),
+    ("user:superadmin", "can_manage_credentials", "tenant:nutanix", False),
     ("user:aws-owner", "can_manage_credentials", "tenant:nutanix", False),
     # tenant:aws — viewer (enumerate only)
     ("user:aws-viewer", "can_use", "provider:aws", True),
@@ -568,11 +983,36 @@ VALIDATION_CHECKS: List[Tuple[str, str, str, bool]] = [
     # Cross-cloud isolation: aws-admin cannot use/provision Nutanix
     ("user:aws-admin", "can_use", "provider:nutanix", False),
     ("user:aws-admin", "can_provision", "nutanix_cluster:nutanix", False),
+    # can_update (edit): Owner + Admin can update; Viewer and SuperAdmin (by
+    # default) cannot. Per-class Admin can update on the bound backend.
+    ("user:aws-owner", "can_update", "tenant:aws", True),
+    ("user:aws-admin", "can_update", "tenant:aws", True),
+    ("user:aws-viewer", "can_update", "tenant:aws", False),
+    ("user:aws-owner", "can_update", "aws_region:aws", True),
+    ("user:aws-admin", "can_update", "aws_region:aws", True),
+    ("user:aws-viewer", "can_update", "aws_region:aws", False),
+    ("user:superadmin", "can_update", "aws_region:aws", False),
+    ("user:aws-admin", "can_update", "nutanix_cluster:nutanix", False),
+    ("user:aws-compute-admin", "can_update", "aws_region:aws", True),
+    ("user:ntnx-compute-viewer", "can_update", "nutanix_cluster:nutanix", False),
     # tenant:nutanix — admin / viewer
     ("user:ntnx-admin", "can_use", "provider:nutanix", True),
     ("user:ntnx-admin", "can_provision", "nutanix_cluster:nutanix", True),
     ("user:ntnx-viewer", "can_provision", "nutanix_cluster:nutanix", False),
     ("user:ntnx-viewer", "can_read", "nutanix_cluster:nutanix", True),
+    # Per-class Admin (resource_class): can provision + read on the bound
+    # backend, but is NOT a tenant member, so cannot can_connect / can_use /
+    # provision a different cloud's backend.
+    ("user:aws-compute-admin", "can_provision", "aws_region:aws", True),
+    ("user:aws-compute-admin", "can_read", "aws_region:aws", True),
+    ("user:aws-compute-admin", "can_use", "provider:aws", False),
+    ("user:aws-compute-admin", "can_connect", "libcloud_api:main", False),
+    ("user:aws-compute-admin", "can_provision", "nutanix_cluster:nutanix", False),
+    # Per-class Viewer (resource_class): read only on the bound backend, no
+    # provisioning, no cross-cloud reach.
+    ("user:ntnx-compute-viewer", "can_read", "nutanix_cluster:nutanix", True),
+    ("user:ntnx-compute-viewer", "can_provision", "nutanix_cluster:nutanix", False),
+    ("user:ntnx-compute-viewer", "can_provision", "aws_region:aws", False),
     # Authenticated-but-unauthorized demo user is denied at the gate
     ("user:cloud-denied", "can_connect", "libcloud_api:main", False),
 ]

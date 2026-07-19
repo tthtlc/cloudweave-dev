@@ -1,25 +1,103 @@
 import React, { useState } from "react";
 import api from "../services/api";
 import Banner from "../components/Banner";
+import { useAuth } from "../context/AuthContext";
 
-// Shared dashboard shell for admin + owner. `role` controls which actions
-// are surfaced; wiring is identical so permissions can be differentiated
-// later purely on the backend (OpenFGA) side.
-export function CloudDashboard({ role }) {
+// Per-cloud metadata. `columns(ctx)` returns the table columns to render for a
+// given capability + readOnly + edit context. deprovision and update are only
+// wired for AWS (deprovision_aws.sh + PATCH /v1/compute/nodes/{id}); Nutanix
+// update/deprovision are not implemented in the backend, so no Edit/Deprovision
+// buttons are rendered for it.
+const CLOUD_META = {
+  aws: {
+    label: "AWS",
+    regionKey: "region",
+    provision: (payload) => api.provisionAws(payload),
+    resources: () => api.awsResources(),
+    deprovision: (payload) => api.deprovisionAws(payload),
+    update: (payload) => api.updateAws(payload),
+    columns: (ctx) => {
+      const { cap, readOnly, deprov, onDep, editing, saving, onEdit } = ctx;
+      const showAction = !readOnly && (cap.canUpdate || cap.canProvision);
+      return [
+        { header: "ID", render: (n) => <code>{n.id}</code> },
+        { header: "Name", render: (n) => n.name },
+        { header: "State", render: (n) => n.state },
+        ...(!showAction ? [] : [{
+          header: "Action",
+          render: (n) => (
+            <span className="row-actions">
+              {cap.canUpdate && (
+                <button
+                  disabled={!!saving || editing === n.id}
+                  onClick={() => onEdit(n)}
+                >
+                  {editing === n.id ? "Editing…" : "Edit"}
+                </button>
+              )}
+              {cap.canProvision && (
+                <button
+                  className="danger"
+                  disabled={deprov[n.id] === "pending" || !!saving || editing !== null}
+                  onClick={() => onDep(n)}
+                >
+                  {deprov[n.id] === "pending" ? "Deprovisioning…" : "Deprovision"}
+                </button>
+              )}
+            </span>
+          ),
+        }]),
+      ];
+    },
+  },
+  nutanix: {
+    label: "Nutanix",
+    regionKey: "cluster",
+    provision: (payload) => api.provisionNutanix(payload),
+    resources: () => api.nutanixResources(),
+    deprovision: null,
+    update: null,
+    columns: () => [
+      { header: "ID", render: (n) => <code>{n.id}</code> },
+      { header: "Name", render: (n) => n.name },
+      { header: "State", render: (n) => n.state },
+      { header: "Size", render: (n) => n.size },
+    ],
+  },
+};
+
+// Shared dashboard shell for admin + owner (+ read-only viewer). `role` controls
+// the title; the backend (OpenFGA) differentiates permissions. `readOnly`
+// (viewer) hides Provision/Edit/Deprovision and leaves only the View controls.
+// The dashboard only renders the cloud(s) the logged-in user can access
+// (rbac_design.md: roles are per-tenant, so the UI must match the user's tenant
+// — an aws-admin / aws-viewer never sees Nutanix controls, and vice versa).
+export function CloudDashboard({ role, readOnly = false }) {
+  const { session } = useAuth();
+  // Only clouds the user can view or provision. Computed live by the backend
+  // from OpenFGA, so it stays correct after role/tenant changes.
+  const clouds = (session?.clouds || []).filter((c) => c.canView || c.canProvision || c.canUpdate);
+
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
-  const [aws, setAws] = useState(null);
-  const [ntnx, setNtnx] = useState(null);
+  // Per-cloud resource lists keyed by cloud id: { aws: {...}, nutanix: {...} }.
+  const [resources, setResources] = useState({});
   const [provResult, setProvResult] = useState(null);
+  // Per-VM deprovisioning status: "pending" | "done" | "error" | null.
+  const [deprov, setDeprov] = useState({});
+  // Inline edit state: which VM id is being edited + the draft form fields.
+  const [editing, setEditing] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  async function run(name, fn) {
-    setBusy(name); setMsg(null); setErr(null);
+  async function provision(cloud) {
+    const meta = CLOUD_META[cloud];
+    setBusy(cloud); setMsg(null); setErr(null);
     try {
-      const r = await fn();
-      if (name === "awsView") setAws(r);
-      else if (name === "ntnxView") setNtnx(r);
-      else { setProvResult(r); setMsg(`${name} provisioning accepted: ${r.vmName}`); }
+      const r = await meta.provision({ vmName: `libcloud-${cloud}-${Date.now()}` });
+      setProvResult(r);
+      setMsg(`${meta.label} provisioning accepted: ${r.vmName}`);
     } catch (e) {
       setErr(e.message || String(e));
     } finally {
@@ -27,34 +105,133 @@ export function CloudDashboard({ role }) {
     }
   }
 
+  async function view(cloud) {
+    const meta = CLOUD_META[cloud];
+    setBusy(`${cloud}View`); setMsg(null); setErr(null);
+    try {
+      const r = await meta.resources();
+      setResources((prev) => ({ ...prev, [cloud]: r }));
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deprovision(cloud, node) {
+    const meta = CLOUD_META[cloud];
+    setDeprov((d) => ({ ...d, [node.id]: "pending" }));
+    setErr(null);
+    try {
+      const r = await meta.deprovision({ vmId: node.id, vmName: node.name });
+      setDeprov((d) => ({ ...d, [node.id]: r.status === "deprovisioned" ? "done" : "error" }));
+      if (r.status !== "deprovisioned") {
+        setErr(`Deprovision ${node.id} failed: ${r.message || "see backend logs"}`);
+      } else {
+        setMsg(`Deprovisioned ${node.id} (${node.name}) via deprovision_aws.sh`);
+        const refreshed = await meta.resources();
+        setResources((prev) => ({ ...prev, [cloud]: refreshed }));
+      }
+    } catch (e) {
+      setDeprov((d) => ({ ...d, [node.id]: "error" }));
+      setErr(e.message || String(e));
+    }
+  }
+
+  function startEdit(node) {
+    setEditing(node.id);
+    setEditDraft({
+      name: node.name || "",
+      newSizeId: node.size || "",
+      memoryMib: "",
+      tagKey: "",
+      tagValue: "",
+    });
+    setErr(null);
+    setMsg(null);
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setEditDraft(null);
+  }
+
+  async function saveEdit(cloud, node) {
+    const meta = CLOUD_META[cloud];
+    if (!meta.update) return;
+    setSaving(true); setErr(null);
+    try {
+      const payload = { vmId: node.id };
+      if (editDraft.name !== node.name) payload.name = editDraft.name;
+      if (editDraft.newSizeId) payload.newSizeId = editDraft.newSizeId;
+      if (editDraft.memoryMib) payload.memoryMib = Number(editDraft.memoryMib);
+      if (editDraft.tagKey) { payload.tagKey = editDraft.tagKey; payload.tagValue = editDraft.tagValue; }
+      const r = await meta.update(payload);
+      if (r.status === "failed") {
+        setErr(`Edit ${node.id} failed: ${r.message || "see backend logs"}`);
+      } else {
+        setMsg(`Updated ${node.id} (${node.name}) via PATCH /v1/compute/nodes/{id}`);
+        const refreshed = await meta.resources();
+        setResources((prev) => ({ ...prev, [cloud]: refreshed }));
+        cancelEdit();
+      }
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const provisionable = !readOnly && clouds.filter((c) => c.canProvision);
+  const viewable = clouds.filter((c) => c.canView);
+
+  const title =
+    role === "owner" ? "Owner Dashboard"
+    : role === "viewer" ? "Viewer Dashboard"
+    : "Admin Dashboard";
+
   return (
     <div>
-      <h1>{role === "owner" ? "Owner" : "Admin"} Dashboard</h1>
-      <p className="muted">
-        Provisioning and resource views delegate to backend endpoints that
-        replay the exact orchestration order from{" "}
-        <code>test_script/scripts/provision_aws.sh</code> and{" "}
-        <code>test_script/scripts/provision_nutanix.sh</code>. The frontend
-        never invents cloud API sequences.
-      </p>
+      {!readOnly && (
+        <>
+          <h1>{title}</h1>
+          <p className="muted">
+            Provisioning and resource views delegate to backend endpoints that
+            replay the exact orchestration order from{" "}
+            <code>test_script/scripts/provision_aws.sh</code> and{" "}
+            <code>test_script/scripts/provision_nutanix.sh</code>. The frontend
+            never invents cloud API sequences.
+          </p>
+        </>
+      )}
+      {readOnly && <h2>Resources</h2>}
 
       {msg && <Banner kind="success">{msg}</Banner>}
       {err && <Banner kind="error">{err}</Banner>}
 
-      <div className="card grid">
-        <button className="primary" disabled={!!busy} onClick={() => run("aws", () => api.provisionAws({ vmName: `libcloud-demo-${Date.now()}` }))}>
-          {busy === "aws" ? "Provisioning…" : "Provision AWS"}
-        </button>
-        <button className="primary" disabled={!!busy} onClick={() => run("ntnx", () => api.provisionNutanix({ vmName: `libcloud-ntnx-${Date.now()}` }))}>
-          {busy === "ntnx" ? "Provisioning…" : "Provision Nutanix"}
-        </button>
-        <button disabled={!!busy} onClick={() => run("awsView", () => api.awsResources())}>
-          {busy === "awsView" ? "Loading…" : "View AWS Resources"}
-        </button>
-        <button disabled={!!busy} onClick={() => run("ntnxView", () => api.nutanixResources())}>
-          {busy === "ntnxView" ? "Loading…" : "View Nutanix Resources"}
-        </button>
-      </div>
+      {clouds.length === 0 && (
+        <div className="card">
+          <p className="muted">
+            You have no cloud access on this system. A SuperAdmin must assign
+            you to a tenant before you can view or provision resources.
+          </p>
+        </div>
+      )}
+
+      {clouds.length > 0 && (
+        <div className="card grid">
+          {provisionable && provisionable.map((c) => (
+            <button key={c.cloud} className="primary" disabled={!!busy} onClick={() => provision(c.cloud)}>
+              {busy === c.cloud ? "Provisioning…" : `Provision ${CLOUD_META[c.cloud].label}`}
+            </button>
+          ))}
+          {viewable.map((c) => (
+            <button key={c.cloud} disabled={!!busy} onClick={() => view(c.cloud)}>
+              {busy === `${c.cloud}View` ? "Loading…" : `View ${CLOUD_META[c.cloud].label} Resources`}
+            </button>
+          ))}
+        </div>
+      )}
 
       {provResult && (
         <div className="card">
@@ -68,33 +245,60 @@ export function CloudDashboard({ role }) {
         </div>
       )}
 
-      {aws && (
-        <div className="card">
-          <h2>AWS resources ({aws.region})</h2>
-          <table>
-            <thead><tr><th>ID</th><th>Name</th><th>State</th><th>Size</th></tr></thead>
-            <tbody>
-              {aws.nodes.map((n) => (
-                <tr key={n.id}><td><code>{n.id}</code></td><td>{n.name}</td><td>{n.state}</td><td>{n.size}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {ntnx && (
-        <div className="card">
-          <h2>Nutanix resources ({ntnx.cluster})</h2>
-          <table>
-            <thead><tr><th>ID</th><th>Name</th><th>State</th><th>Size</th></tr></thead>
-            <tbody>
-              {ntnx.nodes.map((n) => (
-                <tr key={n.id}><td><code>{n.id}</code></td><td>{n.name}</td><td>{n.state}</td><td>{n.size}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {viewable
+        .filter((c) => resources[c.cloud])
+        .map((c) => {
+          const meta = CLOUD_META[c.cloud];
+          const list = resources[c.cloud];
+          const ctx = {
+            cap: c,
+            readOnly,
+            deprov,
+            onDep: (node) => deprovision(c.cloud, node),
+            editing,
+            saving,
+            onEdit: startEdit,
+          };
+          const cols = meta.columns(ctx);
+          return (
+            <div className="card" key={c.cloud}>
+              <h2>{meta.label} resources ({list[meta.regionKey]})</h2>
+              <table>
+                <thead>
+                  <tr>{cols.map((col) => <th key={col.header}>{col.header}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {list.nodes.map((n) => (
+                    <React.Fragment key={n.id}>
+                      <tr>
+                        {cols.map((col) => <td key={col.header}>{col.render(n)}</td>)}
+                      </tr>
+                      {editing === n.id && meta.update && (
+                        <tr className="edit-row">
+                          <td colSpan={cols.length}>
+                            <div className="edit-form">
+                              <label>Name<input value={editDraft.name || ""} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} /></label>
+                              <label>New size id<input value={editDraft.newSizeId || ""} onChange={(e) => setEditDraft({ ...editDraft, newSizeId: e.target.value })} placeholder="e.g. t3.small" /></label>
+                              <label>Memory (MiB)<input type="number" value={editDraft.memoryMib || ""} onChange={(e) => setEditDraft({ ...editDraft, memoryMib: e.target.value })} /></label>
+                              <label>Tag key<input value={editDraft.tagKey || ""} onChange={(e) => setEditDraft({ ...editDraft, tagKey: e.target.value })} /></label>
+                              <label>Tag value<input value={editDraft.tagValue || ""} onChange={(e) => setEditDraft({ ...editDraft, tagValue: e.target.value })} /></label>
+                              <span className="edit-actions">
+                                <button className="primary" disabled={!!saving} onClick={() => saveEdit(c.cloud, n)}>
+                                  {saving ? "Saving…" : "Save"}
+                                </button>
+                                <button disabled={!!saving} onClick={cancelEdit}>Cancel</button>
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
     </div>
   );
 }

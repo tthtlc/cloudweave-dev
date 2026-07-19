@@ -12,22 +12,52 @@ from app.idp_login import ProvisionerAuth
 
 log = logging.getLogger(__name__)
 
-# Role -> OpenFGA (relation, object) used for both authZ checks and role
-# assignment. The portal role is a single platform-level role; OpenFGA models
-# roles per-tenant (see openfga_postgres/openfga_bootstrap.py). We map the
-# portal role to the strongest relation it grants:
-#   superadmin -> can_manage_platform on platform:main (break-glass owner on tenants)
-#   owner     -> owner on both tenants
-#   admin     -> admin on both tenants
-#   viewer    -> viewer on both tenants
-# For per-cloud endpoints (resources/provision) we check the finer-grained
-# can_use / can_provision relations on the cloud's backend object directly.
-ROLE_TUPLES = {
-    "superadmin": ("can_manage_platform", "platform:main"),
-    "owner": [("owner", "tenant:aws"), ("owner", "tenant:nutanix")],
-    "admin": [("admin", "tenant:aws"), ("admin", "tenant:nutanix")],
-    "viewer": [("viewer", "tenant:aws"), ("viewer", "tenant:nutanix")],
-}
+# Role -> OpenFGA relation used when seeding a portal role into OpenFGA.
+# Roles are PER-TENANT (rbac_design.md §"Role semantics"): an Admin/Owner/Viewer
+# is bound to exactly one tenant and has no authority over any other tenant. The
+# portal's role taxonomy is platform-level, so the tenant is derived from the
+# principal slug (aws-admin -> tenant:aws, ntnx-owner -> tenant:nutanix,
+# aws-dev-admin -> tenant:aws-dev, ...). A principal with no tenant prefix gets
+# NO tenant tuple (it must be explicitly assigned to a tenant by a SuperAdmin
+# before it can read/provision anything) — this is the least-privilege default
+# the design requires and closes the previous "admin on both tenants" over-grant
+# that let aws-admin provision Nutanix.
+#
+#   superadmin -> superadmin on platform:main ONLY (no tenant owner; gets global
+#                read-only via platform.global_reader, can_provision nowhere by
+#                default). Break-glass provisioning still requires an explicit
+#                owner/admin grant on the target tenant.
+#   owner      -> owner on the derived tenant
+#   admin      -> admin on the derived tenant
+#   viewer     -> viewer on the derived tenant
+ROLE_RELATION = {"owner": "owner", "admin": "admin", "viewer": "viewer"}
+
+# Tenants that currently exist in the OpenFGA store, keyed by the principal-slug
+# prefix used in LLDAP (setup.sh creates aws-*/ntnx-* users). Used to validate a
+# derived tenant before writing a tuple (a principal like "foo-admin" with an
+# unknown tenant prefix writes nothing rather than creating a phantom
+# tenant:foo).
+TENANT_BY_SLUG = {"aws": "aws", "ntnx": "nutanix"}
+KNOWN_TENANTS = tuple(TENANT_BY_SLUG.values())
+
+
+def _tenant_for_principal(principal: str) -> str | None:
+    """Derive the tenant id from a principal slug, e.g. aws-admin -> aws,
+    ntnx-owner -> nutanix, aws-dev-viewer -> aws-dev. Returns None for
+    superadmin or any principal whose tenant is not known."""
+    if principal == "superadmin":
+        return None
+    # Match everything up to the trailing -<role>.
+    for role in ("owner", "admin", "viewer"):
+        if principal.endswith(f"-{role}"):
+            slug = principal[: -(len(role) + 1)]
+            # Direct tenant id (e.g. "aws") or slug alias (e.g. "ntnx" -> "nutanix").
+            if slug in TENANT_BY_SLUG:
+                return TENANT_BY_SLUG[slug]
+            if slug in KNOWN_TENANTS:
+                return slug
+            return None
+    return None
 
 # Per-cloud authZ relations (see VALIDATION_CHECKS in openfga_bootstrap.py and
 # libcloud.rest/app/auth/policy.py). The REST API gates read operations on
@@ -37,6 +67,7 @@ ROLE_TUPLES = {
 CLOUD_OBJECTS = {"aws": "aws_region:aws", "nutanix": "nutanix_cluster:nutanix"}
 VIEW_RELATION = "can_read"        # viewer+: enumerate / read resources
 PROVISION_RELATION = "can_provision"  # admin+: provision
+UPDATE_RELATION = "can_update"    # admin+: edit / update VM parameters (owner ∪ admin)
 
 # user->role tuples on tenant:/platform: that represent a portal role. These
 # are the only tuples clear_roles() will revoke (it leaves structural/infra
@@ -130,22 +161,26 @@ class FgaService:
         self._post("/write", payload)
 
     def assign_role(self, principal: str, role: str) -> None:
-        """Seed the OpenFGA tuples for a portal role. Idempotent at the model
-        level (OpenFGA dedupes identical tuples)."""
-        mapping = ROLE_TUPLES.get(role)
-        if not mapping:
-            return
+        """Seed the OpenFGA tuple(s) for a portal role. PER-TENANT
+        (rbac_design.md): owner/admin/viewer are written on the single tenant
+        derived from the principal slug, never on both tenants. superadmin is
+        written only on platform:main (no tenant owner). Idempotent at the model
+        level (OpenFGA dedupes identical tuples). A principal with no
+        resolvable tenant (e.g. a brand-new federated user) gets no tuple — it
+        must be explicitly assigned to a tenant first."""
         user = f"user:{principal}"
         if role == "superadmin":
-            self._write([{"user": user, "relation": "can_manage_platform", "object": "platform:main"}])
-            self._write([
-                {"user": user, "relation": "owner", "object": "tenant:aws"},
-                {"user": user, "relation": "owner", "object": "tenant:nutanix"},
-            ])
+            self._write([{"user": user, "relation": "superadmin", "object": "platform:main"}])
             return
-        # owner/admin/viewer: write the relation on both tenants.
-        for relation, obj in mapping:
-            self._write([{"user": user, "relation": relation, "object": obj}])
+        relation = ROLE_RELATION.get(role)
+        if not relation:
+            return
+        tenant = _tenant_for_principal(principal)
+        if not tenant:
+            # No tenant binding -> no auto-grant. The user is denied at every
+            # tenant until a SuperAdmin assigns them to one.
+            return
+        self._write([{"user": user, "relation": relation, "object": f"tenant:{tenant}"}])
 
     def _delete(self, triples: list[dict[str, str]]) -> None:
         if not self.enabled or not triples:
@@ -224,3 +259,30 @@ class FgaService:
         if not obj:
             return False
         return self.check(f"user:{principal}", PROVISION_RELATION, obj)
+
+    def can_update(self, principal: str, cloud: str) -> bool:
+        # Edit / update VM parameters. Owner ∪ Admin (and per-class Admin via the
+        # resource_class arm on the backend). Viewer and SuperAdmin (by default)
+        # cannot (rbac_design.md changelog #10).
+        obj = CLOUD_OBJECTS.get(cloud)
+        if not obj:
+            return False
+        return self.check(f"user:{principal}", UPDATE_RELATION, obj)
+
+    # The clouds the portal offers resource dashboards for. Keep in sync with
+    # CLOUD_OBJECTS and the backends seeded by openfga_bootstrap.py.
+    SUPPORTED_CLOUDS = ("aws", "nutanix")
+
+    def cloud_capabilities(self, principal: str) -> list[dict[str, Any]]:
+        """Live per-cloud can_view/can_provision/can_update for a principal. The
+        portal renders only the clouds the user can access, so the UI always
+        matches the user's tenant (rbac_design.md)."""
+        return [
+            {
+                "cloud": cloud,
+                "canView": self.can_view(principal, cloud),
+                "canProvision": self.can_provision(principal, cloud),
+                "canUpdate": self.can_update(principal, cloud),
+            }
+            for cloud in self.SUPPORTED_CLOUDS
+        ]
