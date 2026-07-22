@@ -45,13 +45,15 @@ FGA_API_OBJECT="${FGA_API_OBJECT:-libcloud_api:main}"
 
 # OpenFGA JWKS freshness.
 #
-# As of OpenFGA v1.8.8+ (we pin v1.8.16 — see openfga_postgres/Dockerfile), the
+# As of OpenFGA v1.16.0 (we pin v1.16.0 — see openfga_postgres/Dockerfile), the
 # OIDC authenticator sets `RefreshUnknownKID: true` (rate-limited to 1/min) on
 # the keyfunc JWKS cache, plus a 48h periodic refresh. So when Dex rotates its
 # signing key (every 6h, storage: memory), the next token Dex mints carries a
 # `kid` OpenFGA's cache doesn't know, and OpenFGA refetches Dex's JWKS itself
 # — no container restart needed. This is the suggestion.md "dynamically pull
-# keys" best practice, done in-process.
+# keys" best practice, done in-process. The fix is PR #3101, first released in
+# v1.16.0 (NOT v1.8.x — the older "v1.8.8 already has this" claim was wrong;
+# v1.8.16 predates PR #3101 by ~11 months and never received a backport).
 #
 # The restart-based openfga_ensure_fresh.sh workaround below is therefore a
 # FALLBACK, not the primary mechanism. It is opt-in: set OPENFGA_ENSURE_FRESH=1
@@ -62,7 +64,7 @@ if [[ "${OPENFGA_SKIP_RESTART:-0}" != "1" && "${OPENFGA_ENSURE_FRESH:-0}" == "1"
   _ief="${SCRIPT_DIR}/openfga_ensure_fresh.sh"
   if [[ ! -x "${_ief}" ]]; then
     echo "[common] WARN: ${_ief} missing or not executable — OpenFGA JWKS refresh skipped." >&2
-    echo "[common]        (OpenFGA v1.8.8+ self-refreshes JWKS on kid-miss, so this is only a fallback.)" >&2
+    echo "[common]        (OpenFGA v1.16.0+ self-refreshes JWKS on kid-miss, so this is only a fallback.)" >&2
   elif ! bash "${_ief}" >/dev/null; then
     # stdout suppressed (throttle-skip chatter); stderr from the helper is shown.
     echo "[common] WARN: openfga_ensure_fresh.sh returned non-zero — OpenFGA JWKS may be stale." >&2

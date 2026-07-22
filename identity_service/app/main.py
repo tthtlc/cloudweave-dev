@@ -247,61 +247,63 @@ def create_app() -> FastAPI:
         fga.delete_tuples(triples)
         return {"deleted": len(triples)}
 
-    @app.get("/api/resources/aws")
-    def aws_resources(req: Request):
+    # --- resource / provision / deprovision / update ------------------------
+    # These four verbs are cloud-parametric: AWS and Nutanix share one code
+    # path. Each route runs the OpenFGA check for the requested cloud, then
+    # delegates to the LibcloudProxy method (which replays the per-cloud
+    # provision_<cloud>.sh / deprovision_<cloud>.sh script or the libcloud REST
+    # PATCH). The legacy /api/<verb>/aws routes below are kept as thin aliases
+    # for backward compatibility with older portal builds.
+
+    SUPPORTED_CLOUDS = ("aws", "nutanix")
+
+    def _require_cloud(cloud: str) -> None:
+        if cloud not in SUPPORTED_CLOUDS:
+            raise APIError("not_supported", f"unsupported cloud: {cloud}", 400, {"cloud": cloud})
+
+    @app.get("/api/resources/{cloud}")
+    def resources_by_cloud(cloud: str, req: Request):
+        _require_cloud(cloud)
         claims = _require_session(req)
         principal = _principal(claims)
-        if not fga.can_view(principal, "aws"):
-            raise APIError("authz_forbidden", "Cannot view AWS resources", 403)
-        return proxy.list_nodes("aws")
+        if not fga.can_view(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot view {cloud} resources", 403)
+        return proxy.list_nodes(cloud)
 
-    @app.get("/api/resources/nutanix")
-    def nutanix_resources(req: Request):
+    @app.post("/api/provision/{cloud}")
+    def provision_by_cloud(cloud: str, body: ProvisionRequest, req: Request):
+        _require_cloud(cloud)
         claims = _require_session(req)
         principal = _principal(claims)
-        if not fga.can_view(principal, "nutanix"):
-            raise APIError("authz_forbidden", "Cannot view Nutanix resources", 403)
-        return proxy.list_nodes("nutanix")
+        if not fga.can_provision(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot provision {cloud}", 403)
+        return proxy.provision(cloud, body.vmName or f"libcloud-{'demo' if cloud == 'aws' else 'ntnx'}-{int(__import__('time').time())}")
 
-    @app.post("/api/provision/aws")
-    def provision_aws(body: ProvisionRequest, req: Request):
-        claims = _require_session(req)
-        principal = _principal(claims)
-        if not fga.can_provision(principal, "aws"):
-            raise APIError("authz_forbidden", "Cannot provision AWS", 403)
-        return proxy.provision("aws", body.vmName or f"libcloud-demo-{int(__import__('time').time())}")
-
-    @app.post("/api/provision/nutanix")
-    def provision_nutanix(body: ProvisionRequest, req: Request):
-        claims = _require_session(req)
-        principal = _principal(claims)
-        if not fga.can_provision(principal, "nutanix"):
-            raise APIError("authz_forbidden", "Cannot provision Nutanix", 403)
-        return proxy.provision("nutanix", body.vmName or f"libcloud-ntnx-{int(__import__('time').time())}")
-
-    @app.post("/api/deprovision/aws")
-    def deprovision_aws(body: DeprovisionRequest, req: Request):
+    @app.post("/api/deprovision/{cloud}")
+    def deprovision_by_cloud(cloud: str, body: DeprovisionRequest, req: Request):
         # Deprovisioning is a write scope (compute:node:delete), so we require
         # the same can_provision grant as provisioning. The proxy then shells
-        # out to test_script/scripts/deprovision_aws.sh, which re-runs the FGA
-        # check and DELETEs /v1/compute/nodes/{id} — the script is the single
+        # out to test_script/scripts/deprovision_<cloud>.sh, which re-runs the
+        # FGA check and DELETEs /v1/compute/nodes/{id} — the script is the single
         # source of truth for the deprovisioning sequence.
+        _require_cloud(cloud)
         claims = _require_session(req)
         principal = _principal(claims)
-        if not fga.can_provision(principal, "aws"):
-            raise APIError("authz_forbidden", "Cannot deprovision AWS", 403)
-        return proxy.deprovision("aws", body.vmName, body.vmId)
+        if not fga.can_provision(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot deprovision {cloud}", 403)
+        return proxy.deprovision(cloud, body.vmName, body.vmId)
 
-    @app.post("/api/update/aws")
-    def update_aws(body: UpdateRequest, req: Request):
+    @app.post("/api/update/{cloud}")
+    def update_by_cloud(cloud: str, body: UpdateRequest, req: Request):
         # Editing a VM is a write scope distinct from create/delete. We require
         # the OpenFGA can_update grant (Owner ∪ Admin; Viewer and SuperAdmin-by-
         # default cannot — rbac_design.md changelog #10). The proxy then PATCHes
         # /v1/compute/nodes/{id} on the libcloud REST API.
+        _require_cloud(cloud)
         claims = _require_session(req)
         principal = _principal(claims)
-        if not fga.can_update(principal, "aws"):
-            raise APIError("authz_forbidden", "Cannot update AWS VM", 403)
+        if not fga.can_update(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot update {cloud} VM", 403)
         updates = {
             "name": body.name,
             "new_size_id": body.newSizeId,
@@ -309,7 +311,14 @@ def create_app() -> FastAPI:
             "tag_key": body.tagKey,
             "tag_value": body.tagValue,
         }
-        return proxy.update_node("aws", body.vmId, updates)
+        return proxy.update_node(cloud, body.vmId, updates)
+
+    # --- legacy per-cloud routes removed ------------------------------------
+    # The cloud-parametric routes above (e.g. /api/resources/{cloud}) already
+    # match /api/resources/aws and /api/resources/nutanix, so explicit per-cloud
+    # aliases would be unreachable dead code. Older portal builds that still
+    # POST to /api/provision/aws etc. keep working because {cloud} captures
+    # "aws" | "nutanix".
 
     return app
 

@@ -49,17 +49,23 @@ services:
       LIBCLOUD_REST_URL: http://libcloud-rest-api:8765
       DEX_URL: http://dex:5556
       LIBCLOUD_OIDC_CLIENT_ID: libcloud-rest
+      # RUNTIME portal-login callback. The browser lands here after Dex
+      # authorization; this port is published by THIS container (ports: above)
+      # and served by the identity service's /oauth/callback route. This is
+      # distinct from the BOOTSTRAP/host-script callback (8767) used by
+      # test_script/scripts/idp_login.py — see dex/config.template.yaml. Do
+      # NOT change this to 8767; 8766 is the runtime portal callback.
       LIBCLOUD_OIDC_REDIRECT_URI: http://127.0.0.1:8766/oauth/callback
       # Provisioner service-account login (libcloud-rest-audience token). The
       # identity service performs a Dex LDAP login as the per-cloud admin to
       # obtain the token it forwards to the libcloud REST API for both provision
-      # and deprovision. Provide these via the host environment or a .env file
-      # next to docker-compose.yml; defaults to the dev password when
-      # ALLOW_DEV_DEFAULTS=1 is set in common.sh on the host side.
-      LIBCLOUD_USER_AWS_ADMIN: ${LIBCLOUD_USER_AWS_ADMIN:-aws-admin}
-      LIBCLOUD_PASSWORD_AWS_ADMIN: ${LIBCLOUD_PASSWORD_AWS_ADMIN:-}
-      LIBCLOUD_USER_NTNX_ADMIN: ${LIBCLOUD_USER_NTNX_ADMIN:-ntnx-admin}
-      LIBCLOUD_PASSWORD_NTNX_ADMIN: ${LIBCLOUD_PASSWORD_NTNX_ADMIN:-}
+      # and deprovision, AND to authorize OpenFGA /check calls (OpenFGA validates
+      # the Dex JWT via JWKS). The LIBCLOUD_USER_*_ADMIN and
+      # LIBCLOUD_PASSWORD_*_ADMIN values come from ../dex/generated/dex.env
+      # (loaded above via env_file) — do NOT redeclare them here with ${VAR:-}
+      # substitution, because docker compose resolves ${VAR:-} from the host env
+      # / compose-dir .env (which don't carry them) and `environment:` would
+      # then override the real dex.env values with empty strings.
       AWS_REGION: ap-southeast-1
       NUTANIX_HOST: host.docker.internal
       NUTANIX_PORT: "9440"
@@ -68,14 +74,16 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
       SESSION_SECURE: "false"
       SESSION_SAMESITE: lax
-      # Deprovisioning shells out to test_script/scripts/deprovision_aws.sh.
+      # Deprovisioning shells out to test_script/scripts/deprovision_<cloud>.sh.
       # The repo's scripts dir is mounted at /opt/libcloud-scripts/scripts (see
       # volumes below) so the script + common.sh are available without baking
       # the whole repo into the image. REPO_ROOT inside the script then resolves
       # to /opt, which has no .env/dex.env/fga.env, so the env vars passed by the
       # identity service (DEX_URL, FGA_*, LIBCLOUD_REST_URL, ...) are the ones
-      # common.sh actually uses.
+      # common.sh actually uses. Both clouds share one code path in the proxy;
+      # only the script path + a few cloud-specific env vars differ.
       DEPROVISION_AWS_SCRIPT: /opt/libcloud-scripts/scripts/deprovision_aws.sh
+      DEPROVISION_NTNX_SCRIPT: /opt/libcloud-scripts/scripts/deprovision_nutanix.sh
     volumes:
       # Only the scripts the identity service shells out to (deprovision_aws.sh
       # + common.sh). Read-only: the service never writes here.

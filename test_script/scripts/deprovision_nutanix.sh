@@ -16,12 +16,16 @@
 # owner/admin hold that — viewers are denied by OpenFGA and by the REST policy.
 #
 # By default it deletes every VM whose name starts with "libcloud-ntnx-"
-# (exactly the VMs provision_nutanix.sh creates). Set VM_NAME to delete one VM.
+# (exactly the VMs provision_nutanix.sh creates). Set VM_NAME to delete one VM
+# by name, or VM_ID to delete one VM by its libcloud REST node id (precise: no
+# list+filter pass, the DELETE is issued directly against that id). VM_ID takes
+# precedence over VM_NAME when both are set.
 #
 # Usage:
 #   LIBCLOUD_USER=ntnx-admin ./scripts/deprovision_nutanix.sh
 #   LIBCLOUD_NTNX_AUTH_BINDING=nutanix-dev LIBCLOUD_USER=ntnx-dev-admin ./scripts/deprovision_nutanix.sh
 #   VM_NAME=libcloud-ntnx-1234567890 LIBCLOUD_USER=ntnx-admin ./scripts/deprovision_nutanix.sh
+#   VM_ID=ntnx-1                     LIBCLOUD_USER=ntnx-admin ./scripts/deprovision_nutanix.sh
 #
 # Prerequisites:
 #   ./setup.sh  and  a token cache for the user at generated/tokens/<user>.json
@@ -160,26 +164,38 @@ step "3" "List compute nodes (curl GET /v1/compute/nodes)"
 NODES=$(rest GET "/v1/compute/nodes")
 printf '%s\n' "${NODES}" | jq .
 
-step "4" "Delete libcloud Nutanix VMs (curl DELETE /v1/compute/nodes/{id})"
-VM_NAME_FILTER="${VM_NAME:-}"
-IDS=$(printf '%s' "${NODES}" | jq -r --arg filter "${VM_NAME_FILTER}" '
-  (.data // .) | .[] | select(.id and .name) |
-  if ($filter | length) > 0
-  then select(.name == $filter)
-  else select(.name | startswith("libcloud-ntnx-"))
-  end | "\(.id)\t\(.name)"' 2>/dev/null || true)
-
-if [[ -z "${IDS}" ]]; then
-  echo "No matching libcloud Nutanix VMs found to delete."
+# VM_ID: precise single-VM delete — skip the list/filter pass and DELETE the
+# exact id the caller supplied. This is what the portal's per-row Deprovision
+# button uses (it already has the VM id from GET /v1/compute/nodes). VM_ID takes
+# precedence over VM_NAME when both are set.
+VM_ID_FILTER="${VM_ID:-}"
+if [[ -n "${VM_ID_FILTER}" ]]; then
+  step "4" "Delete libcloud Nutanix VM by id (curl DELETE /v1/compute/nodes/${VM_ID_FILTER})"
+  echo "Deleting node id=${VM_ID_FILTER}"
+  rest DELETE "/v1/compute/nodes/${VM_ID_FILTER}" | jq . 2>/dev/null || true
+  echo "Deleted 1 libcloud Nutanix VM by id (${VM_ID_FILTER})."
 else
-  count=0
-  while IFS=$'\t' read -r id name; do
-    [[ -z "${id}" ]] && continue
-    count=$((count + 1))
-    echo "Deleting node id=${id} name=${name}"
-    rest DELETE "/v1/compute/nodes/${id}" | jq . 2>/dev/null || true
-  done <<<"${IDS}"
-  echo "Deleted ${count} libcloud Nutanix VM(s)."
+  step "4" "Delete libcloud Nutanix VMs (curl DELETE /v1/compute/nodes/{id})"
+  VM_NAME_FILTER="${VM_NAME:-}"
+  IDS=$(printf '%s' "${NODES}" | jq -r --arg filter "${VM_NAME_FILTER}" '
+    (.data // .) | .[] | select(.id and .name) |
+    if ($filter | length) > 0
+    then select(.name == $filter)
+    else select(.name | startswith("libcloud-ntnx-"))
+    end | "\(.id)\t\(.name)"' 2>/dev/null || true)
+
+  if [[ -z "${IDS}" ]]; then
+    echo "No matching libcloud Nutanix VMs found to delete."
+  else
+    count=0
+    while IFS=$'\t' read -r id name; do
+      [[ -z "${id}" ]] && continue
+      count=$((count + 1))
+      echo "Deleting node id=${id} name=${name}"
+      rest DELETE "/v1/compute/nodes/${id}" | jq . 2>/dev/null || true
+    done <<<"${IDS}"
+    echo "Deleted ${count} libcloud Nutanix VM(s)."
+  fi
 fi
 
 echo

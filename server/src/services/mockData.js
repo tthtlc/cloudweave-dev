@@ -45,6 +45,33 @@ export const MOCK_USERS = [
     linkedIdentities: ["github:11111"],
     createdAt: "2025-04-20T00:00:00Z",
   },
+  {
+    internalUserId: "int-owner-ntnx-0004",
+    email: "ntnx-owner@libcloud.local",
+    displayName: "Nutanix Tenant Owner",
+    role: "owner",
+    tenant: "nutanix",
+    linkedIdentities: ["google:108214000000000000004"],
+    createdAt: "2025-05-01T00:00:00Z",
+  },
+  {
+    internalUserId: "int-admin-ntnx-0005",
+    email: "ntnx-admin@libcloud.local",
+    displayName: "Nutanix Cloud Admin",
+    role: "admin",
+    tenant: "nutanix",
+    linkedIdentities: ["github:22222", "google:108214000000000000005"],
+    createdAt: "2025-05-02T00:00:00Z",
+  },
+  {
+    internalUserId: "int-viewer-ntnx-0006",
+    email: "ntnx-viewer@libcloud.local",
+    displayName: "Nutanix Read-only Viewer",
+    role: "viewer",
+    tenant: "nutanix",
+    linkedIdentities: ["github:33333"],
+    createdAt: "2025-05-03T00:00:00Z",
+  },
 ];
 
 // Seed OpenFGA tuples for the superadmin tuples screen in mock mode.
@@ -81,22 +108,22 @@ export const MOCK_NUTANIX_RESOURCES = {
 };
 
 // Simulated deprovision result. The real backend shells out to
-// test_script/scripts/deprovision_aws.sh (curl DELETE /v1/compute/nodes/{id}
+// test_script/scripts/deprovision_<cloud>.sh (curl DELETE /v1/compute/nodes/{id}
 // after the OpenFGA can_provision check); the mock just reports success.
-export const MOCK_DEPROVISION_RESULT = (vmId, vmName) => ({
-  provider: "aws",
+export const MOCK_DEPROVISION_RESULT = (provider, vmId, vmName) => ({
+  provider,
   vmId: vmId || "",
   vmName: vmName || "",
   status: "deprovisioned",
-  message: `Deprovisioned ${vmId || vmName} via deprovision_aws.sh (mock).`,
+  message: `Deprovisioned ${vmId || vmName} via deprovision_${provider}.sh (mock).`,
   exitCode: 0,
 });
 
 // Simulated update (edit) result. The real backend re-runs the OpenFGA
 // can_update check then PATCHes /v1/compute/nodes/{id} (NodeUpdateRequest); the
 // mock just reports success and applies the edited fields to the in-memory node.
-export const MOCK_UPDATE_RESULT = (vmId, fields) => ({
-  provider: "aws",
+export const MOCK_UPDATE_RESULT = (provider, vmId, fields) => ({
+  provider,
   vmId: vmId || "",
   status: "updated",
   message: `Updated VM ${vmId || ""} via PATCH /v1/compute/nodes/{id} (mock).`,

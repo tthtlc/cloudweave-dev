@@ -20,7 +20,17 @@ DEX_ISSUER = os.environ.get("DEX_ISSUER_URL", f"{DEX_URL}/dex/").rstrip("/")
 
 CLIENT_ID = os.environ.get("LIBCLOUD_OIDC_CLIENT_ID", "libcloud-rest")
 CLIENT_SECRET = os.environ.get("LIBCLOUD_OIDC_CLIENT_SECRET", "")
-REDIRECT_URI = os.environ.get("LIBCLOUD_OIDC_REDIRECT_URI", "http://127.0.0.1:8766/oauth/callback")
+# Default callback port is 8767, NOT 8766. idp_login.py binds a local HTTP
+# server on this port to capture the OAuth authorization code, and 8766 is
+# published by the `identity-service` container (identity_service/docker-
+# compose.yml) for the RUNTIME portal-login callback. Using 8766 here collided
+# with identity-service ("[Errno 98] Address already in use") whenever a
+# bootstrap/host script login ran while identity-service was up — e.g.
+# setup.sh's superadmin_auth.sh step. 8767 is registered on the libcloud-rest
+# Dex client (dex/config.template.yaml) and is not published by any container,
+# so it is always free on the host. Override via LIBCLOUD_OIDC_REDIRECT_URI if
+# you need a different callback (must be a Dex-registered redirect URI).
+REDIRECT_URI = os.environ.get("LIBCLOUD_OIDC_REDIRECT_URI", "http://127.0.0.1:8767/oauth/callback")
 TOKEN_CACHE_DIR = os.environ.get("IDP_TOKEN_CACHE_DIR", "generated/tokens")
 VERBOSE = os.environ.get("IDP_LOGIN_VERBOSE", os.environ.get("VERBOSE", "")).lower() in {
     "1",
@@ -178,7 +188,7 @@ def dex_login(username: str, password: str) -> dict:
     _CallbackHandler.auth_code = ""
     _CallbackHandler.error = ""
 
-    server = HTTPServer(("127.0.0.1", urllib.parse.urlparse(REDIRECT_URI).port or 8766), _CallbackHandler)
+    server = HTTPServer(("127.0.0.1", urllib.parse.urlparse(REDIRECT_URI).port or 8767), _CallbackHandler)
     thread = Thread(target=server.handle_request, daemon=True)
     thread.start()
 

@@ -45,8 +45,21 @@ staticClients:
     name: libcloud REST API
     secret: kPV2bAbb0oOIeUqqvAlZAvrZtqbOULlPILWZn4f5egk
     redirectURIs:
+      # Runtime portal-login callback — the browser lands here after Dex
+      # authorization; identity-service (identity_service/docker-compose.yml)
+      # publishes :8766 and serves /oauth/callback. Keep this one on 8766.
       - http://127.0.0.1:8766/oauth/callback
+      # libcloud-rest-api itself (port 8765) — legacy/alternate callback.
       - http://localhost:8765/oauth/callback
+      # Bootstrap + host-script callback (test_script/scripts/idp_login.py,
+      # used by superadmin_auth.sh during setup.sh and by common.sh's
+      # idp_login() for provisioning scripts). idp_login.py binds a local
+      # HTTP server on this port to capture the OAuth code; it MUST NOT
+      # collide with identity-service's published :8766 (which previously
+      # caused "[Errno 98] Address already in use" during setup.sh when
+      # identity-service was already running). 8767 is not published by any
+      # container, so it is always free on the host.
+      - http://127.0.0.1:8767/oauth/callback
   - id: libcloud-portal
     name: libcloud Role Portal
     secret: l33WEHol5lO3CkSXZv7Bw14587VgIHWB_YbxO0oll74

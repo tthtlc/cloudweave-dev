@@ -90,23 +90,25 @@ class Settings(BaseSettings):
         # parents[2] is the repo root that contains test_script/.
         if not self.repo_root:
             self.repo_root = str(Path(__file__).resolve().parents[2])
+        scripts = Path(self.repo_root) / "test_script" / "scripts"
         if not self.deprovision_aws_script:
-            self.deprovision_aws_script = str(
-                Path(self.repo_root) / "test_script" / "scripts" / "deprovision_aws.sh"
-            )
+            self.deprovision_aws_script = str(scripts / "deprovision_aws.sh")
+        if not self.deprovision_ntnx_script:
+            self.deprovision_ntnx_script = str(scripts / "deprovision_nutanix.sh")
         return self
 
     # --- libcloud REST API (cloud orchestration) ---
     libcloud_rest_url: str = "http://libcloud-rest-api:8765"
 
-    # --- Deprovisioning via test_script/scripts/deprovision_aws.sh ---
-    # The identity service shells out to this script (curl DELETE
-    # /v1/compute/nodes/{id}) rather than reimplementing the flow, so the
-    # script stays the single source of truth for the deprovisioning sequence.
-    # Defaults to <repo_root>/test_script/scripts/deprovision_aws.sh where
+    # --- Deprovisioning via test_script/scripts/deprovision_<cloud>.sh ---
+    # The identity service shells out to these scripts (curl DELETE
+    # /v1/compute/nodes/{id}) rather than reimplementing the flow, so each
+    # script stays the single source of truth for its deprovisioning sequence.
+    # Defaults to <repo_root>/test_script/scripts/deprovision_<cloud>.sh where
     # repo_root is two parents above the identity_service package.
     repo_root: str = ""
     deprovision_aws_script: str = ""
+    deprovision_ntnx_script: str = ""
     # Seconds before a deprovision_aws.sh run is killed (curl DELETE + FGA
     # checks should be well under this).
     deprovision_timeout_seconds: int = 180

@@ -15,9 +15,13 @@ import {
 // Clone so mock mutations don't leak across HMR reloads.
 let users = MOCK_USERS.map((u) => ({ ...u, linkedIdentities: [...u.linkedIdentities] }));
 let mockTuples = MOCK_TUPLES.map((t) => ({ ...t }));
-// Mutable copy of the AWS resource list so the Deprovision button can remove a
-// row in mock mode (mirrors the backend's deprovision_aws.sh DELETE).
-let awsNodes = MOCK_AWS_RESOURCES.nodes.map((n) => ({ ...n }));
+// Mutable copy of each cloud's resource list so the Deprovision/Edit buttons
+// can mutate rows in mock mode (mirrors the backend: deprovision_<cloud>.sh
+// DELETE /v1/compute/nodes/{id}, PATCH /v1/compute/nodes/{id}).
+let cloudNodes = {
+  aws: MOCK_AWS_RESOURCES.nodes.map((n) => ({ ...n })),
+  nutanix: MOCK_NUTANIX_RESOURCES.nodes.map((n) => ({ ...n })),
+};
 let currentSession = null;
 
 const delay = (ms = 250) => new Promise((r) => setTimeout(r, ms));
@@ -32,18 +36,56 @@ function findCollapseCandidates(external) {
 
 // Per-cloud capabilities for a mock user, mirroring the backend's live OpenFGA
 // derivation (rbac_design.md: roles are per-tenant). superadmin gets global
-// read-only (canView both, canProvision none); a tenant user only sees its own
-// cloud; a user with no tenant (e.g. a brand-new viewer) sees nothing.
+// read-only (canView both, canProvision/canUpdate none); a tenant user only
+// sees its own cloud; owner/admin get canProvision AND canUpdate on their
+// tenant (so the per-row Edit + Deprovision buttons render); a viewer gets
+// canView only. A user with no tenant sees nothing.
 function mockClouds(user) {
   const all = ["aws", "nutanix"];
-  if (!user) return all.map((cloud) => ({ cloud, canView: false, canProvision: false }));
-  if (user.role === "superadmin") return all.map((cloud) => ({ cloud, canView: true, canProvision: false }));
+  if (!user) return all.map((cloud) => ({ cloud, canView: false, canProvision: false, canUpdate: false }));
+  if (user.role === "superadmin") return all.map((cloud) => ({ cloud, canView: true, canProvision: false, canUpdate: false }));
   const t = user.tenant;
-  const canProv = user.role === "owner" || user.role === "admin";
-  return all.map((cloud) => ({ cloud, canView: cloud === t, canProvision: cloud === t && canProv }));
+  const canWrite = user.role === "owner" || user.role === "admin";
+  return all.map((cloud) => ({
+    cloud,
+    canView: cloud === t,
+    canProvision: cloud === t && canWrite,
+    canUpdate: cloud === t && canWrite,
+  }));
 }
 
 export const mockApi = {
+  // Mock-only: list the pregenerated users so the login page can offer a
+  // "sign in as" picker in mock mode (mirrors the LLDAP users Dex federates).
+  // Real mode never calls this; the backend authenticates via Dex.
+  async listMockUsers() {
+    await delay(50);
+    return users.map((u) => ({
+      internalUserId: u.internalUserId,
+      email: u.email,
+      displayName: u.displayName,
+      role: u.role,
+      tenant: u.tenant,
+    }));
+  },
+
+  // Mock-only: sign in directly as one of the pregenerated users. Lets the
+  // portal demonstrate the per-role owner/admin/viewer screens (and the
+  // per-tenant AWS vs Nutanix dashboards) without a live Dex/LLDAP.
+  async mockLoginAs(internalUserId) {
+    await delay(150);
+    const target = users.find((u) => u.internalUserId === internalUserId);
+    if (!target) throw new Error("404 unknown mock user");
+    currentSession = {
+      internalUserId: target.internalUserId,
+      role: target.role,
+      linkedIdentities: [...target.linkedIdentities],
+      email: target.email,
+      clouds: mockClouds(target),
+    };
+    return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
+  },
+
   async getSession() {
     await delay();
     if (!currentSession) throw new Error("401 no session");
@@ -200,12 +242,20 @@ export const mockApi = {
 
   async awsResources() {
     await delay();
-    return { region: MOCK_AWS_RESOURCES.region, nodes: awsNodes.map((n) => ({ ...n })) };
+    return { region: MOCK_AWS_RESOURCES.region, nodes: cloudNodes.aws.map((n) => ({ ...n })) };
   },
 
   async nutanixResources() {
     await delay();
-    return MOCK_NUTANIX_RESOURCES;
+    return { cluster: MOCK_NUTANIX_RESOURCES.cluster, nodes: cloudNodes.nutanix.map((n) => ({ ...n })) };
+  },
+
+  // Cloud-parametric resource list. `cloud` is "aws" | "nutanix". Mirrors the
+  // backend GET /api/resources/<cloud> and the per-cloud region/cluster key.
+  async resources(cloud) {
+    if (cloud === "aws") return this.awsResources();
+    if (cloud === "nutanix") return this.nutanixResources();
+    throw new Error(`404 unknown cloud ${cloud}`);
   },
 
   async provisionAws(payload) {
@@ -218,6 +268,13 @@ export const mockApi = {
     return MOCK_PROVISION_RESULT("nutanix", payload?.vmName || `libcloud-ntnx-${Date.now()}`);
   },
 
+  // Cloud-parametric provision (single code path for both clouds).
+  async provision(cloud, payload) {
+    if (cloud === "aws") return this.provisionAws(payload);
+    if (cloud === "nutanix") return this.provisionNutanix(payload);
+    throw new Error(`404 unknown cloud ${cloud}`);
+  },
+
   async deprovisionAws(payload) {
     await delay(400);
     const vmId = payload?.vmId;
@@ -225,20 +282,62 @@ export const mockApi = {
     // Remove the matching node from the mock list (by id, falling back to name)
     // so a follow-up "View AWS Resources" reflects the deletion — same effect
     // the real backend's deprovision_aws.sh has via DELETE /v1/compute/nodes/{id}.
-    const before = awsNodes.length;
-    awsNodes = awsNodes.filter((n) => {
+    const before = cloudNodes.aws.length;
+    cloudNodes.aws = cloudNodes.aws.filter((n) => {
       const matchById = vmId && n.id === vmId;
       const matchByName = !vmId && vmName && n.name === vmName;
       return !(matchById || matchByName);
     });
-    if (awsNodes.length === before) {
-      return { ...MOCK_DEPROVISION_RESULT(vmId, vmName), status: "failed", message: `No AWS VM matched id=${vmId || ""} name=${vmName || ""} (mock).`, exitCode: 1 };
+    if (cloudNodes.aws.length === before) {
+      return { ...MOCK_DEPROVISION_RESULT("aws", vmId, vmName), status: "failed", message: `No AWS VM matched id=${vmId || ""} name=${vmName || ""} (mock).`, exitCode: 1 };
     }
-    return MOCK_DEPROVISION_RESULT(vmId, vmName);
+    return MOCK_DEPROVISION_RESULT("aws", vmId, vmName);
+  },
+
+  async deprovisionNutanix(payload) {
+    await delay(400);
+    const vmId = payload?.vmId;
+    const vmName = payload?.vmName;
+    const before = cloudNodes.nutanix.length;
+    cloudNodes.nutanix = cloudNodes.nutanix.filter((n) => {
+      const matchById = vmId && n.id === vmId;
+      const matchByName = !vmId && vmName && n.name === vmName;
+      return !(matchById || matchByName);
+    });
+    if (cloudNodes.nutanix.length === before) {
+      return { ...MOCK_DEPROVISION_RESULT("nutanix", vmId, vmName), status: "failed", message: `No Nutanix VM matched id=${vmId || ""} name=${vmName || ""} (mock).`, exitCode: 1 };
+    }
+    return MOCK_DEPROVISION_RESULT("nutanix", vmId, vmName);
+  },
+
+  // Cloud-parametric deprovision (single code path for both clouds).
+  async deprovision(cloud, payload) {
+    if (cloud === "aws") return this.deprovisionAws(payload);
+    if (cloud === "nutanix") return this.deprovisionNutanix(payload);
+    throw new Error(`404 unknown cloud ${cloud}`);
   },
 
   async updateAws(payload) {
     await delay(400);
+    return this._updateCloud("aws", payload);
+  },
+
+  async updateNutanix(payload) {
+    await delay(400);
+    return this._updateCloud("nutanix", payload);
+  },
+
+  // Cloud-parametric update (single code path for both clouds).
+  async update(cloud, payload) {
+    if (cloud === "aws") return this.updateAws(payload);
+    if (cloud === "nutanix") return this.updateNutanix(payload);
+    throw new Error(`404 unknown cloud ${cloud}`);
+  },
+
+  // Shared edit implementation for both clouds: apply the supplied editable
+  // fields to the in-memory node so a follow-up "View <cloud> Resources"
+  // reflects the change — same effect the real backend's PATCH has.
+  async _updateCloud(cloud, payload) {
     const vmId = payload?.vmId;
     if (!vmId) throw new Error("400 vmId is required");
     const fields = {};
@@ -246,11 +345,9 @@ export const mockApi = {
     if (payload?.newSizeId != null) fields.size = payload.newSizeId;
     if (payload?.memoryMib != null) fields.memory_mib = payload.memoryMib;
     if (payload?.tagKey != null) { fields.tag_key = payload.tagKey; fields.tag_value = payload.tagValue || ""; }
-    // Apply the edit to the in-memory node so a follow-up "View AWS Resources"
-    // reflects the change — same effect the real backend's PATCH has.
-    for (const n of awsNodes) {
+    for (const n of cloudNodes[cloud]) {
       if (n.id === vmId) Object.assign(n, fields);
     }
-    return MOCK_UPDATE_RESULT(vmId, fields);
+    return MOCK_UPDATE_RESULT(cloud, vmId, fields);
   },
 };

@@ -52,6 +52,13 @@ trap 'rm -rf "${TMP}"' EXIT
 # --- load environment exactly like the provisioning scripts ---
 # common.sh exports DEX_URL, FGA_API_URL, LIBCLOUD_REST_URL, OIDC client
 # secret, and the per-role LIBCLOUD_PASSWORD_* values from generated/dex.env.
+#
+# common.sh resolves an IdP password for ${LIBCLOUD_USER} at source time and
+# runs under `set -e`; an unresolvable user aborts the WHOLE harness (exit,
+# not a non-zero return, so the `||` below can't catch it). Default a known
+# user here so sourcing succeeds; per-check helpers override LIBCLOUD_USER
+# themselves, so this value only needs to pass the password guard.
+: "${LIBCLOUD_USER:=superadmin}"
 # shellcheck source=scripts/common.sh
 source "${REPO_ROOT}/test_script/scripts/common.sh" >/dev/null 2>&1 || {
   echo "FATAL: cannot source scripts/common.sh — run ./setup.sh first." >&2

@@ -208,27 +208,28 @@ class LibcloudProxy:
         steps.append(f"resolve CLUSTER_ID={cluster_id} IMAGE_ID={image_id} SIZE_ID={size_id} SUBNET_ID={subnet_id}")
         return image_id, size_id, subnet_id, cluster_id
 
-    # --- public: deprovision (shells out to deprovision_aws.sh) ---------------
+    # --- public: deprovision (shells out to deprovision_<cloud>.sh) ----------
     # The portal's per-row Deprovision button calls this. We do NOT reimplement
-    # the curl DELETE flow here; we invoke test_script/scripts/deprovision_aws.sh
+    # the curl DELETE flow here; we invoke test_script/scripts/deprovision_<cloud>.sh
     # so the script remains the single source of truth for the deprovisioning
     # sequence (OpenFGA can_provision check + curl DELETE /v1/compute/nodes/{id}).
+    # One code path serves both AWS and Nutanix; only the script path, the
+    # provisioner user/password, and a few cloud-specific env vars differ
+    # (see _deprovision_env below).
     #
     # The script's require_token() reads a token cache file; we populate one
     # from our own ProvisionerAuth token so the script works without a
     # host-side generated/tokens/<user>.json having been written first.
     def deprovision(self, cloud: str, vm_name: str | None, vm_id: str | None) -> dict[str, Any]:
-        if cloud != "aws":
-            raise APIError("not_supported", f"deprovision not implemented for {cloud}", 400)
         if not vm_id and not vm_name:
             raise APIError("bad_request", "vmId or vmName is required", 400)
 
         s = self._settings()
-        script = s.deprovision_aws_script
+        script = self._deprovision_script(cloud)
         if not script or not os.path.isfile(script):
             raise APIError(
                 "deprovision_script_missing",
-                "deprovision_aws.sh not found on this server",
+                f"deprovision_{cloud}.sh not found on this server",
                 500,
                 {"script": script},
             )
@@ -236,8 +237,8 @@ class LibcloudProxy:
         # Acquire a libcloud-rest-audience token (same one the script would
         # obtain via idp_login.py) and hand it to the script via a temp cache.
         token = self._auth.get_token_full(cloud)
-        cache_dir = tempfile.mkdtemp(prefix="deprovision-tokens-")
-        user = s.provisioner_aws_user or "aws-admin"
+        cache_dir = tempfile.mkdtemp(prefix=f"deprovision-{cloud}-tokens-")
+        user = self._deprovision_user(cloud)
         cache_path = os.path.join(cache_dir, f"{user}.json")
         try:
             with open(cache_path, "w", encoding="utf-8") as fh:
@@ -252,35 +253,7 @@ class LibcloudProxy:
             self._cleanup_cache(cache_path, cache_dir)
             raise APIError("deprovision_token_cache", "could not write token cache", 500) from exc
 
-        env = {
-            "PATH": os.environ.get(
-                "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            ),
-            "HOME": os.environ.get("HOME", "/tmp"),
-            # Suppress common.sh's openfga_ensure_fresh.sh call (the identity
-            # service already keeps OpenFGA's JWKS fresh; the helper is not
-            # mounted in the container and would just emit a warning).
-            "OPENFGA_SKIP_RESTART": "1",
-            "LIBCLOUD_USER": user,
-            # common.sh resolves the IdP password at SOURCE time and `:?`-aborts
-            # if it's empty. We already hold a valid provisioner token (otherwise
-            # get_token_full() above would have raised), so hand the password
-            # through to satisfy that check. The script never logs it.
-            "LIBCLOUD_PASSWORD": s.provisioner_aws_password,
-            "LIBCLOUD_PASSWORD_AWS_ADMIN": s.provisioner_aws_password,
-            "AWS_REGION": s.aws_region,
-            "LIBCLOUD_AWS_AUTH_BINDING": s.aws_auth_binding,
-            "LIBCLOUD_REST_URL": s.libcloud_rest_url,
-            "DEX_URL": s.dex_url,
-            "DEX_TOKEN_URL": s.dex_token_url,
-            "LIBCLOUD_OIDC_CLIENT_ID": s.libcloud_oidc_client_id,
-            "LIBCLOUD_OIDC_CLIENT_SECRET": s.libcloud_oidc_client_secret,
-            "FGA_API_URL": s.fga_api_url,
-            "FGA_STORE_ID": s.fga_store_id,
-            "FGA_MODEL_ID": s.fga_model_id,
-            "FGA_API_OBJECT": "libcloud_api:main",
-            "IDP_TOKEN_CACHE_DIR": cache_dir,
-        }
+        env = self._deprovision_env(cloud, user, cache_dir)
         if vm_id:
             env["VM_ID"] = vm_id
         if vm_name:
@@ -304,7 +277,7 @@ class LibcloudProxy:
         except subprocess.TimeoutExpired as exc:
             raise APIError(
                 "deprovision_timeout",
-                "deprovision_aws.sh timed out",
+                f"deprovision_{cloud}.sh timed out",
                 504,
                 {"timeout_seconds": s.deprovision_timeout_seconds},
             ) from exc
@@ -317,21 +290,94 @@ class LibcloudProxy:
             "vmId": vm_id or "",
             "vmName": vm_name or "",
             "status": "deprovisioned" if ok else "failed",
-            "message": f"deprovision_aws.sh exit={proc.returncode}",
+            "message": f"deprovision_{cloud}.sh exit={proc.returncode}",
             "exitCode": proc.returncode,
             # Truncate so a chatty script run doesn't blow up the JSON response.
             "stdout": (proc.stdout or "")[-4000:],
             "stderr": (proc.stderr or "")[-4000:],
         }
 
+    # --- deprovision helpers (per-cloud script + env) ------------------------
+    @staticmethod
+    def _deprovision_script(cloud: str) -> str:
+        s = get_settings()
+        if cloud == "aws":
+            return s.deprovision_aws_script
+        if cloud == "nutanix":
+            return s.deprovision_ntnx_script
+        return ""
+
+    @staticmethod
+    def _deprovision_user(cloud: str) -> str:
+        s = get_settings()
+        if cloud == "aws":
+            return s.provisioner_aws_user or "aws-admin"
+        if cloud == "nutanix":
+            return s.provisioner_ntnx_user or "ntnx-admin"
+        return "cloud-admin"
+
+    @staticmethod
+    def _deprovision_env(cloud: str, user: str, cache_dir: str) -> dict[str, str]:
+        # Common env shared by both deprovision_<cloud>.sh scripts: PATH/HOME,
+        # the OpenFGA JWKS-refresh skip, the libcloud REST + Dex + FGA endpoints,
+        # and the temp token cache we just populated.
+        s = get_settings()
+        env = {
+            "PATH": os.environ.get(
+                "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ),
+            "HOME": os.environ.get("HOME", "/tmp"),
+            # Suppress common.sh's openfga_ensure_fresh.sh call (the identity
+            # service already keeps OpenFGA's JWKS fresh; the helper is not
+            # mounted in the container and would just emit a warning).
+            "OPENFGA_SKIP_RESTART": "1",
+            "LIBCLOUD_USER": user,
+            "LIBCLOUD_REST_URL": s.libcloud_rest_url,
+            "DEX_URL": s.dex_url,
+            "DEX_TOKEN_URL": s.dex_token_url,
+            "LIBCLOUD_OIDC_CLIENT_ID": s.libcloud_oidc_client_id,
+            "LIBCLOUD_OIDC_CLIENT_SECRET": s.libcloud_oidc_client_secret,
+            "FGA_API_URL": s.fga_api_url,
+            "FGA_STORE_ID": s.fga_store_id,
+            "FGA_MODEL_ID": s.fga_model_id,
+            "FGA_API_OBJECT": "libcloud_api:main",
+            "IDP_TOKEN_CACHE_DIR": cache_dir,
+        }
+        if cloud == "aws":
+            # common.sh resolves the IdP password at SOURCE time and `:?`-aborts
+            # if it's empty. We already hold a valid provisioner token, so hand
+            # the password through to satisfy that check. The script never logs it.
+            env.update(
+                {
+                    "LIBCLOUD_PASSWORD": s.provisioner_aws_password,
+                    "LIBCLOUD_PASSWORD_AWS_ADMIN": s.provisioner_aws_password,
+                    "AWS_REGION": s.aws_region,
+                    "LIBCLOUD_AWS_AUTH_BINDING": s.aws_auth_binding,
+                }
+            )
+        elif cloud == "nutanix":
+            env.update(
+                {
+                    "LIBCLOUD_PASSWORD": s.provisioner_ntnx_password,
+                    "LIBCLOUD_PASSWORD_NTNX_ADMIN": s.provisioner_ntnx_password,
+                    "LIBCLOUD_NTNX_AUTH_BINDING": s.ntnx_auth_binding,
+                    "NUTANIX_HOST": s.ntnx_host,
+                    "NUTANIX_PORT": str(s.ntnx_port),
+                    "NUTANIX_API_VERSION": s.ntnx_api_version,
+                    "NUTANIX_VERIFY_SSL": "true" if s.ntnx_verify_ssl else "false",
+                }
+            )
+        return env
+
     # --- public: update (edit) a VM's parameters -----------------------------
     # The portal's per-row Edit button calls this. The identity service has
     # already run the OpenFGA can_update check; this method just replays the
     # libcloud REST PATCH /v1/compute/nodes/{id} (NodeUpdateRequest). Only the
     # fields the caller supplied are forwarded, so a partial edit is allowed.
+    # Cloud-agnostic: the libcloud REST compute service routes Nutanix PATCHes
+    # through driver.ex_update_node and AWS through the standard update path
+    # (libcloud.rest/app/compute/service.py), so one code path covers both.
     def update_node(self, cloud: str, vm_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-        if cloud != "aws":
-            raise APIError("not_supported", f"update not implemented for {cloud}", 400)
         if not vm_id:
             raise APIError("bad_request", "vmId is required", 400)
 

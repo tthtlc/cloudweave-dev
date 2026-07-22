@@ -61,6 +61,28 @@ PG_ENV="${OPENFGA_DIR}/generated/postgres.env"
 VAULT_ENV="${VAULT_DIR}/generated/vault.env"
 SHARED_NET="libcloud_net"
 
+# Vendored Apache libcloud source tree used by libcloud.rest. The REST API image
+# (libcloud.rest/Dockerfile) does `COPY libcloud /libcloud` + `pip install /libcloud`,
+# so this tree IS the libcloud version the REST API runs against — there is no
+# PyPI pin in libcloud.rest/requirements.txt for libcloud itself. We pin it here
+# to a known stable upstream release for reproducibility, mirroring how
+# openfga_postgres pins the OpenFGA tarball checksum.
+LIBCLOUD_DIR="${REPO_ROOT}/libcloud"
+# Pinned to apache-libcloud v3.9.1 (latest stable on PyPI as of 2026-07),
+# upstream commit 6c867a3ca299f1b16057fab96bff65564c0ac5fe (2026-04-16, "Fix ver
+# num"). This is a tagged release, NOT the floating trunk dev snapshot
+# (3.9.2.dev0) the tree was previously on. On top of v3.9.1 this repo carries a
+# LOCAL Nutanix driver that is not upstream:
+#   libcloud/common/nutanix.py
+#   libcloud/compute/drivers/nutanix.py
+#   libcloud/storage/drivers/nutanix.py
+# plus its registration in libcloud/compute/types.py (Provider.NUTANIX) and
+# libcloud/compute/providers.py (NutanixNodeDriver). The check below fails fast
+# if the vendored tree has drifted off the pin (e.g. someone ran `git pull` or
+# `git checkout trunk` inside libcloud/), so the REST API build is reproducible.
+LIBCLOUD_PIN_TAG="v3.9.1"
+LIBCLOUD_PIN_COMMIT="6c867a3ca299f1b16057fab96bff65564c0ac5fe"
+
 if [[ ! -f .env ]]; then
   cp .env.example .env
   echo "Created .env from .env.example — review the superadmin + user passwords."
@@ -119,6 +141,32 @@ EOF
 chmod 600 "${PG_ENV}"
 
 # ---------------------------------------------------------------------------
+# 0a. Verify the vendored Apache libcloud tree (./libcloud) is at the pinned
+#     upstream release. libcloud.rest/Dockerfile does `COPY libcloud /libcloud`
+#     and `pip install /libcloud`, so this tree IS the libcloud version the REST
+#     API runs against. Fail fast if it has drifted off the pin so the REST API
+#     image build stays reproducible. The local Nutanix driver additions (untracked
+#     files + the Provider.NUTANIX registration in types.py/providers.py) sit on
+#     top of the pin and are preserved across this check.
+# ---------------------------------------------------------------------------
+if [[ -d "${LIBCLOUD_DIR}/.git" ]]; then
+  _libcloud_head=$(git -C "${LIBCLOUD_DIR}" rev-parse HEAD 2>/dev/null || true)
+  _libcloud_desc=$(git -C "${LIBCLOUD_DIR}" describe --tags --always 2>/dev/null || true)
+  if [[ "${_libcloud_head}" != "${LIBCLOUD_PIN_COMMIT}" ]]; then
+    echo "ERROR: vendored libcloud is not at the pinned commit." >&2
+    echo "  expected: ${LIBCLOUD_PIN_TAG} (${LIBCLOUD_PIN_COMMIT})" >&2
+    echo "  actual:   ${_libcloud_desc:-unknown} (${_libcloud_head:-unknown})" >&2
+    echo "  To fix: cd libcloud && git checkout ${LIBCLOUD_PIN_TAG} -- . && re-apply the Nutanix registration" >&2
+    echo "  (see libcloud.rest/Dockerfile for the local Nutanix driver additions)." >&2
+    exit 1
+  fi
+  echo "Vendored libcloud at pin ${LIBCLOUD_PIN_TAG} (${_libcloud_head:0:9})."
+else
+  echo "WARN: ${LIBCLOUD_DIR}/.git not found — cannot verify libcloud pin ${LIBCLOUD_PIN_TAG}." >&2
+  echo "      Build will proceed but the libcloud version is unverified." >&2
+fi
+
+# ---------------------------------------------------------------------------
 # 0b. Build the `openfga-local:latest` image from ./Dockerfile. The Dockerfile
 #     is multi-stage: it downloads the official OpenFGA release tarball from
 #     GitHub and verifies it against OPENFGA_TARBALL_SHA256, so this directory
@@ -126,8 +174,8 @@ chmod 600 "${PG_ENV}"
 #     Rebuild only when the Dockerfile or the pinned version/checksum changes
 #     (tracked via a stamp file) to keep re-runs fast.
 # ---------------------------------------------------------------------------
-export OPENFGA_VERSION="${OPENFGA_VERSION:-v1.8.16}"
-export OPENFGA_TARBALL_SHA256="${OPENFGA_TARBALL_SHA256:-ba9ef4b05d7290978fdeaf4ddc98db019da96ef345b3e512e7dcacec90beb72e}"
+export OPENFGA_VERSION="${OPENFGA_VERSION:-v1.16.0}"
+export OPENFGA_TARBALL_SHA256="${OPENFGA_TARBALL_SHA256:-42b57295b86dec665e43b529f472615ccf4e5945c026c514fdb26bac697a8052}"
 IMG_STAMP="${REPO_ROOT}/generated/.openfga_image_stamp"
 IMG_HASH=$(printf '%s|%s|' "${OPENFGA_VERSION}" "${OPENFGA_TARBALL_SHA256}" | cat - "${OPENFGA_DIR}/Dockerfile" 2>/dev/null | sha256sum | awk '{print $1}')
 SAVED_HASH=""

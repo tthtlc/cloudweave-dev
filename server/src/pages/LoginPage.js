@@ -1,11 +1,11 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { redirectToDex, roleHome } from "../services/auth";
 import config from "../config";
 
 export default function LoginPage() {
-  const { session } = useAuth();
+  const { session, login } = useAuth();
   const navigate = useNavigate();
 
   // Already authenticated -> go to role home.
@@ -41,7 +41,78 @@ export default function LoginPage() {
             Sign in with GitHub
           </button>
         </div>
+
+        {config.mockMode && <MockUserPicker login={login} navigate={navigate} />}
       </div>
+    </div>
+  );
+}
+
+// Mock-only: sign in directly as one of the pregenerated LLDAP users so every
+// per-role / per-tenant screen (superadmin, aws-owner, ntnx-owner, …) is
+// reachable without a live Dex/LLDAP. Real mode authenticates through Dex.
+function MockUserPicker({ login, navigate }) {
+  const [users, setUsers] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const r = await import("../services/api").then((m) => m.default.listMockUsers());
+        if (!active) return;
+        setUsers(r.users || []);
+        if (r.users?.length) setSelected(r.users[0].internalUserId);
+      } catch (e) {
+        if (active) setErr(e.message || String(e));
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  async function signInAs() {
+    if (!selected) return;
+    setBusy(true); setErr(null);
+    try {
+      const api = (await import("../services/api")).default;
+      const result = await api.mockLoginAs(selected);
+      login(result);
+      navigate(roleHome(result.role), { replace: true });
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mock-picker" style={{ marginTop: "1.5rem" }}>
+      <h3 style={{ marginBottom: "0.25rem" }}>Mock sign-in (no Dex)</h3>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Pick a pregenerated LLDAP user to land directly on their dashboard. The
+        Nutanix owner/admin users show the Edit + Deprovision buttons on the
+        Nutanix resource screen.
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          disabled={busy}
+          style={{ flex: "1 1 220px" }}
+        >
+          {users.map((u) => (
+            <option key={u.internalUserId} value={u.internalUserId}>
+              {u.displayName} — {u.role}@{u.tenant || "platform"}
+            </option>
+          ))}
+        </select>
+        <button className="primary" disabled={busy || !selected} onClick={signInAs}>
+          {busy ? "Signing in…" : "Sign in (mock)"}
+        </button>
+      </div>
+      {err && <div className="banner error" style={{ marginTop: "0.5rem" }}>{err}</div>}
     </div>
   );
 }

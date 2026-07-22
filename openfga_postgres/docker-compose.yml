@@ -20,10 +20,14 @@
 # The `openfga-local:latest` image is built from ./Dockerfile (multi-stage:
 # downloads the official OpenFGA release tarball from GitHub and verifies its
 # checksum). The OpenFGA binary is NOT vendored into this directory — bump
-# OPENFGA_VERSION / OPENFGA_TARBALL_SHA256 in .env to upgrade. v1.8.16 is
-# pinned because >= v1.8.8 enables JWKS refresh on unknown `kid` (keyfunc
-# `RefreshUnknownKID`), so OpenFGA adapts to Dex's 6h signing-key rotation
-# without a container restart — see ./Dockerfile for the full rationale.
+# OPENFGA_VERSION / OPENFGA_TARBALL_SHA256 in .env to upgrade. v1.16.0 is
+# pinned because it is the first release to enable JWKS refresh on unknown
+# `kid` (keyfunc `RefreshUnknownKID: true`, rate-limited 1/min) via PR #3101,
+# so OpenFGA adapts to Dex's 6h signing-key rotation without a container
+# restart — see ./Dockerfile for the full rationale and the correction to the
+# previous (incorrect) "v1.8.8 already has this" claim. v1.16.0 may also include
+# datastore migrations beyond the 1.8.x set, so the `openfga-migrate` one-shot
+# below must run before `openfga` starts (it already does, via depends_on).
 
 # Shared image definition for the openfga + openfga-migrate services. Both
 # need the same openfga binary; the anchor avoids duplicating the build spec.
@@ -33,8 +37,8 @@ x-openfga-image: &openfga-image
     context: .
     dockerfile: Dockerfile
     args:
-      OPENFGA_VERSION: ${OPENFGA_VERSION:-v1.8.16}
-      OPENFGA_TARBALL_SHA256: ${OPENFGA_TARBALL_SHA256:-ba9ef4b05d7290978fdeaf4ddc98db019da96ef345b3e512e7dcacec90beb72e}
+      OPENFGA_VERSION: ${OPENFGA_VERSION:-v1.16.0}
+      OPENFGA_TARBALL_SHA256: ${OPENFGA_TARBALL_SHA256:-42b57295b86dec665e43b529f472615ccf4e5945c026c514fdb26bac697a8052}
 services:
   postgres:
     image: postgres:16

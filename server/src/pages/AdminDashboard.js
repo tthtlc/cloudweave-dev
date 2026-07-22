@@ -3,66 +3,66 @@ import api from "../services/api";
 import Banner from "../components/Banner";
 import { useAuth } from "../context/AuthContext";
 
-// Per-cloud metadata. `columns(ctx)` returns the table columns to render for a
-// given capability + readOnly + edit context. deprovision and update are only
-// wired for AWS (deprovision_aws.sh + PATCH /v1/compute/nodes/{id}); Nutanix
-// update/deprovision are not implemented in the backend, so no Edit/Deprovision
-// buttons are rendered for it.
+// Per-cloud metadata. Both clouds share the SAME columns() factory and the
+// SAME provision/deprovision/update wiring so the per-row Action column
+// (Edit + Deprovision) renders identically for AWS and Nutanix, gated only by
+// the per-cloud OpenFGA capabilities in `cap` (canUpdate / canProvision) that
+// the backend already computes symmetrically for both clouds (fga.py
+// cloud_capabilities). The only per-cloud differences here are the label, the
+// region/cluster key, and the connection/provision script the backend replays.
+function actionColumns(ctx) {
+  const { cap, readOnly, deprov, onDep, editing, saving, onEdit } = ctx;
+  const showAction = !readOnly && (cap.canUpdate || cap.canProvision);
+  return [
+    { header: "ID", render: (n) => <code>{n.id}</code> },
+    { header: "Name", render: (n) => n.name },
+    { header: "State", render: (n) => n.state },
+    { header: "Size", render: (n) => n.size },
+    ...(!showAction ? [] : [{
+      header: "Action",
+      render: (n) => (
+        <span className="row-actions">
+          {cap.canUpdate && (
+            <button
+              disabled={!!saving || editing === n.id}
+              onClick={() => onEdit(n)}
+            >
+              {editing === n.id ? "Editing…" : "Edit"}
+            </button>
+          )}
+          {cap.canProvision && (
+            <button
+              className="danger"
+              disabled={deprov[n.id] === "pending" || !!saving || editing !== null}
+              onClick={() => onDep(n)}
+            >
+              {deprov[n.id] === "pending" ? "Deprovisioning…" : "Deprovision"}
+            </button>
+          )}
+        </span>
+      ),
+    }]),
+  ];
+}
+
 const CLOUD_META = {
   aws: {
     label: "AWS",
     regionKey: "region",
-    provision: (payload) => api.provisionAws(payload),
-    resources: () => api.awsResources(),
-    deprovision: (payload) => api.deprovisionAws(payload),
-    update: (payload) => api.updateAws(payload),
-    columns: (ctx) => {
-      const { cap, readOnly, deprov, onDep, editing, saving, onEdit } = ctx;
-      const showAction = !readOnly && (cap.canUpdate || cap.canProvision);
-      return [
-        { header: "ID", render: (n) => <code>{n.id}</code> },
-        { header: "Name", render: (n) => n.name },
-        { header: "State", render: (n) => n.state },
-        ...(!showAction ? [] : [{
-          header: "Action",
-          render: (n) => (
-            <span className="row-actions">
-              {cap.canUpdate && (
-                <button
-                  disabled={!!saving || editing === n.id}
-                  onClick={() => onEdit(n)}
-                >
-                  {editing === n.id ? "Editing…" : "Edit"}
-                </button>
-              )}
-              {cap.canProvision && (
-                <button
-                  className="danger"
-                  disabled={deprov[n.id] === "pending" || !!saving || editing !== null}
-                  onClick={() => onDep(n)}
-                >
-                  {deprov[n.id] === "pending" ? "Deprovisioning…" : "Deprovision"}
-                </button>
-              )}
-            </span>
-          ),
-        }]),
-      ];
-    },
+    provision: (payload) => api.provision("aws", payload),
+    resources: () => api.resources("aws"),
+    deprovision: (payload) => api.deprovision("aws", payload),
+    update: (payload) => api.update("aws", payload),
+    columns: actionColumns,
   },
   nutanix: {
     label: "Nutanix",
     regionKey: "cluster",
-    provision: (payload) => api.provisionNutanix(payload),
-    resources: () => api.nutanixResources(),
-    deprovision: null,
-    update: null,
-    columns: () => [
-      { header: "ID", render: (n) => <code>{n.id}</code> },
-      { header: "Name", render: (n) => n.name },
-      { header: "State", render: (n) => n.state },
-      { header: "Size", render: (n) => n.size },
-    ],
+    provision: (payload) => api.provision("nutanix", payload),
+    resources: () => api.resources("nutanix"),
+    deprovision: (payload) => api.deprovision("nutanix", payload),
+    update: (payload) => api.update("nutanix", payload),
+    columns: actionColumns,
   },
 };
 
@@ -128,7 +128,7 @@ export function CloudDashboard({ role, readOnly = false }) {
       if (r.status !== "deprovisioned") {
         setErr(`Deprovision ${node.id} failed: ${r.message || "see backend logs"}`);
       } else {
-        setMsg(`Deprovisioned ${node.id} (${node.name}) via deprovision_aws.sh`);
+        setMsg(`Deprovisioned ${node.id} (${node.name}) via deprovision_${cloud}.sh`);
         const refreshed = await meta.resources();
         setResources((prev) => ({ ...prev, [cloud]: refreshed }));
       }
@@ -158,7 +158,6 @@ export function CloudDashboard({ role, readOnly = false }) {
 
   async function saveEdit(cloud, node) {
     const meta = CLOUD_META[cloud];
-    if (!meta.update) return;
     setSaving(true); setErr(null);
     try {
       const payload = { vmId: node.id };

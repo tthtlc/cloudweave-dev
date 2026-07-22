@@ -7,11 +7,13 @@
 //   POST /api/logout
 //   GET  /api/users
 //   PATCH /api/users/:id/role
-//   GET  /api/resources/aws
-//   GET  /api/resources/nutanix
-//   POST /api/provision/aws
-//   POST /api/provision/nutanix
-//   POST /api/deprovision/aws
+//   GET  /api/resources/{cloud}        (aws | nutanix)
+//   POST /api/provision/{cloud}        (aws | nutanix)
+//   POST /api/deprovision/{cloud}      (aws | nutanix)
+//   POST /api/update/{cloud}           (aws | nutanix)
+//
+// The resource/provision/deprovision/update endpoints are cloud-parametric so
+// AWS and Nutanix share one code path in the client (no per-cloud duplication).
 //
 // In mock mode these calls are answered locally (see mockData.js + mockApi.js)
 // so the UI is fully demonstrable without a live backend.
@@ -57,10 +59,19 @@ export const api = config.mockMode
       deleteTuples: (deletes) => http("/api/tuples", body("DELETE", { deletes })),
       awsResources: () => http("/api/resources/aws"),
       nutanixResources: () => http("/api/resources/nutanix"),
+      // Cloud-parametric resource/provision/deprovision/update. `cloud` is one
+      // of "aws" | "nutanix"; the backend route is /api/<verb>/<cloud>. The
+      // legacy per-cloud aliases below keep older callers working.
+      resources: (cloud) => http(`/api/resources/${encodeURIComponent(cloud)}`),
+      provision: (cloud, payload) => http(`/api/provision/${encodeURIComponent(cloud)}`, body("POST", payload)),
+      deprovision: (cloud, payload) => http(`/api/deprovision/${encodeURIComponent(cloud)}`, body("POST", payload)),
+      update: (cloud, payload) => http(`/api/update/${encodeURIComponent(cloud)}`, body("POST", payload)),
       provisionAws: (payload) => http("/api/provision/aws", body("POST", payload)),
       provisionNutanix: (payload) => http("/api/provision/nutanix", body("POST", payload)),
       deprovisionAws: (payload) => http("/api/deprovision/aws", body("POST", payload)),
+      deprovisionNutanix: (payload) => http("/api/deprovision/nutanix", body("POST", payload)),
       updateAws: (payload) => http("/api/update/aws", body("POST", payload)),
+      updateNutanix: (payload) => http("/api/update/nutanix", body("POST", payload)),
     };
 
 export default api;
