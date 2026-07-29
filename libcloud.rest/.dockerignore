@@ -8,8 +8,6 @@ __pycache__/
 .git/
 .gitignore
 data/users.json
-design.md
-tmp.md
 docker-compose.dev.yml
 mystop.sh
 myrun.sh

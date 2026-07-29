@@ -124,8 +124,12 @@ class Settings(BaseSettings):
     fga_nutanix_cluster: str = "nutanix"
     fga_aws_region_object: str = "aws"
 
-    # Default DescribeImages name filter for AWS (EC2). Use name=* query param to disable.
-    aws_default_image_name_filter: str = "*Ubuntu*"
+    # Default DescribeImages filters for AWS (EC2). Restricts to Ubuntu 24.04
+    # LTS (Noble Numbat) x86-64 AMIs from Canonical. The name filter matches AMI
+    # names like ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*.
+    # Pass name=* query param to disable, or set arch=* to skip the arch filter.
+    aws_default_image_name_filter: str = "*ubuntu*24.04*amd64*"
+    aws_default_image_architecture_filter: str = "x86_64"
 
     # External policy table: maps "METHOD path_template" -> {scopes_any_of, capability,
     # connection_required}. Loaded into memory by app.auth.policy_table and hot-reloaded

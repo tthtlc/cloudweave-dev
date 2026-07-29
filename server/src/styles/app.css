@@ -98,6 +98,8 @@ input, select {
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 600; }
+/* Keeps wide tables inside their card: scroll horizontally instead of overflowing. */
+.table-wrap { overflow-x: auto; }
 
 .row-actions { display: inline-flex; gap: 0.4rem; }
 tr.edit-row td { background: var(--bg-elev, #f8fafc); }
@@ -130,6 +132,8 @@ tr.edit-row td { background: var(--bg-elev, #f8fafc); }
 .role-pill.owner { background: #ddd6fe; color: #5b21b6; }
 .role-pill.admin { background: var(--accent-weak); color: var(--accent); }
 .role-pill.viewer { background: var(--border); color: var(--muted); }
+.role-pill.pending { background: #fef3c7; color: #b45309; }
+.role-pill.disabled { background: #fee2e2; color: #991b1b; }
 
 .login-wrap { min-height: 100%; display: grid; place-items: center; padding: 2rem; }
 .login-card { width: 100%; max-width: 420px; }

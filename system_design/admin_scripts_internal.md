@@ -373,7 +373,7 @@ All source `lldap_common.sh` (except `lldap_set_password.py`). All require `curl
 
 ---
 
-## Layer 4: OpenFGA Authorization Scripts (11 files)
+## Layer 4: OpenFGA Authorization Scripts (10 files)
 
 All bash scripts source `openfga_common.sh` → `common.sh`. All Python scripts import `openfga_pylib`. All require `FGA_API_URL`, `FGA_STORE_ID`, `FGA_MODEL_ID`.
 
@@ -538,23 +538,6 @@ All bash scripts source `openfga_common.sh` → `common.sh`. All Python scripts 
 - **Options:** `--apply`, `--dry-run`, `--vault-token TOKEN`, `--vault-path PATH`, `--actor`
 - **Requires also:** `VAULT_ROOT_TOKEN`, `openssl`, `docker`, write access to `../openfga/.env` and `../libcloud.rest/.env`
 - **Role:** Cloud Owner only (highest privilege — rotates shared secrets + restarts production containers)
-
----
-
-### `openfga_ensure_fresh.sh`
-
-- **Purpose:** Restart OpenFGA container to force fresh OIDC JWKS fetch after Dex signing-key rotation. Auto-sourced by `common.sh`; throttled to once per hour.
-- **WTD mapping:** Part 2.5 — operational health (prevents `invalid_claims` failures).
-- **How it works:**
-  1. Checks `OPENFGA_SKIP_RESTART=1` — skips if set.
-  2. Throttle: reads marker file `generated/.openfga_jwks_refreshed_at`; skips if within `OPENFGA_JWKS_REFRESH_TTL_SEC` (default 3600s) unless `OPENFGA_FORCE_RESTART=1`.
-  3. `docker restart <container>` (default name `openfga`).
-  4. Polls `FGA_API_URL/healthz` up to 30 times (1s intervals).
-  5. On success, writes epoch to marker file.
-  6. Always exits 0 (warnings only, never aborts caller).
-- **Env vars:** `OPENFGA_SKIP_RESTART`, `OPENFGA_FORCE_RESTART`, `OPENFGA_JWKS_REFRESH_TTL_SEC`, `OPENFGA_CONTAINER`, `FGA_API_URL`
-- **Binaries:** `docker`, `curl`, `date`, `stat`
-- **Role:** Auto-executed; can be run standalone by Cloud Admin
 
 ---
 
@@ -851,7 +834,6 @@ All source `cloud_common.sh` → `common.sh`. All require `LIBCLOUD_REST_URL`, `
 | **Break-glass grant** | `openfga-breakglass-grant.sh` |
 | **Denial log review** | `openfga-denial-log-query.sh` |
 | **FGA key rotation** | `openfga-presharedkey-rotate.sh` |
-| **FGA JWKS freshness** | `openfga_ensure_fresh.sh` |
 | **Compute node list** | `cloud-node-list.sh` |
 | **Compute node provision** | `cloud-node-provision.sh`, `provision_aws.sh`, `provision_nutanix.sh` |
 | **Compute node lifecycle** | `cloud-node-action.sh` |

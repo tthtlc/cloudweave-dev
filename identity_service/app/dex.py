@@ -82,6 +82,29 @@ class DexService:
             raise APIError("auth_invalid_id_token", "ID token verification failed", 401, {"detail": str(exc)}) from exc
         return claims
 
+    def revoke_token(self, refresh_token: str) -> None:
+        """Revoke a refresh token at Dex's OAuth2 revocation endpoint (RFC 7009).
+
+        Best-effort: failures are logged but never block logout — the session
+        cookie and server-side store are already cleared by the caller.
+        """
+        s = self._settings()
+        revoke_url = f"{s.dex_token_url}/revoke"
+        data = {
+            "token": refresh_token,
+            "token_type_hint": "refresh_token",
+            "client_id": s.dex_portal_client_id,
+            "client_secret": s.dex_portal_client_secret,
+        }
+        log.info("Revoking refresh token at Dex")
+        try:
+            resp = httpx.post(revoke_url, data=data, timeout=15)
+        except httpx.HTTPError as exc:
+            log.warning("Dex revocation endpoint unreachable: %s", exc)
+            return
+        if resp.status_code not in (200, 204):
+            log.warning("Dex token revocation returned %s: %s", resp.status_code, resp.text)
+
     @staticmethod
     def external_identity(claims: dict[str, Any], connector_id: str | None) -> dict[str, str]:
         """Build the canonical external-identity record.

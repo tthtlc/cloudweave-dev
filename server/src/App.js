@@ -8,9 +8,12 @@ import AuthCallbackPage from "./pages/AuthCallbackPage";
 import IdentityCollapsePage from "./pages/IdentityCollapsePage";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import OpenFgaTuplesPage from "./pages/OpenFgaTuplesPage";
+import OpenFgaExplorerPage from "./pages/OpenFgaExplorerPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import OwnerDashboard from "./pages/OwnerDashboard";
 import ViewerDashboard from "./pages/ViewerDashboard";
+import PendingApprovalPage from "./pages/PendingApprovalPage";
+import DisabledAccountPage from "./pages/DisabledAccountPage";
 import UnauthorizedPage from "./pages/UnauthorizedPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LogoutPage from "./pages/LogoutPage";
@@ -36,6 +39,30 @@ export default function App() {
         }
       />
 
+      {/* Pending approval — authenticated but not yet assigned a role/tenant. */}
+      <Route
+        path="/pending"
+        element={
+          <RequireAuth>
+            <Layout>
+              <PendingApprovalPage />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+
+      {/* Disabled account — authenticated but excluded from the system. */}
+      <Route
+        path="/disabled"
+        element={
+          <RequireAuth>
+            <Layout>
+              <DisabledAccountPage />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+
       {/* Role-gated dashboards. */}
       <Route
         path="/superadmin"
@@ -53,6 +80,16 @@ export default function App() {
           <RequireRole roles={["superadmin"]}>
             <Layout>
               <OpenFgaTuplesPage />
+            </Layout>
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/superadmin/explorer"
+        element={
+          <RequireRole roles={["superadmin"]}>
+            <Layout>
+              <OpenFgaExplorerPage />
             </Layout>
           </RequireRole>
         }

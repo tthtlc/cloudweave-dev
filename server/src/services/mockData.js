@@ -92,18 +92,147 @@ export const MOCK_TUPLES = [
 // Mock catalog/resource snapshots returned by GET /api/resources/{aws,nutanix}.
 // Cloned per-call in mockApi.js so the Deprovision button can mutate the list
 // in mock mode (mirrors the backend deleting the node via deprovision_aws.sh).
+// `categories` mirrors the identity service's AWS inventory fan-out
+// (_AWS_CATEGORY_SPECS in identity_service/app/libcloud_proxy.py): same group
+// titles, column keys and row shapes as the real backend.
 export const MOCK_AWS_RESOURCES = {
   region: "ap-southeast-1",
   nodes: [
-    { id: "i-0abc123", name: "libcloud-demo-1", state: "running", size: "t3.micro" },
-    { id: "i-0def456", name: "libcloud-demo-2", state: "stopped", size: "t3.small" },
+    { id: "i-0abc123", name: "libcloud-demo-1", state: "running", size: "t3.micro", public_ips: ["54.254.10.20"], private_ips: ["10.0.0.10"] },
+    { id: "i-0def456", name: "libcloud-demo-2", state: "stopped", size: "t3.small", public_ips: [], private_ips: ["10.0.0.11"] },
+  ],
+  categories: [
+    {
+      group: "Where a VM can land", key: "vpcs", title: "VPCs",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "cidr", label: "CIDR" }, { key: "state", label: "State" }],
+      rows: [{ id: "vpc-0aa11", name: "libcloud-private-vpc", cidr: "10.0.0.0/16", state: "available" }],
+    },
+    {
+      group: "Where a VM can land", key: "subnets", title: "Subnets",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "cidr", label: "CIDR" }, { key: "vpc", label: "VPC" }, { key: "az", label: "AZ" }],
+      rows: [
+        { id: "subnet-pub1", name: "libcloud-public-subnet", cidr: "10.0.0.0/24", vpc: "vpc-0aa11", az: "ap-southeast-1a" },
+        { id: "subnet-priv1", name: "libcloud-private-subnet", cidr: "10.0.16.0/24", vpc: "vpc-0aa11", az: "ap-southeast-1a" },
+      ],
+    },
+    {
+      group: "Networks a VM can join", key: "security_groups", title: "Security Groups",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "vpc", label: "VPC" }, { key: "ingress", label: "Ingress rules" }, { key: "egress", label: "Egress rules" }],
+      rows: [
+        { id: "sg-bastion", name: "libcloud-bastion-sg", vpc: "vpc-0aa11", ingress: 1, egress: 1 },
+        { id: "sg-internal", name: "libcloud-internal-sg", vpc: "vpc-0aa11", ingress: 2, egress: 1 },
+      ],
+    },
+    {
+      group: "Networks a VM can join", key: "network_interfaces", title: "Network Interfaces",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "state", label: "State" }, { key: "subnet", label: "Subnet" }, { key: "vpc", label: "VPC" }],
+      rows: [
+        { id: "eni-01", name: "eni-01", state: "in-use", subnet: "subnet-pub1", vpc: "vpc-0aa11" },
+        { id: "eni-02", name: "eni-02", state: "in-use", subnet: "subnet-priv1", vpc: "vpc-0aa11" },
+      ],
+    },
+    {
+      group: "Networks a VM can join", key: "route_tables", title: "Route Tables",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "routes", label: "Routes" }, { key: "subnets", label: "Subnets" }],
+      rows: [{ id: "rtb-pub1", name: "libcloud-public-rtb", routes: "10.0.0.0/16 -> local, 0.0.0.0/0 -> igw-01", subnets: "subnet-pub1" }],
+    },
+    {
+      group: "Networks a VM can join", key: "internet_gateways", title: "Internet Gateways",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "vpc", label: "VPC" }, { key: "state", label: "State" }],
+      rows: [{ id: "igw-01", name: "libcloud-private-igw", vpc: "vpc-0aa11", state: "available" }],
+    },
+    {
+      group: "Networks a VM can join", key: "floating_ips", title: "Elastic IPs",
+      columns: [{ key: "address", label: "Address" }, { key: "instance", label: "Instance" }, { key: "associated", label: "Associated" }],
+      rows: [{ address: "54.254.10.20", instance: "i-0abc123", associated: "yes" }],
+    },
+    {
+      group: "Images a VM can boot from", key: "images", title: "AMIs",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }],
+      rows: [{ id: "ami-0ubuntu1", name: "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20240601" }],
+    },
+    {
+      group: "Block storage a VM can consume", key: "volumes", title: "EBS Volumes",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "size", label: "Size (GiB)" }, { key: "state", label: "State" }],
+      rows: [
+        { id: "vol-01", name: "", size: 8, state: "in-use" },
+        { id: "vol-02", name: "", size: 8, state: "in-use" },
+      ],
+    },
+    {
+      group: "Block storage a VM can consume", key: "snapshots", title: "EBS Snapshots",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "volume", label: "Volume" }, { key: "state", label: "State" }],
+      rows: [{ id: "snap-01", name: "libcloud-backup", volume: "vol-01", state: "completed" }],
+    },
+    {
+      group: "Object storage", key: "buckets", title: "S3 Buckets",
+      columns: [{ key: "name", label: "Name" }],
+      rows: [{ name: "libcloud-demo-artifacts" }],
+    },
+    {
+      group: "Access", key: "key_pairs", title: "Key Pairs",
+      columns: [{ key: "name", label: "Name" }, { key: "fingerprint", label: "Fingerprint" }],
+      rows: [{ name: "libcloud-admin-key", fingerprint: "aa:bb:cc:dd:ee:ff:00:11" }],
+    },
   ],
 };
 
 export const MOCK_NUTANIX_RESOURCES = {
   cluster: "nutanix",
   nodes: [
-    { id: "ntnx-1", name: "libcloud-ntnx-1", state: "running", size: "small" },
+    { id: "ntnx-1", name: "libcloud-ntnx-1", state: "running", size: "small", public_ips: [], private_ips: ["10.1.100.50"] },
+  ],
+  // Mirrors _NTNX_CATEGORY_SPECS in identity_service/app/libcloud_proxy.py
+  // (same group titles, column keys and row shapes as the real backend).
+  categories: [
+    {
+      group: "Where a VM can land", key: "clusters", title: "Clusters",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }],
+      rows: [{ id: "00061ebf-cluster-1", name: "NTNX-POC" }],
+    },
+    {
+      group: "Where a VM can land", key: "vpcs", title: "VPCs",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "cidr", label: "CIDR" }, { key: "state", label: "State" }],
+      rows: [{ id: "vpc-ntnx-1", name: "libcloud-vpc", cidr: "", state: "ACTIVE" }],
+    },
+    {
+      group: "Where a VM can land", key: "subnets", title: "Subnets",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "cidr", label: "CIDR" }, { key: "vpc", label: "VPC" }],
+      rows: [
+        { id: "subnet-vlan100", name: "vlan100-external", cidr: "10.1.100.0/24", vpc: "" },
+        { id: "subnet-vlan200", name: "vlan200-internal", cidr: "10.1.200.0/24", vpc: "" },
+      ],
+    },
+    {
+      group: "Networks a VM can join", key: "security_groups", title: "Security Groups (Flow)",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "vpc", label: "VPC" }],
+      rows: [{ id: "sg-ntnx-1", name: "libcloud-vm-sg", vpc: "vpc-ntnx-1" }],
+    },
+    {
+      group: "Networks a VM can join", key: "load_balancers", title: "Load Balancers",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }],
+      rows: [],
+    },
+    {
+      group: "Images a VM can boot from", key: "images", title: "Images",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }],
+      rows: [{ id: "img-ubuntu-cloud", name: "ubuntu-24.04-cloudimg" }],
+    },
+    {
+      group: "Storage a VM can consume", key: "volumes", title: "Volumes (Disks)",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }, { key: "size", label: "Size (GiB)" }, { key: "state", label: "State" }],
+      rows: [{ id: "disk-ntnx-1", name: "scsi.0", size: 20, state: "attached" }],
+    },
+    {
+      group: "Storage a VM can consume", key: "storage_containers", title: "Storage Containers",
+      columns: [{ key: "id", label: "ID" }, { key: "name", label: "Name" }],
+      rows: [{ id: "sc-default", name: "default-container" }],
+    },
+    {
+      group: "Object storage", key: "buckets", title: "Object Buckets",
+      columns: [{ key: "name", label: "Name" }],
+      rows: [{ name: "libcloud-ntnx-artifacts" }],
+    },
   ],
 };
 
@@ -171,3 +300,276 @@ export const MOCK_NUTANIX_STEPS = [
   "POST /v1/compute/nodes  (name, size, image, location, network.subnet_id)",
   "optional teardown_libcloud_vms (if TEARDOWN_VMS=1)",
 ];
+
+// Simulated private-pair (bastion + internal) provisioning result. The real
+// backend shells out to test_script/scripts/provision_aws_private.sh
+// (aws_bastion_internal_server.md) or provision_nutanix_bastion_private.sh
+// (nutanix_bastion_internal_server.md) after the OpenFGA can_provision gate;
+// the mock reports success and echoes the script's step order as stdout.
+export const MOCK_PROVISION_PRIVATE_RESULT = (provider, pairName) => ({
+  provider,
+  vmName: pairName,
+  bastionName: `${pairName}-bastion`,
+  internalName: `${pairName}-internal`,
+  status: "provisioned",
+  message: `${provider === "aws" ? "provision_aws_private.sh" : "provision_nutanix_bastion_private.sh"} exit=0 (mock).`,
+  exitCode: 0,
+  stdout: (provider === "aws" ? MOCK_AWS_PRIVATE_STEPS : MOCK_NUTANIX_PRIVATE_STEPS).join("\n"),
+});
+
+// Mirrors provision_aws_private.sh orchestration order.
+export const MOCK_AWS_PRIVATE_STEPS = [
+  "idp_login (Dex -> OIDC token)",
+  "OpenFGA can_connect/can_use/can_provision checks (aws_region:<binding>)",
+  "build_aws_connection_param (region + auth_binding, NO creds in client)",
+  "GET /v1/me",
+  "GET /v1/connection/test",
+  "GET /v1/compute/locations",
+  "GET /v1/compute/sizes",
+  "GET /v1/compute/images?name=<filter>",
+  "GET /v1/compute/nodes",
+  "resolve IMAGE_ID/SIZE_ID (architecture-compatible)",
+  "ensure VPC libcloud-private-vpc (10.0.0.0/16)",
+  "ensure public subnet libcloud-public-subnet (10.0.0.0/24, auto-assign public IP)",
+  "ensure private subnet libcloud-private-subnet (10.0.16.0/24, no internet route)",
+  "ensure internet gateway + attach to VPC",
+  "ensure public route table (0.0.0.0/0 -> IGW, associated with public subnet)",
+  "ensure security groups (bastion: ssh/22 from operator CIDR; internal: ssh/22 from bastion SG + app port from VPC)",
+  "ensure key pair (private key saved chmod 400 on first create)",
+  "POST /v1/compute/nodes  (bastion VM -> public subnet + public IP)",
+  "POST /v1/compute/nodes  (internal VM -> private subnet, NO public IP)",
+  "GET /v1/compute/nodes  (summary)",
+  "optional teardown_libcloud_vms (if TEARDOWN_VMS=1)",
+];
+
+// Mirrors provision_nutanix_bastion_private.sh orchestration order.
+export const MOCK_NUTANIX_PRIVATE_STEPS = [
+  "idp_login (Dex -> OIDC token)",
+  "build_nutanix_connection_param (auth_binding, NO creds in client)",
+  "GET /v1/me",
+  "GET /v1/connection/test",
+  "GET /v1/compute/locations",
+  "GET /v1/compute/images",
+  "GET /v1/compute/subnets",
+  "GET /v1/compute/storage-containers",
+  "GET /v1/compute/nodes",
+  "resolve CLUSTER_ID/IMAGE_ID/STORAGE_CONTAINER_ID",
+  "ensure subnet vlan100-external (VLAN 100, 10.1.100.0/24 + IPAM pool)",
+  "ensure subnet vlan200-internal (VLAN 200, 10.1.200.0/24 + IPAM pool, isolated)",
+  "POST /v1/compute/nodes  (bastion host -> vlan100-external)",
+  "POST /v1/compute/nodes  (internal server -> vlan200-internal, no internet)",
+  "GET /v1/compute/nodes/{id}  (verify both VMs)",
+  "optional teardown_libcloud_vms (if TEARDOWN_VMS=1)",
+];
+
+// ---------------------------------------------------------------------------
+// Mock OpenFGA store, models, assertions, changes for the superadmin explorer
+// page. Mirrors the shape of the OpenFGA REST API responses.
+// ---------------------------------------------------------------------------
+
+export const MOCK_OPENFGA_STORE = {
+  id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  name: "libcloud-rest-store",
+  created_at: "2025-01-15T08:00:00Z",
+  updated_at: "2025-06-01T12:30:00Z",
+};
+
+export const MOCK_OPENFGA_MODELS = {
+  authorization_models: [
+    {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAM",
+      schema_version: "1.1",
+      type_definitions: [
+        { type: "user" },
+        {
+          type: "tenant",
+          relations: {
+            parent: {},
+            owner: { directly_related_user_types: [{ type: "user" }] },
+            admin: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "owner" }] },
+            viewer: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "admin" }] },
+          },
+        },
+        {
+          type: "platform",
+          relations: {
+            superadmin: { directly_related_user_types: [{ type: "user" }] },
+            global_reader: { directly_related_user_types: [{ type: "user" }, { type: "platform", relation: "superadmin" }] },
+          },
+        },
+        {
+          type: "provider",
+        },
+        {
+          type: "aws_region",
+          relations: {
+            can_read: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "viewer" }, { type: "platform", relation: "global_reader" }] },
+            can_provision: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "admin" }] },
+            can_update: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "admin" }] },
+            parent: { directly_related_user_types: [{ type: "tenant" }] },
+          },
+        },
+        {
+          type: "nutanix_cluster",
+          relations: {
+            can_read: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "viewer" }, { type: "platform", relation: "global_reader" }] },
+            can_provision: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "admin" }] },
+            can_update: { directly_related_user_types: [{ type: "user" }, { type: "tenant", relation: "admin" }] },
+            parent: { directly_related_user_types: [{ type: "tenant" }] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+export const MOCK_OPENFGA_ASSERTIONS = {
+  authorization_model_id: "01ARZ3NDEKTSV4RRFFQ69G5FAM",
+  assertions: [
+    {
+      tuple_key: { user: "user:superadmin", relation: "superadmin", object: "platform:main" },
+      expectation: true,
+    },
+    {
+      tuple_key: { user: "user:aws-admin", relation: "admin", object: "tenant:aws" },
+      expectation: true,
+    },
+    {
+      tuple_key: { user: "user:aws-viewer", relation: "can_read", object: "aws_region:aws" },
+      expectation: true,
+    },
+    {
+      tuple_key: { user: "user:aws-admin", relation: "can_provision", object: "nutanix_cluster:nutanix" },
+      expectation: false,
+    },
+  ],
+};
+
+export const MOCK_OPENFGA_CHANGES = {
+  changes: [
+    {
+      tuple_key: { user: "user:superadmin", relation: "superadmin", object: "platform:main" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-01T10:00:00Z",
+    },
+    {
+      tuple_key: { user: "user:aws-owner", relation: "owner", object: "tenant:aws" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-01T10:05:00Z",
+    },
+    {
+      tuple_key: { user: "user:aws-admin", relation: "admin", object: "tenant:aws" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-01T10:10:00Z",
+    },
+    {
+      tuple_key: { user: "user:aws-viewer", relation: "viewer", object: "tenant:aws" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-02T09:00:00Z",
+    },
+    {
+      tuple_key: { user: "user:ntnx-owner", relation: "owner", object: "tenant:nutanix" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-03T14:00:00Z",
+    },
+    {
+      tuple_key: { user: "user:ntnx-admin", relation: "admin", object: "tenant:nutanix" },
+      operation: "TUPLE_OPERATION_WRITE",
+      timestamp: "2025-03-03T14:05:00Z",
+    },
+  ],
+  continuation_token: "",
+};
+
+// Simplified mapping of REST API routes to required scopes/roles, mirroring
+// libcloud.rest/app/auth/policies.json for the superadmin explorer page.
+export const MOCK_REST_API_POLICIES = {
+  "_comment": "Authorization policy table (mock). Keyed by 'METHOD path_template'.",
+  "GET /v1/compute/locations": {
+    "scopes_any_of": ["compute:location:read", "compute:read"],
+    "authz_scope": "compute:location:read",
+  },
+  "GET /v1/compute/images": {
+    "scopes_any_of": ["compute:image:read", "compute:read"],
+    "authz_scope": "compute:image:read",
+  },
+  "GET /v1/compute/sizes": {
+    "scopes_any_of": ["compute:size:read", "compute:read"],
+    "authz_scope": "compute:size:read",
+  },
+  "GET /v1/compute/nodes": {
+    "scopes_any_of": ["compute:read"],
+  },
+  "GET /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:read"],
+  },
+  "POST /v1/compute/nodes": {
+    "scopes_any_of": ["compute:node:create"],
+    "capability": "create_node",
+  },
+  "PATCH /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:node:power", "compute:node:update"],
+    "authz_scope_by_body_field": {
+      "field": "action",
+      "map": { "update": "compute:node:update", "resize": "compute:node:power", "tag": "compute:node:power" },
+    },
+  },
+  "POST /v1/compute/nodes/{node_id}:start": {
+    "scopes_any_of": ["compute:node:power"],
+  },
+  "POST /v1/compute/nodes/{node_id}:stop": {
+    "scopes_any_of": ["compute:node:power"],
+  },
+  "POST /v1/compute/nodes/{node_id}:reboot": {
+    "scopes_any_of": ["compute:node:power"],
+  },
+  "DELETE /v1/compute/nodes/{node_id}": {
+    "scopes_any_of": ["compute:node:delete"],
+    "capability": "destroy_node",
+  },
+  "GET /v1/compute/volumes": {
+    "scopes_any_of": ["compute:volume:manage", "compute:read"],
+    "authz_scope": "compute:read",
+  },
+  "POST /v1/compute/volumes": {
+    "scopes_any_of": ["compute:volume:manage"],
+    "capability": "volumes",
+  },
+  "PATCH /v1/compute/volumes/{volume_id}": {
+    "scopes_any_of": ["compute:volume:manage"],
+  },
+  "DELETE /v1/compute/volumes/{volume_id}": {
+    "scopes_any_of": ["compute:volume:manage"],
+  },
+  "POST /v1/compute/volumes/{volume_id}:attach": {
+    "scopes_any_of": ["compute:volume:manage"],
+  },
+  "POST /v1/compute/volumes/{volume_id}:detach": {
+    "scopes_any_of": ["compute:volume:manage"],
+  },
+  "GET /v1/compute/snapshots": {
+    "scopes_any_of": ["compute:snapshot:manage", "compute:read"],
+    "authz_scope": "compute:read",
+  },
+  "POST /v1/compute/snapshots": {
+    "scopes_any_of": ["compute:snapshot:manage"],
+    "capability": "snapshots",
+  },
+  "DELETE /v1/compute/snapshots/{snapshot_id}": {
+    "scopes_any_of": ["compute:snapshot:manage"],
+  },
+  "GET /v1/compute/networks": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read",
+  },
+  "POST /v1/compute/networks": {
+    "scopes_any_of": ["compute:network:manage"],
+  },
+  "DELETE /v1/compute/networks/{network_id}": {
+    "scopes_any_of": ["compute:network:manage"],
+  },
+  "GET /v1/jobs/{job_id}": {
+    "scopes_any_of": ["jobs:read"],
+    "connection_required": false,
+  },
+};

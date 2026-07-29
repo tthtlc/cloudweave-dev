@@ -4,7 +4,14 @@ import api from "../services/api";
 import IdentityBadges from "../components/IdentityBadges";
 import Banner from "../components/Banner";
 
-const ROLES = ["superadmin", "owner", "admin", "viewer"];
+const ROLES = ["superadmin", "owner", "admin", "viewer", "disabled"];
+const TENANTS = ["aws", "nutanix"];
+
+// OAuth2/federated users (provisioned via _provision_pending) have IDs like
+// "int-pending-<hex>". LLDAP users have IDs like "int-<uid>" where <uid> is
+// their directory uid (superadmin, aws-admin, etc.). Federated users always
+// need a tenant assignment; LLDAP users derive theirs from the principal slug.
+const isFederatedUser = (u) => u.internalUserId?.startsWith("int-pending-");
 
 export default function SuperAdminDashboard() {
   const { session, updateRole } = useAuth();
@@ -32,23 +39,42 @@ export default function SuperAdminDashboard() {
   useEffect(() => { refresh(); }, []);
 
   function draftRole(u) {
-    return drafts[u.internalUserId] ?? u.role;
+    return drafts[u.internalUserId]?.role ?? u.role;
   }
 
-  function setDraft(u, role) {
-    setDrafts((prev) => ({ ...prev, [u.internalUserId]: role }));
+  function draftTenant(u) {
+    return drafts[u.internalUserId]?.tenant ?? u.tenant ?? "";
+  }
+
+  function setDraftRole(u, role) {
+    setDrafts((prev) => ({
+      ...prev,
+      [u.internalUserId]: { ...prev[u.internalUserId], role },
+    }));
+  }
+
+  function setDraftTenant(u, tenant) {
+    setDrafts((prev) => ({
+      ...prev,
+      [u.internalUserId]: { ...prev[u.internalUserId], tenant },
+    }));
   }
 
   async function saveRole(user) {
-    const role = draftRole(user);
-    if (role === user.role) return; // nothing to save
+    const draft = drafts[user.internalUserId] || {};
+    const role = draft.role ?? user.role;
+    const tenant = draft.tenant ?? user.tenant;
+    const federated = isFederatedUser(user);
+    // "disabled" needs no tenant; federated users always require a tenant.
+    if (role === user.role && tenant === (user.tenant || undefined)) return;
+    if (role === "disabled" && user.role === "disabled") return; // nothing to save
     setMsg(null); setErr(null);
     try {
-      const updated = await api.setRole(user.internalUserId, role);
+      const updated = await api.setRole(user.internalUserId, role, role === "disabled" ? undefined : tenant);
       setUsers((prev) => prev.map((u) => (u.internalUserId === updated.internalUserId ? updated : u)));
       setDrafts((prev) => { const n = { ...prev }; delete n[user.internalUserId]; return n; });
       if (session?.internalUserId === updated.internalUserId) updateRole(updated.role);
-      setMsg(`Saved ${user.email || user.internalUserId} → ${role}`);
+      setMsg(`Saved ${user.email || user.internalUserId} → ${role}${tenant && role !== "disabled" ? ` on ${tenant}` : ""}`);
     } catch (e) {
       setErr(e.message || String(e));
     }
@@ -147,7 +173,13 @@ export default function SuperAdminDashboard() {
             <tbody>
               {filtered.map((u) => {
                 const draft = draftRole(u);
-                const dirty = draft !== u.role;
+                const draftTnt = draftTenant(u);
+                const federated = isFederatedUser(u);
+                // Role change, or tenant change for a federated user.
+                const dirty = draft !== u.role || (federated && draftTnt !== (u.tenant || ""));
+                // LLDAP users: just dirty.  Federated users: also need a tenant
+                // (unless moving to "disabled", which clears the tenant).
+                const canSave = dirty && (!federated || draft === "disabled" || draftTnt);
                 return (
                   <tr key={u.internalUserId}>
                     <td><code>{u.internalUserId}</code></td>
@@ -167,12 +199,26 @@ export default function SuperAdminDashboard() {
                     <td><span className={`role-pill ${u.role}`}>{u.role}</span></td>
                     <td><IdentityBadges identities={u.linkedIdentities} /></td>
                     <td>
-                      <select value={draft} onChange={(e) => setDraft(u, e.target.value)}>
+                      <select value={draft} onChange={(e) => setDraftRole(u, e.target.value)}>
                         {ROLES.map((r) => (
                           <option key={r} value={r}>{r}</option>
                         ))}
-                      </select>{" "}
-                      <button className="primary" disabled={!dirty} onClick={() => saveRole(u)}>
+                      </select>
+                      {/* Federated (OAuth2) users always need a tenant.  LLDAP
+                          users derive theirs from the uid slug so no selector. */}
+                      {federated && draft !== "disabled" && (
+                        <>
+                          {" "}on{" "}
+                          <select value={draftTnt} onChange={(e) => setDraftTenant(u, e.target.value)}>
+                            <option value="">-- select tenant --</option>
+                            {TENANTS.map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                      {" "}
+                      <button className="primary" disabled={!canSave} onClick={() => saveRole(u)}>
                         {dirty ? "Save" : "Saved"}
                       </button>
                     </td>

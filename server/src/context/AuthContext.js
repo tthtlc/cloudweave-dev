@@ -44,9 +44,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await api.logout(); } catch (_) {}
+    let logoutUrl = null;
+    try {
+      const res = await api.logout();
+      logoutUrl = res?.logoutUrl || null;
+    } catch (_) {}
     clearSessionMeta();
     setSession(null);
+    return logoutUrl;
   }, []);
 
   const updateRole = useCallback((role) => {

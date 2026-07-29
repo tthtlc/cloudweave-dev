@@ -84,10 +84,17 @@ services:
       # only the script path + a few cloud-specific env vars differ.
       DEPROVISION_AWS_SCRIPT: /opt/libcloud-scripts/scripts/deprovision_aws.sh
       DEPROVISION_NTNX_SCRIPT: /opt/libcloud-scripts/scripts/deprovision_nutanix.sh
+      # The "Provision Private VM Machine" button shells out to these scripts
+      # (bastion + internal pair, nutanix_bastion_internal_server.md /
+      # aws_bastion_internal_server.md) from the same read-only scripts mount.
+      PROVISION_PRIVATE_NTNX_SCRIPT: /opt/libcloud-scripts/scripts/provision_nutanix_bastion_private.sh
+      PROVISION_PRIVATE_AWS_SCRIPT: /opt/libcloud-scripts/scripts/provision_aws_private.sh
     volumes:
       # Only the scripts the identity service shells out to (deprovision_aws.sh
       # + common.sh). Read-only: the service never writes here.
       - ../test_script/scripts:/opt/libcloud-scripts/scripts:ro
+      # REST API authorization policies (read-only, for superadmin explorer).
+      - ../libcloud.rest/app/auth/policies.json:/opt/policies.json:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8766/health"]
       interval: 10s

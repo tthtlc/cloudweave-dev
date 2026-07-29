@@ -28,8 +28,8 @@ provider tokens or cloud credentials.
 | POST   | `/api/logout` | cookie | revoke session + Dex refresh token |
 | GET    | `/api/users` | superadmin | list internal users |
 | PATCH  | `/api/users/:id/role` | superadmin | change a user's role (OpenFGA re-keyed) |
-| GET    | `/api/resources/aws` | viewer+ (can_use) | list AWS compute nodes (via libcloud-rest) |
-| GET    | `/api/resources/nutanix` | viewer+ (can_use) | list Nutanix compute nodes |
+| GET    | `/api/resources/aws` | viewer+ (can_use) | list AWS compute nodes + categorized inventory (VPCs, subnets, SGs, ENIs, route tables, IGWs, EIPs, AMIs, volumes, snapshots, buckets, key pairs; via libcloud-rest) |
+| GET    | `/api/resources/nutanix` | viewer+ (can_use) | list Nutanix compute nodes + categorized inventory (clusters, VPCs, subnets, Flow SGs, load balancers, images, volumes, storage containers, buckets, key pairs; via libcloud-rest) |
 | POST   | `/api/provision/aws` | admin+ (can_provision) | queue AWS provisioning job |
 | POST   | `/api/provision/nutanix` | admin+ (can_provision) | queue Nutanix provisioning job |
 
@@ -110,12 +110,13 @@ Portal-user authorization is enforced by the identity service via OpenFGA
 REST API then does its own OpenFGA check against the provisioner token subject.
 
 **Note on OpenFGA JWKS:** Dex rotates its signing keys every 6h (in-memory
-storage). OpenFGA caches the JWKS at startup and doesn't reliably refresh on an
-unknown `kid`, so after a Dex key rotation the REST API's OpenFGA check fails
-with `invalid_claims` (surfaced as `authz_fga_error` / 502). The fix is to
-restart OpenFGA to flush the cache — `test_script/scripts/openfga_ensure_fresh.sh`
-automates this for the CLI scripts. If provisioning fails with `invalid_claims`,
-run `docker restart openfga` and retry.
+storage). OpenFGA v1.16.0+ (pinned in `openfga_postgres/Dockerfile`) enables
+`RefreshUnknownKID` in its OIDC authenticator, so an unknown `kid` after a Dex
+rotation makes OpenFGA refetch Dex's JWKS in-process — no restart and no helper
+script needed. (Older OpenFGA images cached the JWKS at startup and needed a
+container restart after each rotation; the `openfga_ensure_fresh.sh` workaround
+for that era has been removed.) If checks fail with `invalid_claims` now, the
+cause is token validation (iss/aud/exp), not a stale JWKS cache.
 
 ## Files
 

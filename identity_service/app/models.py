@@ -67,6 +67,7 @@ class CollapseRequest(BaseModel):
 # --- /api/users -------------------------------------------------------------
 class RoleUpdateRequest(BaseModel):
     role: str
+    tenant: str | None = None  # Required when assigning a role to a pending (non-LLDAP) user
 
 
 class EmailUpdateRequest(BaseModel):
@@ -125,3 +126,21 @@ class SessionResponse(BaseModel):
 # Generic OK envelope used by several endpoints.
 class OkResponse(BaseModel):
     data: Any = None
+
+
+# --- /api/openfga/* (superadmin explorer) ------------------------------------
+class OpenFgaListUsersRequest(BaseModel):
+    object: str
+    relation: str
+    user_filters: list[dict[str, str]] = []
+
+
+class OpenFgaListObjectsRequest(BaseModel):
+    type: str
+    relation: str
+    user: str
+
+
+class OpenFgaExpandRequest(BaseModel):
+    relation: str
+    object: str

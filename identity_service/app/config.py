@@ -85,7 +85,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _derive_deprovision_paths(self) -> "Settings":
+    def _derive_script_paths(self) -> "Settings":
         # config.py lives at <repo_root>/identity_service/app/config.py, so
         # parents[2] is the repo root that contains test_script/.
         if not self.repo_root:
@@ -95,6 +95,10 @@ class Settings(BaseSettings):
             self.deprovision_aws_script = str(scripts / "deprovision_aws.sh")
         if not self.deprovision_ntnx_script:
             self.deprovision_ntnx_script = str(scripts / "deprovision_nutanix.sh")
+        if not self.provision_private_ntnx_script:
+            self.provision_private_ntnx_script = str(scripts / "provision_nutanix_bastion_private.sh")
+        if not self.provision_private_aws_script:
+            self.provision_private_aws_script = str(scripts / "provision_aws_private.sh")
         return self
 
     # --- libcloud REST API (cloud orchestration) ---
@@ -112,6 +116,18 @@ class Settings(BaseSettings):
     # Seconds before a deprovision_aws.sh run is killed (curl DELETE + FGA
     # checks should be well under this).
     deprovision_timeout_seconds: int = 180
+
+    # --- Private VM pair provisioning (bastion + internal) ------------------
+    # The portal's "Provision Private VM Machine" button shells out to these
+    # scripts (aws_bastion_internal_server.md / nutanix_bastion_internal_server.md
+    # scenarios), so each script stays the single source of truth for its 2-VM
+    # sequence. Defaults derived in _derive_script_paths above.
+    provision_private_ntnx_script: str = ""
+    provision_private_aws_script: str = ""
+    # Two VM creates (each waits on the Prism task / wait_until_running) plus
+    # the network stack (subnets / VPC+IGW+route table) take much longer than
+    # a deprovision.
+    provision_private_timeout_seconds: int = 900
 
     # --- Provisioner service-account login (libcloud-rest-audience token) ---
     # The portal user authenticates via the libcloud-portal client (audience
@@ -131,6 +147,10 @@ class Settings(BaseSettings):
     provisioner_ntnx_password: str = Field(default="", validation_alias=AliasChoices("LIBCLOUD_PASSWORD_NTNX_ADMIN"))
     aws_region: str = Field(default="ap-southeast-1", validation_alias=AliasChoices("AWS_REGION"))
     aws_auth_binding: str = "aws"
+    # Cap per resource category in the "View <cloud> Resources" inventory (the
+    # AWS AMI catalog alone is thousands of rows); the true count rides in
+    # `total`. Shared by the AWS and Nutanix category fan-out.
+    inventory_max_rows: int = Field(default=50, validation_alias=AliasChoices("INVENTORY_MAX_ROWS"))
     ntnx_auth_binding: str = "nutanix"
     ntnx_host: str = Field(default="host.docker.internal", validation_alias=AliasChoices("NUTANIX_HOST"))
     ntnx_port: int = Field(default=9440, validation_alias=AliasChoices("NUTANIX_PORT"))
@@ -144,6 +164,9 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 28800
     session_secure: bool = False
     session_samesite: str = "lax"
+
+    # --- libcloud REST API policies (read-only, for superadmin explorer) ---
+    rest_api_policies_path: str = "/opt/policies.json"
 
     # --- Server ---
     identity_port: int = 8766

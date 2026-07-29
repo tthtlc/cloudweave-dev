@@ -21,11 +21,6 @@ cd "$(dirname "$0")"
 URL_FILE="${1:-/tmp/oo}"
 [[ -f "${URL_FILE}" ]] || { echo "URL file not found: ${URL_FILE}" >&2; exit 1; }
 
-# Refresh OpenFGA's cached Dex JWKS before any OpenFGA-dependent call. Dex
-# rotates its signing keys every 6h (storage: memory); a stale OpenFGA keyset
-# makes every Check fail with `invalid_claims`. Throttled + skippable.
-./scripts/openfga_ensure_fresh.sh
-
 # --- Backend cloud credentials (per-tenant, written to Vault by the OWNER) ---
 AWS_ACCESS_KEY=AKIAYHGEH2P7SNGEPLZH
 AWS_SECRET_ACCESS_KEY=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

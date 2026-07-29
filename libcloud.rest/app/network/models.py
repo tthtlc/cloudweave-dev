@@ -33,6 +33,10 @@ class SubnetCreateRequest(BaseModel):
     ip_address: str | None = None
     prefix_length: int | None = None
     gateway_ip: str | None = None
+    dhcp_server: str | None = None
+    # Nutanix IPAM pools, e.g. ["10.1.200.10-10.1.200.50"]; require ip_address
+    # and prefix_length.
+    ip_pool: list[str] = Field(default_factory=list)
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -50,6 +54,44 @@ class SecurityGroupCreateRequest(BaseModel):
     name: str
     description: str | None = None
     vpc_id: str | None = None
+
+
+class SecurityGroupRuleAuthorizeRequest(BaseModel):
+    # Authorize one ingress/egress rule on an existing security group (AWS).
+    # Traffic source is EITHER a list of CIDR blocks (cidr_ips) OR another
+    # security group (source_group_id -> group_pairs), mirroring
+    # ex_authorize_security_group_ingress/egress in the EC2 driver.
+    direction: Literal["ingress", "egress"] = "ingress"
+    protocol: str = "tcp"
+    from_port: int
+    to_port: int
+    cidr_ips: list[str] = Field(default_factory=list)
+    source_group_id: str | None = None
+    description: str | None = None
+
+
+class InternetGatewayCreateRequest(BaseModel):
+    # Creates an IGW and attaches it to vpc_id (AWS). Both steps in one call so
+    # a client never sees a dangling, unattached gateway.
+    vpc_id: str
+    name: str | None = None
+
+
+class RouteTableCreateRequest(BaseModel):
+    vpc_id: str
+    name: str | None = None
+
+
+class RouteCreateRequest(BaseModel):
+    # destination CIDR + exactly one target. Only internet_gateway_id is
+    # supported today (the bastion/public-subnet scenario); the EC2 driver
+    # also accepts node / network_interface / vpc_peering_connection.
+    cidr_block: str
+    internet_gateway_id: str | None = None
+
+
+class RouteTableAssociateRequest(BaseModel):
+    subnet_id: str
 
 
 class LoadBalancerCreateRequest(BaseModel):

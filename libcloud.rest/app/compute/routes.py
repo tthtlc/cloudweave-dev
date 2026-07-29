@@ -58,7 +58,12 @@ def list_images(
         None,
         alias="name",
         description="AWS only: DescribeImages name filter (supports * wildcards). "
-        "Omit to use the server default (*Ubuntu*). Pass name=* to list all images.",
+        "Omit to use the server default (*ubuntu*24.04*amd64*). Pass name=* to list all images.",
+    ),
+    arch: str | None = Query(
+        None,
+        description="AWS only: architecture filter (x86_64 | arm64 | i386). "
+        "Omit to use the server default (x86_64). Pass arch=* to skip the arch filter.",
     ),
 ):
     connection = request.state.connection
@@ -71,7 +76,7 @@ def list_images(
         filters = {"name": name_filter}
     data = [
         img.model_dump()
-        for img in compute_service.list_images(connection, owner=owner, filters=filters)
+        for img in compute_service.list_images(connection, owner=owner, filters=filters, arch=arch)
     ]
     return success_response(data, request)
 
@@ -237,11 +242,16 @@ def list_snapshots(
     request: Request,
     volume_id: str | None = None,
     snapshot_id: str | None = Query(None, alias="id"),
+    owner: str | None = Query(
+        None,
+        description="AWS only: snapshot owner filter (self|amazon|<account-id>). "
+        "Omitting it returns ALL public snapshots (DescribeSnapshots default).",
+    ),
 ):
     connection = request.state.connection
     data = [
         s.model_dump()
-        for s in compute_service.list_snapshots(connection, volume_id=volume_id, snapshot_id=snapshot_id)
+        for s in compute_service.list_snapshots(connection, volume_id=volume_id, snapshot_id=snapshot_id, owner=owner)
     ]
     return success_response(data, request)
 

@@ -10,14 +10,22 @@ import { useAuth } from "../context/AuthContext";
 // the backend already computes symmetrically for both clouds (fga.py
 // cloud_capabilities). The only per-cloud differences here are the label, the
 // region/cluster key, and the connection/provision script the backend replays.
+// Helper to display the first IP from a list, or a dash if empty/absent.
+function firstIp(ips) {
+  if (!ips || !ips.length) return "—";
+  return ips[0];
+}
+
 function actionColumns(ctx) {
   const { cap, readOnly, deprov, onDep, editing, saving, onEdit } = ctx;
   const showAction = !readOnly && (cap.canUpdate || cap.canProvision);
   return [
     { header: "ID", render: (n) => <code>{n.id}</code> },
     { header: "Name", render: (n) => n.name },
+    { header: "Public IP", render: (n) => firstIp(n.public_ips) },
+    { header: "Private IP", render: (n) => firstIp(n.private_ips) },
+    { header: "Instance Type", render: (n) => n.size || "—" },
     { header: "State", render: (n) => n.state },
-    { header: "Size", render: (n) => n.size },
     ...(!showAction ? [] : [{
       header: "Action",
       render: (n) => (
@@ -43,6 +51,48 @@ function actionColumns(ctx) {
       ),
     }]),
   ];
+}
+
+// Generic read-only tables for the extra AWS resource categories the identity
+// service fans out to (grouped per key_resource.md: where a VM can land,
+// networks it can join, images it boots from, storage it consumes, object
+// storage, access). The backend declares columns + rows per category, so this
+// renderer stays cloud-agnostic and dumb. Absent `categories` (e.g. Nutanix)
+// renders nothing.
+function CategoryTables({ categories }) {
+  const groups = {};
+  (categories || []).forEach((cat) => {
+    (groups[cat.group] = groups[cat.group] || []).push(cat);
+  });
+  return Object.entries(groups).map(([group, cats]) => (
+    <div key={group} className="resource-group">
+      <h3>{group}</h3>
+      {cats.map((cat) => (
+        <div key={cat.key} className="resource-category">
+          <h4>{cat.title} ({typeof cat.total === "number" ? cat.total : cat.rows.length})</h4>
+          {cat.error && <p className="muted">Unavailable: {cat.error}</p>}
+          {!cat.error && cat.rows.length === 0 && <p className="muted">None</p>}
+          {typeof cat.total === "number" && cat.total > cat.rows.length && (
+            <p className="muted">Showing first {cat.rows.length} of {cat.total}.</p>
+          )}
+          {cat.rows.length > 0 && (
+            <table>
+              <thead>
+                <tr>{cat.columns.map((col) => <th key={col.key}>{col.label}</th>)}</tr>
+              </thead>
+              <tbody>
+                {cat.rows.map((row, i) => (
+                  <tr key={row.id || row.name || row.address || i}>
+                    {cat.columns.map((col) => <td key={col.key}>{row[col.key]}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
+    </div>
+  ));
 }
 
 const CLOUD_META = {
@@ -84,6 +134,9 @@ export function CloudDashboard({ role, readOnly = false }) {
   // Per-cloud resource lists keyed by cloud id: { aws: {...}, nutanix: {...} }.
   const [resources, setResources] = useState({});
   const [provResult, setProvResult] = useState(null);
+  // Result of the bastion + internal private VM pair provisioning
+  // ("Provision Private VM Machine" button, AWS or Nutanix).
+  const [privResult, setPrivResult] = useState(null);
   // Per-VM deprovisioning status: "pending" | "done" | "error" | null.
   const [deprov, setDeprov] = useState({});
   // Inline edit state: which VM id is being edited + the draft form fields.
@@ -98,6 +151,30 @@ export function CloudDashboard({ role, readOnly = false }) {
       const r = await meta.provision({ vmName: `libcloud-${cloud}-${Date.now()}` });
       setProvResult(r);
       setMsg(`${meta.label} provisioning accepted: ${r.vmName}`);
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // "Provision Private VM Machine": bastion host + internal private server
+  // pair (aws_bastion_internal_server.md / nutanix_bastion_internal_server.md).
+  // The backend re-checks the OpenFGA can_provision grant and shells out to
+  // test_script/scripts/provision_aws_private.sh (AWS) or
+  // provision_nutanix_bastion_private.sh (Nutanix), which picks the tenant's
+  // credentials from Vault via the server-side auth_binding.
+  async function provisionPrivatePair(cloud) {
+    setBusy(`${cloud}Private`); setMsg(null); setErr(null); setPrivResult(null);
+    try {
+      const prefix = cloud === "aws" ? "libcloud-aws-pair" : "libcloud-ntnx-pair";
+      const r = await api.provisionPrivate(cloud, { vmName: `${prefix}-${Date.now()}` });
+      setPrivResult(r);
+      if (r.status === "provisioned") {
+        setMsg(`Private VM pair provisioned: ${r.bastionName} (bastion) + ${r.internalName} (internal)`);
+      } else {
+        setErr(`Private VM pair provisioning failed: ${r.message || "see backend logs"}`);
+      }
     } catch (e) {
       setErr(e.message || String(e));
     } finally {
@@ -198,8 +275,13 @@ export function CloudDashboard({ role, readOnly = false }) {
             Provisioning and resource views delegate to backend endpoints that
             replay the exact orchestration order from{" "}
             <code>test_script/scripts/provision_aws.sh</code> and{" "}
-            <code>test_script/scripts/provision_nutanix.sh</code>. The frontend
-            never invents cloud API sequences.
+            <code>test_script/scripts/provision_nutanix.sh</code>. The{" "}
+            <strong>Provision Private VM Machine</strong> button (the tenant's
+            owner/admin only) executes{" "}
+            <code>test_script/scripts/provision_aws_private.sh</code> (AWS) or{" "}
+            <code>test_script/scripts/provision_nutanix_bastion_private.sh</code>{" "}
+            (Nutanix) to create a bastion host plus an internal private server.
+            The frontend never invents cloud API sequences.
           </p>
         </>
       )}
@@ -220,9 +302,23 @@ export function CloudDashboard({ role, readOnly = false }) {
       {clouds.length > 0 && (
         <div className="card grid">
           {provisionable && provisionable.map((c) => (
-            <button key={c.cloud} className="primary" disabled={!!busy} onClick={() => provision(c.cloud)}>
-              {busy === c.cloud ? "Provisioning…" : `Provision ${CLOUD_META[c.cloud].label}`}
-            </button>
+            <React.Fragment key={c.cloud}>
+              <button className="primary" disabled={!!busy} onClick={() => provision(c.cloud)}>
+                {busy === c.cloud ? "Provisioning…" : `Provision ${CLOUD_META[c.cloud].label}`}
+              </button>
+              {/* Beside "Provision <cloud>": the bastion + internal private VM
+                  pair. Rendered only when the session's per-cloud capability has
+                  canProvision — i.e. that tenant's owner/admin only (viewers get
+                  canView only; the backend re-checks the same OpenFGA grant). */}
+              <button
+                className="primary"
+                disabled={!!busy}
+                title={`Bastion host + internal private server on ${CLOUD_META[c.cloud].label}`}
+                onClick={() => provisionPrivatePair(c.cloud)}
+              >
+                {busy === `${c.cloud}Private` ? "Provisioning…" : "Provision Private VM Machine"}
+              </button>
+            </React.Fragment>
           ))}
           {viewable.map((c) => (
             <button key={c.cloud} disabled={!!busy} onClick={() => view(c.cloud)}>
@@ -241,6 +337,23 @@ export function CloudDashboard({ role, readOnly = false }) {
           <ol>
             {provResult.steps.map((s) => <li key={s}>{s}</li>)}
           </ol>
+        </div>
+      )}
+
+      {privResult && (
+        <div className="card">
+          <h2>Private VM pair — {privResult.provider}</h2>
+          <p>
+            <strong>Bastion host:</strong> {privResult.bastionName}{" "}
+            <strong>Internal server:</strong> {privResult.internalName} — <em>{privResult.status}</em>
+          </p>
+          <p className="muted">{privResult.message}</p>
+          {privResult.stdout && (
+            <>
+              <h3>Script output ({privResult.provider === "aws" ? "provision_aws_private.sh" : "provision_nutanix_bastion_private.sh"}):</h3>
+              <pre>{privResult.stdout}</pre>
+            </>
+          )}
         </div>
       )}
 
@@ -295,6 +408,10 @@ export function CloudDashboard({ role, readOnly = false }) {
                   ))}
                 </tbody>
               </table>
+              {/* Extra AWS resource categories (VPCs, subnets, SGs, ENIs, route
+                  tables, IGWs, EIPs, AMIs, volumes, snapshots, buckets, key
+                  pairs) from the identity service fan-out. Empty for Nutanix. */}
+              <CategoryTables categories={list.categories || []} />
             </div>
           );
         })}

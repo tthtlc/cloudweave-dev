@@ -9,6 +9,7 @@
 //   PATCH /api/users/:id/role
 //   GET  /api/resources/{cloud}        (aws | nutanix)
 //   POST /api/provision/{cloud}        (aws | nutanix)
+//   POST /api/provision-private/{cloud} (aws | nutanix: bastion + internal pair)
 //   POST /api/deprovision/{cloud}      (aws | nutanix)
 //   POST /api/update/{cloud}           (aws | nutanix)
 //
@@ -51,7 +52,11 @@ export const api = config.mockMode
       collapse: (payload) => http("/api/auth/collapse", body("POST", payload)),
       logout: () => http("/api/logout", body("POST", {})),
       listUsers: () => http("/api/users"),
-      setRole: (id, role) => http(`/api/users/${encodeURIComponent(id)}/role`, body("PATCH", { role })),
+      setRole: (id, role, tenant) => {
+        const payload = { role };
+        if (tenant) payload.tenant = tenant;
+        return http(`/api/users/${encodeURIComponent(id)}/role`, body("PATCH", payload));
+      },
       setEmail: (id, email) => http(`/api/users/${encodeURIComponent(id)}/email`, body("PATCH", { email })),
       disableUser: (id) => http(`/api/users/${encodeURIComponent(id)}/disable`, body("POST", {})),
       listTuples: () => http("/api/tuples"),
@@ -64,6 +69,10 @@ export const api = config.mockMode
       // legacy per-cloud aliases below keep older callers working.
       resources: (cloud) => http(`/api/resources/${encodeURIComponent(cloud)}`),
       provision: (cloud, payload) => http(`/api/provision/${encodeURIComponent(cloud)}`, body("POST", payload)),
+      // Bastion + internal private VM pair (gated on can_provision, i.e. the
+      // tenant owner/admin only — see /api/provision-private/{cloud}). AWS and
+      // Nutanix share the one code path, like the other verbs.
+      provisionPrivate: (cloud, payload) => http(`/api/provision-private/${encodeURIComponent(cloud)}`, body("POST", payload)),
       deprovision: (cloud, payload) => http(`/api/deprovision/${encodeURIComponent(cloud)}`, body("POST", payload)),
       update: (cloud, payload) => http(`/api/update/${encodeURIComponent(cloud)}`, body("POST", payload)),
       provisionAws: (payload) => http("/api/provision/aws", body("POST", payload)),
@@ -72,6 +81,22 @@ export const api = config.mockMode
       deprovisionNutanix: (payload) => http("/api/deprovision/nutanix", body("POST", payload)),
       updateAws: (payload) => http("/api/update/aws", body("POST", payload)),
       updateNutanix: (payload) => http("/api/update/nutanix", body("POST", payload)),
+
+      // --- OpenFGA explorer (superadmin) ---
+      getOpenFgaStore: () => http("/api/openfga/store"),
+      getOpenFgaModels: () => http("/api/openfga/models"),
+      getOpenFgaModel: (id) => http(`/api/openfga/models/${encodeURIComponent(id)}`),
+      getOpenFgaAssertions: (modelId) => http(`/api/openfga/assertions/${encodeURIComponent(modelId)}`),
+      getOpenFgaChanges: (params = {}) => {
+        const qs = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => { if (v != null && v !== "") qs.set(k, String(v)); });
+        const s = qs.toString();
+        return http(`/api/openfga/changes${s ? `?${s}` : ""}`);
+      },
+      listOpenFgaUsers: (payload) => http("/api/openfga/list-users", body("POST", payload)),
+      listOpenFgaObjects: (payload) => http("/api/openfga/list-objects", body("POST", payload)),
+      expandOpenFga: (payload) => http("/api/openfga/expand", body("POST", payload)),
+      getRestApiPolicies: () => http("/api/openfga/rest-api-policies"),
     };
 
 export default api;

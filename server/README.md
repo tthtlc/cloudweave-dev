@@ -16,16 +16,18 @@ A role-aware React frontend for the libcloud cloud management platform.
 
 ## Roles
 
-| Role       | Landing route | Capabilities |
-|------------|---------------|--------------|
-| `superadmin` | `/superadmin` | List all users, view linked identities, change any user's role (`superadmin`/`owner`/`admin`/`viewer`) |
-| `owner`      | `/owner`      | Same dashboard shell as admin; permissions differentiated by backend policy |
-| `admin`      | `/admin`      | Provision AWS, Provision Nutanix, View AWS resources, View Nutanix resources |
-| `viewer`     | `/viewer`     | Read-only profile: internal user ID, role, login provider, linked identities |
+| Role         | Landing route   | Capabilities |
+|--------------|-----------------|--------------|
+| `superadmin` | `/superadmin`   | User management: list all users, view linked identities, change any user's role (`superadmin`/`owner`/`admin`/`viewer`/`disabled`), assign tenant (`aws`/`nutanix`), set email, disable users. Raw OpenFGA tuple CRUD. Authorization store explorer. |
+| `owner`      | `/owner`        | Same provisioning + resource-view shell as admin; permissions differentiated by backend OpenFGA policy. Placeholder for future owner-specific actions. |
+| `admin`      | `/admin`        | Provision AWS/Nutanix VMs, view resources (region/cluster, state, size), inline edit VMs (name, size, memory, tags), deprovision VMs. |
+| `viewer`     | `/viewer`       | Read-only profile (internal user ID, email, role, login provider, linked identities) + read-only resource view for assigned tenant. |
+| `pending`    | `/pending`      | Newly created account awaiting role/tenant assignment by a SuperAdmin. |
+| `disabled`   | `/disabled`     | Account exists in LLDAP/IdP but all OpenFGA role tuples have been revoked. No platform actions permitted. |
 
 A **predefined `superadmin`** internal user exists out of the box. Any
 first-time Google/GitHub login auto-provisions a new internal user with role
-`viewer`.
+`pending` (awaiting SuperAdmin assignment).
 
 ## Quick start (mock mode) — Docker (no host npm required)
 
@@ -151,18 +153,74 @@ this stack you should use the real `./dex` as described above.
 
 ## Routes
 
-| Route | Guard | Description |
-|-------|-------|-------------|
-| `/login`            | public           | Google / GitHub sign-in buttons → redirect to Dex |
-| `/auth/callback`    | public           | Consumes `code`/`state`, calls `/api/auth/exchange`, redirects by role (or to collapse) |
-| `/identity/collapse`| `RequireAuth`    | Link a new external identity into an existing internal user, or keep separate |
-| `/superadmin`        | `RequireRole(superadmin)` | User management table |
-| `/admin`             | `RequireRole(admin, superadmin)` | AWS/Nutanix provision + resource views |
-| `/owner`             | `RequireRole(owner, superadmin)` | Same shell as admin + owner placeholders |
-| `/viewer`            | `RequireRole(viewer, admin, owner, superadmin)` | Read-only profile |
-| `/logout`            | public           | Clears session, calls `/api/logout`, returns to `/login` |
-| `/unauthorized`      | public           | Role denied |
-| `*`                  | public           | Not found |
+### Public / Unauthenticated Routes
+
+| Route | Component | Function & Purpose |
+|---|---|---|
+| `/login` | `LoginPage` | **Entry point.** Renders sign-in buttons for LLDAP, Google, and GitHub (all proxied through Dex OIDC). In mock mode, provides a dropdown to impersonate any pre-seeded user and skip real authentication. If the user is already authenticated, redirects them to their role-appropriate dashboard. |
+| `/auth/callback` | `AuthCallbackPage` | **OAuth2 callback handler.** Dex redirects here after a successful login with `code` and `state` query params. This page validates the OAuth state (CSRF protection), exchanges the authorization code for a session via the backend, and routes the user onward — either to `/identity/collapse` (if the new identity matched existing users) or directly to their role dashboard. |
+| `/unauthorized` | `UnauthorizedPage` | **403 fallback.** Shown when an authenticated user's role does not match the roles required for a route (e.g., a `viewer` trying to access `/admin`). Displays a "not permitted" message with a link back to the viewer dashboard. |
+| `/logout` | `LogoutPage` | **Session termination.** Calls the backend logout endpoint (which revokes the Dex refresh token), clears the local session state, and redirects to `/login`. If the backend returns an IdP logout URL (for future non-Dex providers), it redirects there instead. |
+| `/` | `Navigate` → `/login` | **Root redirect.** The bare domain immediately sends unauthenticated users to the login page. |
+| `*` (catch-all) | `NotFoundPage` | **404 page.** Any path not matching a defined route renders a "Not found" message with a link back to `/login`. |
+
+### Authenticated (Any Role) — Gated by `RequireAuth`
+
+These routes require a valid session but no specific role:
+
+| Route | Component | Function & Purpose |
+|---|---|---|
+| `/identity/collapse` | `IdentityCollapsePage` | **Identity linking / deduplication.** When a user signs in with a new external provider (e.g., Google) whose email matches an existing internal user, the backend returns `needsIdentityCollapse: true`. This page lets the user **link** the new identity into an existing internal account or **keep** it as a separate pending account. This is how the system handles "one user, multiple identity providers." |
+| `/pending` | `PendingApprovalPage` | **Awaiting role assignment.** Shown to users who have authenticated successfully but have a `pending` role (no tenant or role assigned yet). Explains that a SuperAdmin must assign them a role and tenant before they can access cloud resources. |
+| `/disabled` | `DisabledAccountPage` | **Account revoked.** Displayed to users whose role is `disabled`. Explains that their account still exists in LLDAP but all OpenFGA role tuples have been revoked, meaning no platform actions are permitted. Directs them to contact a SuperAdmin for re-enablement. |
+
+### SuperAdmin Routes — Gated by `RequireRole(["superadmin"])`
+
+| Route | Component | Function & Purpose |
+|---|---|---|
+| `/superadmin` | `SuperAdminDashboard` | **User management.** The central administrative panel. Lists all internal users (both LLDAP-provisioned and OAuth2/federated). A SuperAdmin can: assign/change a user's **role** (`superadmin`, `owner`, `admin`, `viewer`, `disabled`), assign a **tenant** (`aws` or `nutanix`) for federated users, set/update email addresses, and **disable** users (revoking all their OpenFGA tuples). All changes go through `PATCH /api/users/:id/role`. |
+| `/superadmin/tuples` | `OpenFgaTuplesPage` | **Raw OpenFGA tuple management.** Direct CRUD interface over the OpenFGA relationship store. A SuperAdmin can list, filter, add, and delete arbitrary authorization tuples (`user → relation → object`). This is the low-level mechanism behind role grants and disables — e.g., deleting a `user:<uid> admin tenant:aws` tuple revokes that user's admin access on AWS. |
+| `/superadmin/explorer` | `OpenFgaExplorerPage` | **Authorization store explorer.** A comprehensive multi-tab view of the OpenFGA authorization system: **Users & Roles** (who has what), **REST API Routes** (which API endpoints are protected by which policies), **Store & Models** (the OpenFGA authorization model and type definitions), **Changes** (tuple change log/audit trail), and **Query** (interactive relationship queries to check permissions). |
+
+### Tenant-Scoped Role Routes
+
+| Route | Component | Guard | Function & Purpose |
+|---|---|---|---|
+| `/admin` | `AdminDashboard` | `RequireRole(["admin"])` | **Admin dashboard.** A `CloudDashboard` rendered with `role="admin"`. For the user's assigned tenant (AWS or Nutanix), this dashboard allows **provisioning** new VMs, **viewing** existing resources (with region/cluster, state, size), **editing** VM properties (name, size, memory, tags) via `PATCH /v1/compute/nodes/{id}`, and **deprovisioning** VMs. Permissions (canProvision, canUpdate) are computed live by the backend from OpenFGA. |
+| `/owner` | `OwnerDashboard` | `RequireRole(["owner"])` | **Owner dashboard.** Uses the same `CloudDashboard` shell as admin (`role="owner"`), plus a placeholder section for future owner-specific actions. The backend (OpenFGA) differentiates owner from admin permissions; the UI keeps the same layout so backend policy is the only thing that changes between the two roles. |
+| `/viewer` | `ViewerDashboard` | `RequireRole(["viewer", "admin", "owner", "superadmin"])` | **Read-only dashboard.** Accessible by all roles (including superadmin). Shows the user's **profile** (internal ID, email, role, login provider, linked identities) and a **read-only** `CloudDashboard` (no provision/edit/deprovision buttons — only "View Resources"). This is the default landing page for viewers, and a fallback for any authenticated user who wants a resource overview without mutation controls. |
+
+## Architecture
+
+### Auth & Role Gating
+
+- **`RequireAuth`** — checks for a valid session; redirects to `/login` if absent. Shows a "Loading session…" placeholder while the session is being fetched.
+- **`RequireRole`** — extends `RequireAuth`; also checks `session.role` against an allowed list. Routes to `/disabled` if the role is `disabled`, `/unauthorized` if the role isn't in the allowed set.
+
+Frontend role checks are **UX-only**. The backend (OpenFGA) is the source of truth for all authorization decisions.
+
+### Role-to-Dashboard Mapping
+
+The `roleHome()` helper in `src/services/auth.js` maps each role to its landing route:
+
+| Role | Landing Route |
+|---|---|
+| `superadmin` | `/superadmin` |
+| `admin` | `/admin` |
+| `owner` | `/owner` |
+| `viewer` | `/viewer` |
+| `pending` | `/pending` |
+| `disabled` | `/disabled` |
+
+### Navigation Shell (`Layout.js`)
+
+All authenticated routes are wrapped in a shared `Layout` component that renders:
+- A **top bar** with brand ("libcloud Portal"), current user email/role, and a logout button.
+- A **role-aware nav bar** — nav links are filtered to only show tabs the current user's role permits:
+  - **SuperAdmin** sees: Viewer, Superadmin, Tuples, Explorer
+  - **Admin** sees: Viewer, Admin
+  - **Owner** sees: Viewer, Owner
+  - **Viewer** sees: Viewer
 
 ## Backend API contract
 
@@ -179,6 +237,7 @@ GET    /api/resources/aws
 GET    /api/resources/nutanix
 POST   /api/provision/aws
 POST   /api/provision/nutanix
+POST   /api/provision-private/nutanix
 POST   /api/deprovision/aws
 ```
 
@@ -231,6 +290,48 @@ contract reminder; the backend owns the real workflow:
 The REST API holds the backend cloud identity (server-side IAM role /
 auth_binding + Vault secret); the client never handles cloud credentials.
 
+## Private VM pair provisioning contract
+
+The **Provision Private VM Machine** button (rendered beside **Provision
+AWS** / **Provision Nutanix** only when the session's per-cloud capability has
+`canProvision` — i.e. that tenant's owner/admin; viewers and superadmins never
+see it) calls `POST /api/provision-private/{cloud}` with `{ vmName }` (the pair
+prefix). The backend enforces the same `can_provision` OpenFGA check as
+single-VM provisioning, then **shells out to the per-cloud script** (passing
+`PROVISION=1`, `VM_PREFIX`/`BASTION_NAME`/`INTERNAL_NAME`), which stays the
+single source of truth for the 2-VM scenario:
+
+- `test_script/scripts/provision_aws_private.sh`
+  (`aws_bastion_internal_server.md`):
+  1. Ensure VPC `libcloud-private-vpc` (`10.0.0.0/16`)
+  2. Ensure public subnet `libcloud-public-subnet` (`10.0.0.0/24`, auto-assign
+     public IP) + private subnet `libcloud-private-subnet` (`10.0.16.0/24`)
+  3. Ensure internet gateway + public route table (`0.0.0.0/0` → IGW,
+     associated with the public subnet; **no NAT gateway** — the private
+     subnet keeps the local-only main route table)
+  4. Ensure security groups (bastion: SSH/22 from the operator CIDR; internal:
+     SSH/22 from the bastion SG + app port from the VPC CIDR) and the key pair
+  5. Create the bastion VM (public subnet + public IP) and the internal VM
+     (private subnet, **no public IP → no internet access**)
+  6. Verify both VMs
+- `test_script/scripts/provision_nutanix_bastion_private.sh`
+  (`nutanix_bastion_internal_server.md`):
+  1. Ensure subnet `vlan100-external` (VLAN 100, `10.1.100.0/24` + IPAM pool)
+  2. Ensure subnet `vlan200-internal` (VLAN 200, `10.1.200.0/24` + IPAM pool, isolated)
+  3. Create the bastion host on the external VLAN (2 vCPU, 4 GiB, 20 GiB data disk)
+  4. Create the internal private server on the isolated VLAN (no internet access)
+  5. Verify both VMs
+
+The AWS network primitives the script needs (security-group rule
+authorization, internet gateways, route tables) are exposed by the libcloud
+REST API as `POST /v1/compute/security-groups/{id}:authorize`,
+`/v1/compute/internet-gateways` and `/v1/compute/route-tables[...]`, all gated
+on the `compute:network:manage` scope → the same OpenFGA `can_provision`
+grant. The tenant's credentials are picked automatically from Vault
+(`secret/libcloud/<auth_binding>`) by the libcloud REST API — the portal and
+identity service never handle them. The response carries the script's
+`stdout`/`stderr` and `exitCode`; the frontend renders them in a result card.
+
 ## Deprovisioning contract
 
 The AWS resources table's per-row **Deprovision** button calls
@@ -270,9 +371,13 @@ server/
     │   ├── AuthCallbackPage.js
     │   ├── IdentityCollapsePage.js
     │   ├── SuperAdminDashboard.js
+    │   ├── OpenFgaTuplesPage.js
+    │   ├── OpenFgaExplorerPage.js
     │   ├── AdminDashboard.js
     │   ├── OwnerDashboard.js
     │   ├── ViewerDashboard.js
+    │   ├── PendingApprovalPage.js
+    │   ├── DisabledAccountPage.js
     │   ├── UnauthorizedPage.js
     │   ├── NotFoundPage.js
     │   └── LogoutPage.js

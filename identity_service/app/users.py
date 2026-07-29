@@ -46,7 +46,13 @@ def _dex_lldap_uid(subject: str) -> str:
 _pending_users: dict[str, dict[str, Any]] = {}
 
 DEFAULT_ROLE = "viewer"
-ALLOWED_ROLES = {"superadmin", "owner", "admin", "viewer"}
+ALLOWED_ROLES = {"superadmin", "owner", "admin", "viewer", "disabled"}
+
+# Principals (LLDAP uids) that have been explicitly excluded from the system.
+# OpenFGA is the source of truth for active roles, so a user with no tuples
+# would normally be re-derived as "viewer". This set preserves the "disabled"
+# marker across list_all() calls so the superadmin sees them as excluded.
+_disabled_principals: set[str] = set()
 
 
 class UserService:
@@ -111,7 +117,7 @@ class UserService:
                 # sub protobuf to recover the uid directly.
                 uid = _dex_lldap_uid(subject)
                 internal_user_id = f"int-{uid}"
-            role = self.fga.role_for(uid) or DEFAULT_ROLE
+            role = "disabled" if uid in _disabled_principals else (self.fga.role_for(uid) or DEFAULT_ROLE)
             return {
                 "internalUserId": internal_user_id,
                 "role": role,
@@ -153,8 +159,8 @@ class UserService:
                 "pendingIdentity": external,
             }
 
-        # Brand-new internal user -> default role viewer.
-        new_user = self._provision_viewer(external)
+        # Brand-new internal user -> pending approval (no role, no tuples).
+        new_user = self._provision_pending(external)
         return {
             "internalUserId": new_user["internalUserId"],
             "role": new_user["role"],
@@ -164,22 +170,22 @@ class UserService:
             "collapseCandidates": [],
         }
 
-    def _provision_viewer(self, external: dict[str, str]) -> dict[str, Any]:
-        internal_user_id = f"int-viewer-{uuid.uuid4().hex[:8]}"
+    def _provision_pending(self, external: dict[str, str]) -> dict[str, Any]:
+        """Create a new federated user in pending state — NO OpenFGA tuples.
+        The user must be explicitly assigned a role + tenant by a SuperAdmin
+        before they can access anything."""
+        internal_user_id = f"int-pending-{uuid.uuid4().hex[:8]}"
         user = {
             "internalUserId": internal_user_id,
             "email": external.get("email", ""),
             "displayName": f"{external.get('provider','unknown')} user",
-            "role": DEFAULT_ROLE,
+            "role": "pending",
             "linkedIdentities": [external["subject"]],
             "createdAt": _now_iso(),
         }
         _pending_users[internal_user_id] = user
-        # Seed the OpenFGA tuple so subsequent authZ checks pass. The OpenFGA
-        # model keys roles off the LLDAP uid; for pending users we use the
-        # internal id's suffix as the principal until the user is linked into
-        # LLDAP. TODO: create the LLDAP user and re-key the tuple on its uid.
-        self.fga.assign_role(internal_user_id, DEFAULT_ROLE)
+        # NO OpenFGA tuple written. The user stays in pending state until a
+        # SuperAdmin assigns a role AND tenant via set_role().
         return user
 
     # --- collapse ------------------------------------------------------------
@@ -209,18 +215,26 @@ class UserService:
                 _pending_users[target["internalUserId"]] = target
             return target
 
-        # keep: provision a new viewer for the pending identity.
-        return self._provision_viewer(pending_identity)
+        # keep: provision a new pending user for the pending identity.
+        return self._provision_pending(pending_identity)
 
     # --- admin ---------------------------------------------------------------
     def list_all(self) -> list[dict[str, Any]]:
         users = self.lldap.list_users()
         # OpenFGA is the source of truth for roles; lldap.list_users() only
-        # returns a placeholder "viewer". Derive the real role per user from
-        # OpenFGA (keyed by the LLDAP uid, i.e. internalUserId without "int-").
+        # returns a placeholder "viewer".  Derive real roles with a single
+        # batch /read (was N individual role_for → N full /read calls).
+        principals = [
+            u["internalUserId"][4:] if u["internalUserId"].startswith("int-") else u["internalUserId"]
+            for u in users
+        ]
+        derived = self.fga.batch_derive(principals)
         for u in users:
             uid = u["internalUserId"][4:] if u["internalUserId"].startswith("int-") else u["internalUserId"]
-            u["role"] = self.fga.role_for(uid) or DEFAULT_ROLE
+            if uid in _disabled_principals:
+                u["role"] = "disabled"
+            else:
+                u["role"] = derived.get(uid, {}).get("role") or DEFAULT_ROLE
         # Merge in pending users not yet in LLDAP so superadmin sees everyone.
         seen = {u["internalUserId"] for u in users}
         for u in _pending_users.values():
@@ -243,22 +257,51 @@ class UserService:
             return internal_user_id[4:]
         return internal_user_id
 
-    def set_role(self, internal_user_id: str, role: str) -> dict[str, Any]:
+    def set_role(self, internal_user_id: str, role: str, tenant: str | None = None) -> dict[str, Any]:
         if role not in ALLOWED_ROLES:
             raise APIError("auth_bad_role", f"role must be one of {sorted(ALLOWED_ROLES)}", 400)
         user = self._find_by_internal_id(internal_user_id)
         if not user:
             raise APIError("user_not_found", "internal user not found", 404)
+
+        is_pending = internal_user_id in _pending_users
+
+        # "disabled" excludes the user from the system — no tenant needed,
+        # and the disabled user's tenant (if any) is cleared.
+        if role == "disabled":
+            user["role"] = "disabled"
+            user.pop("tenant", None)
+            if is_pending:
+                _pending_users[internal_user_id] = user
+            principal = self._fga_principal(internal_user_id)
+            self.fga.clear_roles(principal)
+            _disabled_principals.add(principal)
+            return user
+
+        # Re-activating a previously disabled user: remove the disabled marker.
+        principal = self._fga_principal(internal_user_id)
+        _disabled_principals.discard(principal)
+
+        # For pending (non-LLDAP) users, tenant is required.
+        if is_pending:
+            if not tenant:
+                raise APIError("auth_missing_tenant", "tenant is required when assigning role to a pending user", 400)
+            if tenant not in self.fga.KNOWN_TENANTS:
+                raise APIError("auth_bad_tenant", f"unknown tenant: {tenant}", 400,
+                               {"known": list(self.fga.KNOWN_TENANTS)})
+            user["tenant"] = tenant  # Persist for future role changes.
+
         user["role"] = role
-        if internal_user_id in _pending_users:
+        if is_pending:
             _pending_users[internal_user_id] = user
         # OpenFGA is the source of truth for roles. Revoke the user's existing
         # role tuples first, then write the new role's — otherwise the old
         # (stronger) tuples remain and role_for() keeps returning the old role,
         # so the change never takes effect.
-        principal = self._fga_principal(internal_user_id)
         self.fga.clear_roles(principal)
-        self.fga.assign_role(principal, role)
+        # For pending users, pass the explicit tenant; for LLDAP users, let
+        # assign_role() derive it from the principal slug.
+        self.fga.assign_role(principal, role, tenant=tenant if is_pending else None)
         return user
 
     def disable_user(self, internal_user_id: str) -> None:
@@ -269,6 +312,7 @@ class UserService:
             raise APIError("user_not_found", "internal user not found", 404)
         principal = self._fga_principal(internal_user_id)
         self.fga.clear_roles(principal)
+        _disabled_principals.add(principal)
         if internal_user_id in _pending_users:
             _pending_users[internal_user_id]["role"] = "disabled"
 

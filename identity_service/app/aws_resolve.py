@@ -46,6 +46,10 @@ def _image_score(img: dict[str, Any]) -> int:
         score += 10
     if "deep learning" in name or "nvidia" in name or "gpu" in name:
         score -= 40
+    if "22.04 lts" in name or "ubuntu 22.04" in name:
+        score += 20
+    if "24.04 lts" in name or "ubuntu 24.04" in name:
+        score += 35
     return score
 
 

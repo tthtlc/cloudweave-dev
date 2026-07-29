@@ -98,7 +98,7 @@ export default function IdentityCollapsePage() {
         <br />
         <label>
           <input type="radio" name="decision" checked={decision === "keep"} onChange={() => setDecision("keep")} />
-          {" "}Keep as a separate account (new viewer)
+          {" "}Keep as a separate account (pending approval)
         </label>
         <p className="muted" style={{ marginTop: "0.5rem" }}>
           Backend policy decides whether "keep" is allowed; the backend enforces

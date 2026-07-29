@@ -48,7 +48,7 @@ class SessionService:
         except jwt.PyJWTError as exc:
             raise APIError("auth_invalid_session", "Session cookie invalid or expired", 401, {"detail": str(exc)}) from exc
 
-    def create(self, resp: Response, *, internal_user: dict[str, Any], refresh_token: str | None) -> dict[str, Any]:
+    def create(self, resp: Response, *, internal_user: dict[str, Any], refresh_token: str | None, id_token: str | None = None) -> dict[str, Any]:
         s = self._settings()
         sid = uuid.uuid4().hex
         meta = {
@@ -59,7 +59,11 @@ class SessionService:
             "sid": sid,
         }
         if refresh_token:
-            _refresh_store[sid] = {"refresh_token": refresh_token, "internalUserId": internal_user["internalUserId"]}
+            _refresh_store[sid] = {
+                "refresh_token": refresh_token,
+                "id_token": id_token,
+                "internalUserId": internal_user["internalUserId"],
+            }
         cookie_value = self._encode(meta)
         resp.set_cookie(
             key=s.session_cookie_name,
@@ -79,16 +83,24 @@ class SessionService:
             raise APIError("auth_no_session", "No session", 401)
         return self._decode(token)
 
-    def revoke(self, req: Request, resp: Response) -> None:
+    def revoke(self, req: Request, resp: Response) -> dict[str, Any] | None:
+        """Clear the session cookie and return the stored refresh/id tokens.
+
+        The caller is responsible for revoking the refresh token at Dex
+        (stock Dex has no RP-initiated logout endpoint, so token revocation
+        is the only IdP-side cleanup).
+        """
         s = self._settings()
+        stored = None
         token = req.cookies.get(s.session_cookie_name)
         if token:
             try:
                 claims = self._decode(token)
-                _refresh_store.pop(claims.get("sid", ""), None)
+                stored = _refresh_store.pop(claims.get("sid", ""), None)
             except APIError:
                 pass
         resp.delete_cookie(s.session_cookie_name, path="/")
+        return stored
 
     def refresh_token_for(self, sid: str) -> str | None:
         entry = _refresh_store.get(sid)

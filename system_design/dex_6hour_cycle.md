@@ -1,4 +1,15 @@
 
+> **RESOLVED (2026-07) — historical note.** This file describes the pre-v1.16.0 era.
+> OpenFGA v1.16.0 (pinned in `openfga_postgres/Dockerfile`; PR #3101) enables
+> `RefreshUnknownKID` in its OIDC authenticator, so on an unknown `kid` after a
+> Dex rotation it refetches Dex's JWKS in-process — no container restart needed.
+> The restart-based `openfga_ensure_fresh.sh` workaround, its env knobs
+> (`OPENFGA_SKIP_RESTART`, `OPENFGA_FORCE_RESTART`, `OPENFGA_JWKS_REFRESH_TTL_SEC`)
+> and the marker file `generated/.openfga_jwks_refreshed_at` have all been removed.
+> Kept for historical context only.
+
+---
+
 OpenFGA fetches Dex's discovery doc + JWKS once at startup
   #   (coreos/go-oidc) and does not reliably refresh on an unknown `kid`. After a
   #   Dex key rotation, tokens minted by Dex are signed with a `kid` that OpenFGA's

@@ -362,6 +362,10 @@ def build_vm_create_payload(
     user_data=None,
     nics=None,
     power_on=True,
+    assign_ip=None,
+    ip_address=None,
+    ip_prefix_length=None,
+    data_disks=None,
 ):
     payload = {
         "name": name,
@@ -397,19 +401,51 @@ def build_vm_create_payload(
             vm_disk["storageContainer"] = {"extId": storage_container_ext_id}
         disks.append({"backingInfo": {"vmDisk": vm_disk}})
 
+    for data_disk in data_disks or []:
+        data_disk_size_mib = data_disk.get("size_mib")
+        if not data_disk_size_mib:
+            raise LibcloudError(
+                "data_disks entries require a size_mib value",
+                driver=None,
+            )
+        vm_disk = {"diskSizeBytes": mib_to_bytes(data_disk_size_mib)}
+        data_disk_container = (
+            data_disk.get("storage_container_ext_id") or storage_container_ext_id
+        )
+        if data_disk_container:
+            vm_disk["storageContainer"] = {"extId": data_disk_container}
+        disk = {"backingInfo": {"vmDisk": vm_disk}}
+        bus = data_disk.get("bus")
+        if bus:
+            disk_address = {"busType": str(bus).upper()}
+            if data_disk.get("index") is not None:
+                disk_address["index"] = data_disk["index"]
+            disk["diskAddress"] = disk_address
+        disks.append(disk)
+
     if disks:
         payload["disks"] = disks
 
     if nics is not None:
         payload["nics"] = nics
     elif subnet_ext_id:
-        payload["nics"] = [
-            {
-                "networkInfo": {
-                    "subnet": {"extId": subnet_ext_id},
-                }
+        nic = {
+            "networkInfo": {
+                "subnet": {"extId": subnet_ext_id},
             }
-        ]
+        }
+        ipv4_config = {}
+        if ip_address:
+            ipv4_config["ipAddress"] = {"value": ip_address}
+            if ip_prefix_length is not None:
+                ipv4_config["ipAddress"]["prefixLength"] = ip_prefix_length
+        if assign_ip is not None:
+            ipv4_config["shouldAssignIp"] = assign_ip
+        elif ip_address:
+            ipv4_config["shouldAssignIp"] = True
+        if ipv4_config:
+            nic["networkInfo"]["ipv4Config"] = ipv4_config
+        payload["nics"] = [nic]
 
     customization = guest_customization or {}
     if cloud_init:
@@ -509,6 +545,8 @@ def build_subnet_create_payload(
     ip_address=None,
     prefix_length=None,
     gateway_ip=None,
+    dhcp_server=None,
+    ip_pool=None,
 ):
     payload = {
         "name": name,
@@ -524,18 +562,49 @@ def build_subnet_create_payload(
     if network_id is not None:
         payload["networkId"] = network_id
 
+    ip_config_ipv4 = None
     if ip_address and prefix_length is not None:
-        ip_config = {
-            "ipv4": {
-                "ipSubnet": {
-                    "ip": {"value": ip_address},
-                    "prefixLength": prefix_length,
-                },
-            }
+        ip_config_ipv4 = {
+            "ipSubnet": {
+                "ip": {"value": ip_address},
+                "prefixLength": prefix_length,
+            },
         }
         if gateway_ip:
-            ip_config["ipv4"]["defaultGatewayIp"] = {"value": gateway_ip}
-        payload["ipConfig"] = [ip_config]
+            ip_config_ipv4["defaultGatewayIp"] = {"value": gateway_ip}
+
+    if ip_pool:
+        if ip_config_ipv4 is None:
+            raise LibcloudError(
+                "ip_pool requires ip_address and prefix_length",
+                driver=None,
+            )
+        pool_list = []
+        for pool in ip_pool:
+            if isinstance(pool, str):
+                start_ip, _, end_ip = pool.partition("-")
+            else:
+                start_ip, end_ip = pool
+            start_ip = (start_ip or "").strip()
+            end_ip = (end_ip or "").strip()
+            if not start_ip or not end_ip:
+                raise LibcloudError(
+                    "ip_pool entries must be 'start-end' strings or (start, end) pairs",
+                    driver=None,
+                )
+            pool_list.append({"startIp": {"value": start_ip}, "endIp": {"value": end_ip}})
+        ip_config_ipv4["poolList"] = pool_list
+
+    if dhcp_server:
+        if ip_config_ipv4 is None:
+            raise LibcloudError(
+                "dhcp_server requires ip_address and prefix_length",
+                driver=None,
+            )
+        ip_config_ipv4["dhcpServerAddress"] = {"value": dhcp_server}
+
+    if ip_config_ipv4 is not None:
+        payload["ipConfig"] = [{"ipv4": ip_config_ipv4}]
 
     return payload
 

@@ -2,8 +2,10 @@ import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-// Clears the local session, calls the backend logout endpoint (which should
-// also revoke the Dex session / drop the httpOnly cookie), then returns to /login.
+// Clears the local session, calls the backend logout endpoint (which revokes
+// the Dex refresh token), then navigates back to /login. Stock Dex has no
+// RP-initiated logout endpoint, so there is no IdP-side redirect; the
+// logoutUrl branch only fires if a future IdP returns one.
 export default function LogoutPage() {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -11,8 +13,15 @@ export default function LogoutPage() {
   useEffect(() => {
     let active = true;
     (async () => {
-      await logout();
-      if (active) navigate("/login", { replace: true });
+      const logoutUrl = await logout();
+      if (!active) return;
+      if (logoutUrl) {
+        // Only used if the backend ever returns an IdP logout URL (stock Dex
+        // has none); otherwise fall through to the SPA login page.
+        window.location.href = logoutUrl;
+      } else {
+        navigate("/login", { replace: true });
+      }
     })();
     return () => { active = false; };
   }, [logout, navigate]);

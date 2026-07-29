@@ -58,6 +58,10 @@ NUTANIX_ALLOWED_EX = {
     "ex_nics",
     "ex_categories",
     "ex_power_on",
+    "ex_assign_ip",
+    "ex_ip_address",
+    "ex_ip_prefix_length",
+    "ex_data_disks",
     "ex_wait",
 }
 
@@ -370,6 +374,7 @@ class ComputeService:
         connection: ProviderConnection,
         owner: str | None = None,
         filters: dict[str, str] | None = None,
+        arch: str | None = None,
     ) -> list[ImageResponse]:
         driver = build_driver(connection)
         kwargs: dict[str, Any] = {}
@@ -381,8 +386,17 @@ class ComputeService:
                 default_name = get_settings().aws_default_image_name_filter.strip()
                 if default_name:
                     aws_filters["name"] = default_name
+                default_arch = get_settings().aws_default_image_architecture_filter.strip()
+                if default_arch:
+                    aws_filters["architecture"] = default_arch
             else:
                 aws_filters = dict(filters)
+            # Allow explicit arch override (None = use default; "" or "*" = skip arch filter)
+            if arch is not None:
+                if arch == "" or arch == "*":
+                    aws_filters.pop("architecture", None)
+                else:
+                    aws_filters["architecture"] = arch
             if aws_filters:
                 kwargs["ex_filters"] = aws_filters
         try:
@@ -664,6 +678,7 @@ class ComputeService:
         connection: ProviderConnection,
         volume_id: str | None = None,
         snapshot_id: str | None = None,
+        owner: str | None = None,
     ) -> list[SnapshotResponse]:
         driver = build_driver(connection)
         if snapshot_id and hasattr(driver, "ex_get_volume_snapshot"):
@@ -681,7 +696,15 @@ class ComputeService:
                 for s in driver.list_volume_snapshots(volume)
             ]
         if hasattr(driver, "list_snapshots"):
-            return [self._serialize_snapshot(s, None) for s in driver.list_snapshots()]
+            # owner is AWS-only ("self"|"amazon"|<account-id>): without it
+            # DescribeSnapshots returns ALL public snapshots (tens of
+            # thousands), so inventory callers should pass owner="self".
+            snaps = (
+                driver.list_snapshots(owner=owner)
+                if owner and connection.provider == "aws"
+                else driver.list_snapshots()
+            )
+            return [self._serialize_snapshot(s, None) for s in snaps]
         raise APIError(
             code="provider_capability_unsupported",
             message="Snapshot listing not supported",
@@ -794,13 +817,24 @@ class ComputeService:
                 message="Key pair listing not supported",
                 status_code=400,
             )
+        try:
+            pairs = driver.list_key_pairs()
+        except NotImplementedError as exc:
+            # hasattr() can't distinguish a real implementation from the
+            # NodeDriver base stub, which raises NotImplementedError (e.g.
+            # Nutanix). Surface it as a clean 501, not a 500.
+            raise APIError(
+                code="provider_capability_unsupported",
+                message=f"Provider '{connection.provider}' does not support key pair listing",
+                status_code=501,
+            ) from exc
         return [
             KeyPairResponse(
                 name=k.name,
                 fingerprint=getattr(k, "fingerprint", None),
                 public_key=getattr(k, "public_key", None),
             )
-            for k in driver.list_key_pairs()
+            for k in pairs
         ]
 
     def delete_key_pair(self, connection: ProviderConnection, name: str) -> dict:

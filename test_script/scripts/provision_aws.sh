@@ -31,7 +31,7 @@ AWS_BACKEND_OBJECT="aws_region:${LIBCLOUD_AWS_AUTH_BINDING}"
 PROVISION="${PROVISION:-0}"
 VM_NAME="${VM_NAME:-libcloud-demo-$(date +%s)}"
 TEARDOWN_VMS="${TEARDOWN_VMS:-0}"
-AWS_IMAGE_NAME_FILTER="${AWS_IMAGE_NAME_FILTER:-*Ubuntu*}"
+AWS_IMAGE_NAME_FILTER="${AWS_IMAGE_NAME_FILTER:-*ubuntu*24.04*amd64*}"
 
 # The provider connection (provider + region + auth_binding, NO credentials)
 # is sent via the X-Provider-Connection header by libcloud_api. Endpoints below

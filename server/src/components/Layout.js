@@ -20,11 +20,18 @@ export default function Layout({ children }) {
     { to: "/owner", label: "Owner", roles: ["owner"] },
     { to: "/superadmin", label: "Superadmin", roles: ["superadmin"] },
     { to: "/superadmin/tuples", label: "Tuples", roles: ["superadmin"] },
+    { to: "/superadmin/explorer", label: "Explorer", roles: ["superadmin"] },
   ].filter((l) => l.roles.includes(role));
 
   async function onLogout() {
-    await logout();
-    navigate("/login", { replace: true });
+    const logoutUrl = await logout();
+    if (logoutUrl) {
+      // Only used if the backend ever returns an IdP logout URL (stock Dex
+      // has none); otherwise fall through to the SPA login page.
+      window.location.href = logoutUrl;
+    } else {
+      navigate("/login", { replace: true });
+    }
   }
 
   return (

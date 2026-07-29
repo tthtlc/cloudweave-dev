@@ -1,10 +1,6 @@
 AWS_ACCESS_KEY=AKIAYHGEH2P7SNGEPLZH
 AWS_SECRET_ACCESS_KEY=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
 LIBCLOUD_PASSWORD_AWS_OWNER="SA-Jv07tZKzzFB85mKAL_rbphi_"  ##    (owner  of tenant:aws)
-# Refresh OpenFGA's cached Dex JWKS before any OpenFGA-dependent call. Dex
-# rotates its signing keys every 6h (storage: memory); a stale OpenFGA keyset
-# makes every Check fail with `invalid_claims`. Throttled + skippable.
-./scripts/openfga_ensure_fresh.sh
 TENANT=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_AWS_OWNER VERBOSE=1 \
 	LIBCLOUD_AWS_KEY=${AWS_ACCESS_KEY} LIBCLOUD_AWS_SECRET=${AWS_SECRET_ACCESS_KEY} \
     python3 scripts/set_tenant_credentials.py

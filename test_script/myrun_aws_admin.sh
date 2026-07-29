@@ -2,11 +2,6 @@
 #
 [ $# -ne 1 ]  && { echo "$0 <script_file>"; exit 0; }
 
-# Refresh OpenFGA's cached Dex JWKS before any OpenFGA-dependent call. Dex
-# rotates its signing keys every 6h (storage: memory); a stale OpenFGA keyset
-# makes every Check fail with `invalid_claims`. Throttled + skippable.
-./scripts/openfga_ensure_fresh.sh
-
 SCRIPT_FILE=$1
 AWS_ACCESS_KEY=AKIAYHGEH2P7SNGEPLZH
 AWS_SECRET_ACCESS_KEY=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

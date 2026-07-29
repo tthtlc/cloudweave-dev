@@ -6,10 +6,15 @@ from app.network.models import (
     FloatingIPAllocateRequest,
     FloatingIPAssociateRequest,
     FloatingIPDisassociateRequest,
+    InternetGatewayCreateRequest,
     LoadBalancerCreateRequest,
     NetworkCreateRequest,
     NetworkUpdateRequest,
+    RouteCreateRequest,
+    RouteTableAssociateRequest,
+    RouteTableCreateRequest,
     SecurityGroupCreateRequest,
+    SecurityGroupRuleAuthorizeRequest,
     SubnetCreateRequest,
     SubnetUpdateRequest,
 )
@@ -119,6 +124,15 @@ def delete_security_group(group_id: str, request: Request):
     return success_response(data, request)
 
 
+@router.post("/security-groups/{group_id}:authorize")
+def authorize_security_group_rule(
+    group_id: str, body: SecurityGroupRuleAuthorizeRequest, request: Request
+):
+    connection = request.state.connection
+    data = network_service.authorize_security_group_rule(connection, group_id, body)
+    return success_response(data, request)
+
+
 @router.get("/load-balancers")
 def list_load_balancers(
     request: Request,
@@ -185,4 +199,73 @@ def associate_floating_ip(address: str, body: FloatingIPAssociateRequest, reques
 def disassociate_floating_ip(address: str, body: FloatingIPDisassociateRequest, request: Request):
     connection = request.state.connection
     data = network_service.disassociate_floating_ip(connection, address, body)
+    return success_response(data, request)
+
+
+# --------------------------------------------------------------------------- #
+# Internet gateways (AWS)
+# --------------------------------------------------------------------------- #
+@router.get("/internet-gateways")
+def list_internet_gateways(
+    request: Request,
+    gateway_id: str | None = Query(None, alias="id"),
+    vpc_id: str | None = None,
+):
+    connection = request.state.connection
+    data = network_service.list_internet_gateways(connection, gateway_id=gateway_id, vpc_id=vpc_id)
+    return success_response(data, request)
+
+
+@router.post("/internet-gateways")
+def create_internet_gateway(body: InternetGatewayCreateRequest, request: Request):
+    connection = request.state.connection
+    data = network_service.create_internet_gateway(connection, body)
+    return success_response(data, request)
+
+
+# --------------------------------------------------------------------------- #
+# Route tables (AWS)
+# --------------------------------------------------------------------------- #
+@router.get("/route-tables")
+def list_route_tables(
+    request: Request,
+    route_table_id: str | None = Query(None, alias="id"),
+    vpc_id: str | None = None,
+):
+    connection = request.state.connection
+    data = network_service.list_route_tables(connection, route_table_id=route_table_id, vpc_id=vpc_id)
+    return success_response(data, request)
+
+
+@router.post("/route-tables")
+def create_route_table(body: RouteTableCreateRequest, request: Request):
+    connection = request.state.connection
+    data = network_service.create_route_table(connection, body)
+    return success_response(data, request)
+
+
+@router.post("/route-tables/{route_table_id}/routes")
+def create_route(route_table_id: str, body: RouteCreateRequest, request: Request):
+    connection = request.state.connection
+    data = network_service.create_route(connection, route_table_id, body)
+    return success_response(data, request)
+
+
+@router.post("/route-tables/{route_table_id}:associate")
+def associate_route_table(route_table_id: str, body: RouteTableAssociateRequest, request: Request):
+    connection = request.state.connection
+    data = network_service.associate_route_table(connection, route_table_id, body)
+    return success_response(data, request)
+
+
+# --------------------------------------------------------------------------- #
+# Network interfaces (AWS ENIs)
+# --------------------------------------------------------------------------- #
+@router.get("/network-interfaces")
+def list_network_interfaces(
+    request: Request,
+    interface_id: str | None = Query(None, alias="id"),
+):
+    connection = request.state.connection
+    data = network_service.list_network_interfaces(connection, interface_id=interface_id)
     return success_response(data, request)

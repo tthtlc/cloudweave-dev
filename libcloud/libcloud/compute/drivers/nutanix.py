@@ -307,6 +307,10 @@ class NutanixNodeDriver(NodeDriver):
             user_data=kwargs.get("ex_user_data"),
             nics=kwargs.get("ex_nics"),
             power_on=kwargs.get("ex_power_on", True),
+            assign_ip=kwargs.get("ex_assign_ip"),
+            ip_address=kwargs.get("ex_ip_address"),
+            ip_prefix_length=kwargs.get("ex_ip_prefix_length"),
+            data_disks=kwargs.get("ex_data_disks"),
         )
 
         path = vmm_path(self._api_version, "ahv/config/vms")
@@ -446,6 +450,8 @@ class NutanixNodeDriver(NodeDriver):
         ip_address=None,
         prefix_length=None,
         gateway_ip=None,
+        dhcp_server=None,
+        ip_pool=None,
         **kwargs,
     ):
         payload = build_subnet_create_payload(
@@ -459,6 +465,8 @@ class NutanixNodeDriver(NodeDriver):
             ip_address=ip_address,
             prefix_length=prefix_length,
             gateway_ip=gateway_ip,
+            dhcp_server=dhcp_server,
+            ip_pool=ip_pool,
         )
         path = networking_path(self._api_version, "config/subnets")
         entity_ext_id = self._execute_async_mutation(

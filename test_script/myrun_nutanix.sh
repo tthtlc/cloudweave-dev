@@ -1,8 +1,3 @@
-# Refresh OpenFGA's cached Dex JWKS before any OpenFGA-dependent call. Dex
-# rotates its signing keys every 6h (storage: memory); a stale OpenFGA keyset
-# makes every Check fail with `invalid_claims`. Throttled + skippable.
-./scripts/openfga_ensure_fresh.sh
-
 SCRIPT_FILE=$1
 
 #  ntnx-owner   / SA-9HXuDFerBkabyaDw2tG-t7O-   (owner  of tenant:nutanix)

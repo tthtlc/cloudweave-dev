@@ -126,6 +126,39 @@ class FgaService:
         except urllib.error.URLError as exc:
             raise APIError("authz_fga_unreachable", "OpenFGA unreachable", 503) from exc
 
+    def _get(self, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+        """GET request to OpenFGA with query params. Same auth + error handling
+        as ``_post`` but for the read-only endpoints (store, models, assertions,
+        changes)."""
+        if not self.enabled:
+            return {}
+        url = f"{self.base_url}/stores/{self.store_id}{path}"
+        if params:
+            from urllib.parse import urlencode
+
+            filtered = {k: v for k, v in params.items() if v is not None and v != ""}
+            if filtered:
+                url = f"{url}?{urlencode(filtered)}"
+        headers = {"Accept": "application/json"}
+        token = self._bearer()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, method="GET", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8") or "{}")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            log.error("OpenFGA %s failed: %s", path, detail)
+            raise APIError(
+                "authz_fga_error", "OpenFGA request failed", 503,
+                {"path": path, "detail": detail},
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise APIError(
+                "authz_fga_unreachable", "OpenFGA unreachable", 503,
+            ) from exc
+
     # --- checks --------------------------------------------------------------
     def check(self, user: str, relation: str, obj: str) -> bool:
         if not self.enabled:
@@ -136,20 +169,126 @@ class FgaService:
         })
         return bool(body.get("allowed", False))
 
-    def role_for(self, principal: str) -> str:
-        """Derive the portal role for a principal by checking the strongest
-        relation it holds. Returns 'viewer' as the floor."""
+    # --- cached authz derivation -------------------------------------------
+
+    @staticmethod
+    def _derive_from_tuples(
+        tuples: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Derive portal role + per-cloud capabilities from a set of concrete
+        OpenFGA tuples for a single user.  Pure function — does no I/O.
+
+        Local derivation mirrors the OpenFGA model's concrete tuple set.  It
+        does NOT evaluate computed relations that depend on provider-level
+        ``can_use`` or resource-class grants (neither is seeded in the current
+        bootstrap), so it is equivalent for the running store.
+        """
+        tenant_roles: dict[str, str] = {}  # tenant_id -> strongest relation
+        is_superadmin = False
+
+        for t in tuples:
+            rel = t["relation"]
+            obj = t["object"]
+
+            if rel == "superadmin" and obj == "platform:main":
+                is_superadmin = True
+            elif obj.startswith("tenant:") and rel in ("owner", "admin", "viewer"):
+                tenant_id = obj[7:]  # strip "tenant:"
+                current = tenant_roles.get(tenant_id)
+                # Keep the strongest: owner > admin > viewer
+                if current is None or (
+                    rel == "owner"
+                    or (rel == "admin" and current == "viewer")
+                ):
+                    tenant_roles[tenant_id] = rel
+
+        # --- derive role (strongest across all tenants) --------------------
+        if is_superadmin:
+            role = "superadmin"
+        elif "owner" in tenant_roles.values():
+            role = "owner"
+        elif "admin" in tenant_roles.values():
+            role = "admin"
+        else:
+            role = "viewer"
+
+        # --- derive per-cloud capabilities --------------------------------
+        supported = ("aws", "nutanix")
+        cloud_tenant = {"aws": "aws", "nutanix": "nutanix"}
+        clouds: list[dict[str, Any]] = []
+        for cloud in supported:
+            tenant_id = cloud_tenant.get(cloud, cloud)
+            tenant_role = tenant_roles.get(tenant_id)
+            is_privileged = tenant_role in ("admin", "owner")
+
+            clouds.append(
+                {
+                    "cloud": cloud,
+                    "canView": bool(
+                        is_privileged or tenant_role == "viewer" or is_superadmin
+                    ),
+                    "canProvision": is_privileged,
+                    "canUpdate": is_privileged,
+                }
+            )
+
+        return {"role": role, "clouds": clouds}
+
+    def _derive_authz(self, principal: str) -> dict[str, Any]:
+        """Single-user wrapper: read tuples for *principal* and derive authz."""
         if not self.enabled:
-            return "viewer"
-        if self.check(f"user:{principal}", "can_manage_platform", "platform:main"):
-            return "superadmin"
-        for tenant in ("tenant:aws", "tenant:nutanix"):
-            if self.check(f"user:{principal}", "owner", tenant):
-                return "owner"
-        for tenant in ("tenant:aws", "tenant:nutanix"):
-            if self.check(f"user:{principal}", "admin", tenant):
-                return "admin"
-        return "viewer"
+            return {
+                "role": "viewer",
+                "clouds": [
+                    {"cloud": c, "canView": True, "canProvision": True, "canUpdate": True}
+                    for c in self.SUPPORTED_CLOUDS
+                ],
+            }
+        return self._derive_from_tuples(
+            self._read_user_tuples(f"user:{principal}")
+        )
+
+    def batch_derive(
+        self, principals: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Read the full tuple store **once** and derive role + cloud
+        capabilities for every principal in *principals*.  Returns
+        ``{principal: {"role": str, "clouds": [...]}, ...}``.
+
+        Use this in list-users paths where calling ``role_for`` N times would
+        otherwise trigger N full ``/read`` calls."""
+        if not principals:
+            return {}
+        if not self.enabled:
+            fallback = {
+                "role": "viewer",
+                "clouds": [
+                    {"cloud": c, "canView": True, "canProvision": True, "canUpdate": True}
+                    for c in self.SUPPORTED_CLOUDS
+                ],
+            }
+            return {p: fallback for p in principals}
+
+        all_tuples = self.list_tuples()
+
+        # Index by user: prefix so we can look up by f"user:{principal}"
+        by_user: dict[str, list[dict[str, str]]] = {}
+        for t in all_tuples:
+            user = t.get("user", "")
+            if user:
+                by_user.setdefault(user, []).append(t)
+
+        result: dict[str, dict[str, Any]] = {}
+        for p in principals:
+            result[p] = self._derive_from_tuples(
+                by_user.get(f"user:{p}", [])
+            )
+        return result
+
+    def role_for(self, principal: str) -> str:
+        """Derive the portal role for a principal from its concrete tuples.
+        Returns 'viewer' as the floor.  One ``/read``, no /check fan-out."""
+        return self._derive_authz(principal)["role"]
 
     # --- writes --------------------------------------------------------------
     def _write(self, writes: list[dict[str, str]], deletes: list[dict[str, str]] = None) -> None:
@@ -160,14 +299,17 @@ class FgaService:
             payload["deletes"] = {"tuple_keys": deletes}
         self._post("/write", payload)
 
-    def assign_role(self, principal: str, role: str) -> None:
+    def assign_role(self, principal: str, role: str, tenant: str | None = None) -> None:
         """Seed the OpenFGA tuple(s) for a portal role. PER-TENANT
         (rbac_design.md): owner/admin/viewer are written on the single tenant
         derived from the principal slug, never on both tenants. superadmin is
         written only on platform:main (no tenant owner). Idempotent at the model
-        level (OpenFGA dedupes identical tuples). A principal with no
-        resolvable tenant (e.g. a brand-new federated user) gets no tuple — it
-        must be explicitly assigned to a tenant first."""
+        level (OpenFGA dedupes identical tuples).
+
+        When *tenant* is provided (e.g. superadmin assigning a pending user),
+        the slug-derivation path is skipped and the tuple is written directly on
+        that tenant. When *tenant* is None, the tenant is derived from the
+        principal slug for backward compatibility with LLDAP users."""
         user = f"user:{principal}"
         if role == "superadmin":
             self._write([{"user": user, "relation": "superadmin", "object": "platform:main"}])
@@ -175,6 +317,11 @@ class FgaService:
         relation = ROLE_RELATION.get(role)
         if not relation:
             return
+        if tenant is not None:
+            # Explicit tenant from caller (e.g. pending user assignment).
+            self._write([{"user": user, "relation": relation, "object": f"tenant:{tenant}"}])
+            return
+        # Derive tenant from principal slug for LLDAP users.
         tenant = _tenant_for_principal(principal)
         if not tenant:
             # No tenant binding -> no auto-grant. The user is denied at every
@@ -246,6 +393,60 @@ class FgaService:
     def delete_tuples(self, triples: list[dict[str, str]]) -> None:
         self._delete(triples)
 
+    # --- store metadata ------------------------------------------------------
+    def get_store(self) -> dict[str, Any]:
+        """Return store metadata (id, name, created_at, updated_at)."""
+        return self._get("")
+
+    # --- authorization models ------------------------------------------------
+    def list_authorization_models(self) -> dict[str, Any]:
+        """Return all authorization models for the store (paginated)."""
+        return self._get("/authorization-models")
+
+    def get_authorization_model(self, model_id: str) -> dict[str, Any]:
+        """Return a single authorization model with its type definitions."""
+        return self._get(f"/authorization-models/{model_id}")
+
+    # --- assertions ----------------------------------------------------------
+    def read_assertions(self, model_id: str) -> dict[str, Any]:
+        """Read assertions for an authorization model ID."""
+        return self._get(f"/assertions/{model_id}")
+
+    # --- tuple change log ----------------------------------------------------
+    def read_changes(
+        self,
+        change_type: str | None = None,
+        page_size: int = 50,
+        continuation_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Paginated tuple change log (audit trail)."""
+        return self._get("/changes", {
+            "type": change_type or "",
+            "page_size": str(page_size),
+            "continuation_token": continuation_token or "",
+        })
+
+    # --- relationship queries ------------------------------------------------
+    def list_users_openfga(self, body: dict[str, Any]) -> dict[str, Any]:
+        """OpenFGA list-users: find users with a relation to an object."""
+        return self._post("/list-users", {
+            "authorization_model_id": self.model_id,
+            **body,
+        })
+
+    def list_objects(self, body: dict[str, Any]) -> dict[str, Any]:
+        """OpenFGA list-objects: find objects of a type the user can access."""
+        return self._post("/list-objects", {
+            "authorization_model_id": self.model_id,
+            **body,
+        })
+
+    def expand(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Expand a relationship into its userset tree."""
+        return self._post("/expand", {
+            "authorization_model_id": self.model_id,
+            **body,
+        })
 
     # --- per-cloud authZ -----------------------------------------------------
     def can_view(self, principal: str, cloud: str) -> bool:
@@ -274,15 +475,7 @@ class FgaService:
     SUPPORTED_CLOUDS = ("aws", "nutanix")
 
     def cloud_capabilities(self, principal: str) -> list[dict[str, Any]]:
-        """Live per-cloud can_view/can_provision/can_update for a principal. The
-        portal renders only the clouds the user can access, so the UI always
-        matches the user's tenant (rbac_design.md)."""
-        return [
-            {
-                "cloud": cloud,
-                "canView": self.can_view(principal, cloud),
-                "canProvision": self.can_provision(principal, cloud),
-                "canUpdate": self.can_update(principal, cloud),
-            }
-            for cloud in self.SUPPORTED_CLOUDS
-        ]
+        """Live per-cloud can_view/can_provision/can_update for a principal.
+        Reads the user's tuples once and derives capabilities locally —
+        no per-cloud /check fan-out (was 6 calls, now 1 /read)."""
+        return self._derive_authz(principal)["clouds"]

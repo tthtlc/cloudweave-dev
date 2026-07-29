@@ -60,6 +60,13 @@ staticClients:
       # identity-service was already running). 8767 is not published by any
       # container, so it is always free on the host.
       - http://127.0.0.1:8767/oauth/callback
+      # openfga-rbac-visualizer dashboard (openfga_visualized/app.py) — its own
+      # SSO login screen on port 5050. Multiple host spellings so the flow
+      # works however the dashboard is reached.
+      - http://localhost:5050/callback
+      - http://127.0.0.1:5050/callback
+      - http://167.172.94.123:5050/callback
+      - http://login.quest4science.xyz:5050/callback
   - id: libcloud-portal
     name: libcloud Role Portal
     secret: l33WEHol5lO3CkSXZv7Bw14587VgIHWB_YbxO0oll74

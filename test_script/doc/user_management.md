@@ -104,7 +104,6 @@ superadmin JWT (`SUPERADMIN_JWT`) obtained from `scripts/superadmin_auth.sh`.
 | audit          | `scripts/openfga-tuple-audit.py`        | Dump all tuples + which model relation they match                  |
 | reconcile      | `scripts/openfga-tuple-reconcile.py`    | Reconcile live store against `INITIAL_TUPLES`                      |
 | audit          | `scripts/openfga-denial-log-query.sh`   | Query OpenFGA denial logs                                          |
-| freshness      | `scripts/openfga_ensure_fresh.sh`       | Re-apply the latest model + tuples idempotently                    |
 
 ## 3. User → role table (effective, current model)
 

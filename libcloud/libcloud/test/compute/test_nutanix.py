@@ -183,6 +183,108 @@ class NutanixNodeDriverTests(LibcloudTestCase):
         self.assertEqual(node.name, "web-01")
         self.driver.connection._wait_for_task.assert_called_once()
 
+    def test_create_node_with_assign_ip_and_data_disks(self):
+        create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
+        get_vm_response = MockNutanixResponse(load_fixture("get_vm.json"))
+        self.mock_request.side_effect = [create_response, get_vm_response]
+
+        size = self.driver.list_sizes()[0]
+        image = self.driver._to_image(load_fixture("list_images.json")["data"][0])
+        location = self.driver._to_location(load_fixture("list_clusters.json")["data"][0])
+
+        node = self.driver.create_node(
+            name="internal-server-1",
+            size=size,
+            image=image,
+            location=location,
+            ex_subnet="subnet-11111111-1111-1111-1111-111111111111",
+            ex_assign_ip=True,
+            ex_data_disks=[{"size_mib": 20480, "bus": "scsi"}],
+        )
+        self.assertEqual(node.name, "web-01")
+
+        _, kwargs = self.mock_request.call_args_list[0]
+        payload = json.loads(kwargs["data"])
+        nics = payload["nics"]
+        self.assertEqual(len(nics), 1)
+        ipv4_config = nics[0]["networkInfo"]["ipv4Config"]
+        self.assertTrue(ipv4_config["shouldAssignIp"])
+        self.assertNotIn("ipAddress", ipv4_config)
+
+        disks = payload["disks"]
+        self.assertEqual(len(disks), 2)
+        data_disk = disks[1]
+        self.assertEqual(data_disk["backingInfo"]["vmDisk"]["diskSizeBytes"], 20480 * 1024 * 1024)
+        self.assertEqual(data_disk["diskAddress"]["busType"], "SCSI")
+        self.assertNotIn("dataSource", data_disk["backingInfo"]["vmDisk"])
+
+    def test_create_node_with_static_ip(self):
+        create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
+        get_vm_response = MockNutanixResponse(load_fixture("get_vm.json"))
+        self.mock_request.side_effect = [create_response, get_vm_response]
+
+        size = self.driver.list_sizes()[0]
+        image = self.driver._to_image(load_fixture("list_images.json")["data"][0])
+        location = self.driver._to_location(load_fixture("list_clusters.json")["data"][0])
+
+        self.driver.create_node(
+            name="internal-server-1",
+            size=size,
+            image=image,
+            location=location,
+            ex_subnet="subnet-11111111-1111-1111-1111-111111111111",
+            ex_ip_address="10.1.200.10",
+            ex_ip_prefix_length=24,
+        )
+
+        _, kwargs = self.mock_request.call_args_list[0]
+        payload = json.loads(kwargs["data"])
+        ipv4_config = payload["nics"][0]["networkInfo"]["ipv4Config"]
+        self.assertTrue(ipv4_config["shouldAssignIp"])
+        self.assertEqual(ipv4_config["ipAddress"]["value"], "10.1.200.10")
+        self.assertEqual(ipv4_config["ipAddress"]["prefixLength"], 24)
+
+    def test_ex_create_subnet_with_ip_pool(self):
+        create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
+        get_subnet_response = MockNutanixResponse(
+            {"data": load_fixture("list_subnets.json")["data"][0]}
+        )
+        self.mock_request.side_effect = [create_response, get_subnet_response]
+
+        subnet = self.driver.ex_create_subnet(
+            name="vlan200-internal",
+            subnet_type="VLAN",
+            cluster_ext_id="cluster-11111111-1111-1111-1111-111111111111",
+            network_id=200,
+            ip_address="10.1.200.0",
+            prefix_length=24,
+            gateway_ip="10.1.200.1",
+            ip_pool=["10.1.200.10-10.1.200.50"],
+        )
+        self.assertEqual(subnet["name"], "vlan-100")
+
+        _, kwargs = self.mock_request.call_args_list[0]
+        payload = json.loads(kwargs["data"])
+        self.assertEqual(payload["networkId"], 200)
+        ipv4 = payload["ipConfig"][0]["ipv4"]
+        self.assertEqual(ipv4["ipSubnet"]["ip"]["value"], "10.1.200.0")
+        self.assertEqual(ipv4["ipSubnet"]["prefixLength"], 24)
+        self.assertEqual(ipv4["defaultGatewayIp"]["value"], "10.1.200.1")
+        self.assertEqual(
+            ipv4["poolList"],
+            [{"startIp": {"value": "10.1.200.10"}, "endIp": {"value": "10.1.200.50"}}],
+        )
+        self.assertNotIn("dhcpServerAddress", ipv4)
+
+    def test_ex_create_subnet_ip_pool_requires_network(self):
+        self.assertRaises(
+            LibcloudError,
+            self.driver.ex_create_subnet,
+            name="vlan200-internal",
+            subnet_type="VLAN",
+            ip_pool=["10.1.200.10-10.1.200.50"],
+        )
+
     def test_start_stop_reboot_destroy(self):
         task_response = MockNutanixResponse(load_fixture("create_vm_task.json"))
         etag_response = MockNutanixResponse(

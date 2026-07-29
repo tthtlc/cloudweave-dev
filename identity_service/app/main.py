@@ -19,6 +19,9 @@ from app.models import (
     EmailUpdateRequest,
     ExchangeRequest,
     ExchangeResponse,
+    OpenFgaExpandRequest,
+    OpenFgaListObjectsRequest,
+    OpenFgaListUsersRequest,
     ProvisionRequest,
     RoleUpdateRequest,
     SessionResponse,
@@ -59,10 +62,14 @@ def create_app() -> FastAPI:
     auth = AuthService()
 
     def _principal(claims: dict[str, Any]) -> str:
-        # OpenFGA tuples are keyed by LLDAP uid; for pending users we use the
-        # internal id suffix. The session carries internalUserId ("int-<uid>").
-        iid = claims["internalUserId"]
-        return iid[4:] if iid.startswith("int-") else iid
+        # The OpenFGA principal for the session's internal user. This MUST use
+        # the same mapping as /api/session's clouds (UserService._fga_principal):
+        # LLDAP users are keyed by uid ("int-<uid>" -> "<uid>"); pending
+        # (federated, not yet LLDAP-linked) users are keyed by their FULL
+        # internal id. Stripping "int-" unconditionally made a pending user's
+        # verb checks query a non-existent principal and 403, while
+        # /api/session still showed their clouds as accessible.
+        return users._fga_principal(claims["internalUserId"])
 
     def _clouds_for(internal_user_id: str) -> list[dict[str, Any]]:
         # Live per-cloud capabilities from OpenFGA, so the portal renders only
@@ -164,6 +171,7 @@ def create_app() -> FastAPI:
             resp,
             internal_user=internal_user,
             refresh_token=tokens.get("refresh_token"),
+            id_token=tokens.get("id_token"),
         )
         outcome["clouds"] = _clouds_for(outcome["internalUserId"])
         return ExchangeResponse(**outcome)
@@ -195,9 +203,24 @@ def create_app() -> FastAPI:
 
     @app.post("/api/logout")
     def logout(req: Request, resp: Response):
-        # TODO: revoke the Dex refresh token at Dex's revocation endpoint using
-        # the server-side refresh token from sessions._refresh_store.
-        sessions.revoke(req, resp)
+        # 1. Clear the portal session cookie and retrieve the stored Dex tokens
+        #    (refresh_token + id_token) before they are dropped.
+        stored = sessions.revoke(req, resp)
+
+        # 2. Revoke the Dex refresh token at Dex's OAuth2 revocation endpoint
+        #    (RFC 7009). Best-effort: failures are logged but never block logout.
+        refresh_token = (stored or {}).get("refresh_token")
+        if refresh_token:
+            try:
+                dex.revoke_token(refresh_token)
+            except Exception as exc:
+                log.warning("Failed to revoke Dex refresh token: %s", exc)
+
+        # 3. No IdP-side redirect: stock Dex has no RP-initiated logout endpoint
+        #    (GET /dex/auth/logout 404s with `Invalid client_id ("")`) and keeps
+        #    no browser SSO cookie — every /dex/auth request re-prompts the
+        #    connector login form. The refresh-token revocation above is the
+        #    whole IdP-side logout; the frontend navigates to /login on its own.
         return {"logged_out": True}
 
     @app.get("/api/users")
@@ -208,7 +231,7 @@ def create_app() -> FastAPI:
     @app.patch("/api/users/{internal_id}/role")
     def set_role(internal_id: str, body: RoleUpdateRequest, req: Request):
         _require_role(req, "superadmin")
-        updated = users.set_role(internal_id, body.role)
+        updated = users.set_role(internal_id, body.role, tenant=body.tenant)
         return updated
 
     @app.post("/api/users/{internal_id}/disable")
@@ -247,6 +270,86 @@ def create_app() -> FastAPI:
         fga.delete_tuples(triples)
         return {"deleted": len(triples)}
 
+    # --- OpenFGA explorer (superadmin) ---------------------------------------
+    @app.get("/api/openfga/store")
+    def openfga_store(req: Request):
+        _require_role(req, "superadmin")
+        return fga.get_store()
+
+    @app.get("/api/openfga/models")
+    def openfga_models(req: Request):
+        _require_role(req, "superadmin")
+        return fga.list_authorization_models()
+
+    @app.get("/api/openfga/models/{model_id}")
+    def openfga_model(model_id: str, req: Request):
+        _require_role(req, "superadmin")
+        return fga.get_authorization_model(model_id)
+
+    @app.get("/api/openfga/assertions/{model_id}")
+    def openfga_assertions(model_id: str, req: Request):
+        _require_role(req, "superadmin")
+        return fga.read_assertions(model_id)
+
+    @app.get("/api/openfga/changes")
+    def openfga_changes(
+        req: Request,
+        type: str | None = None,
+        page_size: int = 50,
+        continuation_token: str | None = None,
+    ):
+        _require_role(req, "superadmin")
+        return fga.read_changes(
+            change_type=type,
+            page_size=page_size,
+            continuation_token=continuation_token,
+        )
+
+    @app.post("/api/openfga/list-users")
+    def openfga_list_users(body: OpenFgaListUsersRequest, req: Request):
+        _require_role(req, "superadmin")
+        payload: dict[str, Any] = {
+            "object": body.object,
+            "relation": body.relation,
+        }
+        if body.user_filters:
+            payload["user_filters"] = body.user_filters
+        return fga.list_users_openfga(payload)
+
+    @app.post("/api/openfga/list-objects")
+    def openfga_list_objects(body: OpenFgaListObjectsRequest, req: Request):
+        _require_role(req, "superadmin")
+        return fga.list_objects({
+            "type": body.type,
+            "relation": body.relation,
+            "user": body.user,
+        })
+
+    @app.post("/api/openfga/expand")
+    def openfga_expand(body: OpenFgaExpandRequest, req: Request):
+        _require_role(req, "superadmin")
+        return fga.expand({
+            "tuple_key": {
+                "relation": body.relation,
+                "object": body.object,
+            },
+        })
+
+    @app.get("/api/openfga/rest-api-policies")
+    def openfga_rest_api_policies(req: Request):
+        _require_role(req, "superadmin")
+        import json as _json
+        import os as _os
+
+        path = settings.rest_api_policies_path
+        if _os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    return _json.load(fh)
+            except Exception as exc:
+                log.warning("Failed to read REST API policies at %s: %s", path, exc)
+        return {}
+
     # --- resource / provision / deprovision / update ------------------------
     # These four verbs are cloud-parametric: AWS and Nutanix share one code
     # path. Each route runs the OpenFGA check for the requested cloud, then
@@ -278,6 +381,25 @@ def create_app() -> FastAPI:
         if not fga.can_provision(principal, cloud):
             raise APIError("authz_forbidden", f"Cannot provision {cloud}", 403)
         return proxy.provision(cloud, body.vmName or f"libcloud-{'demo' if cloud == 'aws' else 'ntnx'}-{int(__import__('time').time())}")
+
+    @app.post("/api/provision-private/{cloud}")
+    def provision_private_by_cloud(cloud: str, body: ProvisionRequest, req: Request):
+        # The portal's "Provision Private VM Machine" button: bastion host +
+        # internal private server pair (aws_bastion_internal_server.md /
+        # nutanix_bastion_internal_server.md). Gated on the SAME OpenFGA
+        # can_provision grant as single-VM provisioning — i.e. only the cloud's
+        # tenant owner/admin pass, and the portal renders the button from the
+        # same canProvision capability viewers/superadmins don't get. The proxy
+        # shells out to test_script/scripts/provision_aws_private.sh /
+        # provision_nutanix_bastion_private.sh, which stays the single source
+        # of truth for the 2-VM sequence.
+        _require_cloud(cloud)
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.can_provision(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot provision private VM pair on {cloud}", 403)
+        pair_prefix = "aws" if cloud == "aws" else "ntnx"
+        return proxy.provision_private(cloud, body.vmName or f"libcloud-{pair_prefix}-pair-{int(__import__('time').time())}")
 
     @app.post("/api/deprovision/{cloud}")
     def deprovision_by_cloud(cloud: str, body: DeprovisionRequest, req: Request):

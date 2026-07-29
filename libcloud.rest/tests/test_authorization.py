@@ -162,4 +162,4 @@ def test_admin_policies_reload_succeeds_with_admin_scope(client, auth_headers, m
     r = client.post("/v1/admin/policies:reload", headers=auth_headers(token))
     assert r.status_code == 200, r.text
     assert r.json()["data"]["reloaded"] is True
-    assert r.json()["data"]["entries"] == 55
+    assert r.json()["data"]["entries"] == 63

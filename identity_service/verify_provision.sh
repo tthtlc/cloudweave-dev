@@ -48,7 +48,8 @@ if [ "$STATUS" = "provisioned" ]; then
   echo "  PASS  provision replay -> status=provisioned (node=${NODE_ID:-?})"
 else
   echo "  FAIL  provision replay -> status=$STATUS (see steps above)"
-  echo "        If you see 'invalid_claims', run: docker restart openfga && re-run this script."
+  echo "        'invalid_claims' means token validation failed (iss/aud/exp) — check"
+  echo "        Dex/OpenFGA OIDC config; OpenFGA v1.16.0+ self-refreshes JWKS on kid-miss."
   exit 1
 fi
 

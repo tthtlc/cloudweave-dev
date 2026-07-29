@@ -136,6 +136,33 @@
   "DELETE /v1/compute/security-groups/{group_id}": {
     "scopes_any_of": ["compute:network:manage"]
   },
+  "POST /v1/compute/security-groups/{group_id}:authorize": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/internet-gateways": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/internet-gateways": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/route-tables": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
+  "POST /v1/compute/route-tables": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "POST /v1/compute/route-tables/{route_table_id}/routes": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "POST /v1/compute/route-tables/{route_table_id}:associate": {
+    "scopes_any_of": ["compute:network:manage"]
+  },
+  "GET /v1/compute/network-interfaces": {
+    "scopes_any_of": ["compute:network:read", "compute:read"],
+    "authz_scope": "compute:network:read"
+  },
   "GET /v1/compute/load-balancers": {
     "scopes_any_of": ["compute:network:read", "compute:read"],
     "authz_scope": "compute:network:read"

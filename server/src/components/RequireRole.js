@@ -11,6 +11,9 @@ export default function RequireRole({ roles, children }) {
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+  if (session.role === "disabled") {
+    return <Navigate to="/disabled" replace />;
+  }
   if (!roles.includes(session.role)) {
     return <Navigate to="/unauthorized" replace />;
   }

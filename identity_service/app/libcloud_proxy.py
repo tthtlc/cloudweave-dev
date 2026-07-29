@@ -28,6 +28,217 @@ log = logging.getLogger(__name__)
 # (mirrored by MOCK_AWS_STEPS / MOCK_NUTANIX_STEPS in server/src/services/mockData.js).
 
 
+# ---------------------------------------------------------------------------
+# Nutanix resource inventory shown by the portal's "View Nutanix Resources"
+# button — same key_resource.md grouping as AWS, mapped to Prism Central v4
+# namespaces per nutanix_resource.md: clusters/VPCs/subnets (networking),
+# Flow security groups + load balancers (microseg/networking), images (vmm),
+# volumes + storage containers (volumes/vmm), buckets (objects), key pairs.
+# Not covered (and why): snapshots — Nutanix has no single snapshot resource
+# (dataprotection/volume lineage; the driver only does per-volume listing);
+# IAM users/roles/policies and key pairs — the libcloud Nutanix driver has no
+# iam namespace methods, and list_key_pairs is only the base-class stub
+# (NotImplementedError), so "who can provision / who can access" stays out of
+# scope; VM NICs — they are part of the VM resource in vmm, already visible
+# in the nodes table; route tables/gateways — AWS-only REST endpoints (501).
+# ---------------------------------------------------------------------------
+_NTNX_CATEGORY_SPECS: list[dict[str, Any]] = [
+    # --- where a VM can land -------------------------------------------------
+    {
+        "group": "Where a VM can land", "key": "clusters", "title": "Clusters",
+        "path": "/v1/compute/locations",
+        "columns": [("id", "ID"), ("name", "Name")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or ""},
+    },
+    {
+        "group": "Where a VM can land", "key": "vpcs", "title": "VPCs",
+        "path": "/v1/compute/networks",
+        "columns": [("id", "ID"), ("name", "Name"), ("cidr", "CIDR"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "cidr": i.get("cidr_block") or "", "state": i.get("state") or ""},
+    },
+    {
+        "group": "Where a VM can land", "key": "subnets", "title": "Subnets",
+        "path": "/v1/compute/subnets",
+        "columns": [("id", "ID"), ("name", "Name"), ("cidr", "CIDR"), ("vpc", "VPC")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "cidr": i.get("cidr_block") or "", "vpc": i.get("vpc_id") or ""},
+    },
+    # --- what network it can join ---------------------------------------------
+    {
+        "group": "Networks a VM can join", "key": "security_groups", "title": "Security Groups (Flow)",
+        "path": "/v1/compute/security-groups",
+        "columns": [("id", "ID"), ("name", "Name"), ("vpc", "VPC")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "vpc": (i.get("extra") or {}).get("vpc_id")
+                                 or (i.get("extra") or {}).get("vpcReference") or ""},
+    },
+    {
+        "group": "Networks a VM can join", "key": "load_balancers", "title": "Load Balancers",
+        "path": "/v1/compute/load-balancers",
+        "columns": [("id", "ID"), ("name", "Name")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or ""},
+    },
+    # --- what image it boots from ---------------------------------------------
+    {
+        "group": "Images a VM can boot from", "key": "images", "title": "Images",
+        "path": "/v1/compute/images",
+        "columns": [("id", "ID"), ("name", "Name")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or ""},
+    },
+    # --- what storage it consumes ---------------------------------------------
+    {
+        "group": "Storage a VM can consume", "key": "volumes", "title": "Volumes (Disks)",
+        "path": "/v1/compute/volumes",
+        "columns": [("id", "ID"), ("name", "Name"), ("size", "Size (GiB)"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "size": i.get("size") if i.get("size") is not None else "",
+                          "state": i.get("state") or ""},
+    },
+    {
+        "group": "Storage a VM can consume", "key": "storage_containers", "title": "Storage Containers",
+        "path": "/v1/compute/storage-containers",
+        "columns": [("id", "ID"), ("name", "Name")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or ""},
+    },
+    # --- what object storage already exists -------------------------------------
+    {
+        "group": "Object storage", "key": "buckets", "title": "Object Buckets",
+        "path": "/v1/storage/buckets",
+        "columns": [("name", "Name")],
+        "row": lambda i: {"name": i.get("name") or ""},
+    },
+]
+def _rt_route_summary(item: dict[str, Any]) -> str:
+    parts = []
+    for r in item.get("routes") or []:
+        target = r.get("gateway_id") or "local"
+        parts.append(f"{r.get('cidr') or ''} -> {target}")
+    return ", ".join(parts)
+
+
+def _rt_subnet_summary(item: dict[str, Any]) -> str:
+    return ", ".join(
+        str(a.get("subnet_id") or "") for a in item.get("subnet_associations") or [] if a.get("subnet_id")
+    )
+
+
+# ---------------------------------------------------------------------------
+# AWS resource inventory shown by the portal's "View AWS Resources" button.
+# Beyond EC2 instances (the `nodes` list, which keeps its own table with the
+# Edit/Deprovision actions), the categories below follow the core questions
+# from key_resource.md: where a VM can land, what network it can join, what
+# image it boots from, what storage it consumes, what object storage exists,
+# and who can access. (IAM users/roles/policies — "who can provision" — are
+# not covered by the libcloud drivers and stay out of scope, per
+# aws_resource.md.) Every category is a read-only GET on the libcloud REST
+# API gated by compute:read / compute:network:read — scopes the provisioner
+# token already holds. Each spec: (group, key, title, path, columns, row fn);
+# `row` maps one raw REST item to a flat dict keyed by the column keys.
+# ---------------------------------------------------------------------------
+_AWS_CATEGORY_SPECS: list[dict[str, Any]] = [
+    # --- where a VM can land -------------------------------------------------
+    {
+        "group": "Where a VM can land", "key": "vpcs", "title": "VPCs",
+        "path": "/v1/compute/networks",
+        "columns": [("id", "ID"), ("name", "Name"), ("cidr", "CIDR"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "cidr": i.get("cidr_block") or "", "state": i.get("state") or ""},
+    },
+    {
+        "group": "Where a VM can land", "key": "subnets", "title": "Subnets",
+        "path": "/v1/compute/subnets",
+        "columns": [("id", "ID"), ("name", "Name"), ("cidr", "CIDR"), ("vpc", "VPC"), ("az", "AZ")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "cidr": i.get("cidr_block") or "", "vpc": i.get("vpc_id") or "",
+                          "az": i.get("availability_zone") or ""},
+    },
+    # --- what network it can join ---------------------------------------------
+    {
+        "group": "Networks a VM can join", "key": "security_groups", "title": "Security Groups",
+        "path": "/v1/compute/security-groups",
+        "columns": [("id", "ID"), ("name", "Name"), ("vpc", "VPC"),
+                    ("ingress", "Ingress rules"), ("egress", "Egress rules")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "vpc": (i.get("extra") or {}).get("vpc_id") or "",
+                          "ingress": len(i.get("ingress_rules") or []),
+                          "egress": len(i.get("egress_rules") or [])},
+    },
+    {
+        "group": "Networks a VM can join", "key": "network_interfaces", "title": "Network Interfaces",
+        "path": "/v1/compute/network-interfaces",
+        "columns": [("id", "ID"), ("name", "Name"), ("state", "State"),
+                    ("subnet", "Subnet"), ("vpc", "VPC")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "state": i.get("state") or "", "subnet": i.get("subnet_id") or "",
+                          "vpc": i.get("vpc_id") or ""},
+    },
+    {
+        "group": "Networks a VM can join", "key": "route_tables", "title": "Route Tables",
+        "path": "/v1/compute/route-tables",
+        "columns": [("id", "ID"), ("name", "Name"), ("routes", "Routes"), ("subnets", "Subnets")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "routes": _rt_route_summary(i), "subnets": _rt_subnet_summary(i)},
+    },
+    {
+        "group": "Networks a VM can join", "key": "internet_gateways", "title": "Internet Gateways",
+        "path": "/v1/compute/internet-gateways",
+        "columns": [("id", "ID"), ("name", "Name"), ("vpc", "VPC"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "vpc": i.get("vpc_id") or "", "state": i.get("state") or ""},
+    },
+    {
+        "group": "Networks a VM can join", "key": "floating_ips", "title": "Elastic IPs",
+        "path": "/v1/compute/floating-ips",
+        "columns": [("address", "Address"), ("instance", "Instance"), ("associated", "Associated")],
+        "row": lambda i: {"address": i.get("address") or "",
+                          "instance": i.get("instance_id") or "",
+                          "associated": "yes" if i.get("associated") else "no"},
+    },
+    # --- what image it boots from ---------------------------------------------
+    {
+        # Server-side default name filter (same catalog the provision flow
+        # resolves images from); no params => the REST API applies it.
+        "group": "Images a VM can boot from", "key": "images", "title": "AMIs",
+        "path": "/v1/compute/images",
+        "columns": [("id", "ID"), ("name", "Name")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or ""},
+    },
+    # --- what storage it consumes ---------------------------------------------
+    {
+        "group": "Block storage a VM can consume", "key": "volumes", "title": "EBS Volumes",
+        "path": "/v1/compute/volumes",
+        "columns": [("id", "ID"), ("name", "Name"), ("size", "Size (GiB)"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "size": i.get("size") if i.get("size") is not None else "",
+                          "state": i.get("state") or ""},
+    },
+    {
+        # owner=self scopes to account-owned snapshots; the REST default
+        # returns ALL public snapshots (tens of thousands).
+        "group": "Block storage a VM can consume", "key": "snapshots", "title": "EBS Snapshots",
+        "path": "/v1/compute/snapshots", "params": {"owner": "self"},
+        "columns": [("id", "ID"), ("name", "Name"), ("volume", "Volume"), ("state", "State")],
+        "row": lambda i: {"id": i.get("id"), "name": i.get("name") or "",
+                          "volume": i.get("volume_id") or "", "state": i.get("state") or ""},
+    },
+    # --- what object storage already exists -------------------------------------
+    {
+        "group": "Object storage", "key": "buckets", "title": "S3 Buckets",
+        "path": "/v1/storage/buckets",
+        "columns": [("name", "Name")],
+        "row": lambda i: {"name": i.get("name") or ""},
+    },
+    # --- who can access ---------------------------------------------------------
+    {
+        "group": "Access", "key": "key_pairs", "title": "Key Pairs",
+        "path": "/v1/compute/key-pairs",
+        "columns": [("name", "Name"), ("fingerprint", "Fingerprint")],
+        "row": lambda i: {"name": i.get("name") or "", "fingerprint": i.get("fingerprint") or ""},
+    },
+]
+
+
 class LibcloudProxy:
     def __init__(self) -> None:
         self._settings = get_settings
@@ -97,20 +308,61 @@ class LibcloudProxy:
         token = self._auth.get_token(cloud)
         conn = self._connection(cloud)
         headers = self._headers(token, conn)
+        specs = _AWS_CATEGORY_SPECS if cloud == "aws" else _NTNX_CATEGORY_SPECS
         with httpx.Client(timeout=30) as client:
             data = self._call(client, "/v1/compute/nodes", headers, [])  # steps not returned here
+            categories = self._list_categories(client, headers, specs)
         nodes = data.get("data", []) if isinstance(data, dict) else data
-        return self._shape_resources(cloud, nodes)
+        shaped = self._shape_resources(cloud, nodes)
+        shaped["categories"] = categories
+        return shaped
+
+    def _list_categories(
+        self, client: httpx.Client, headers: dict[str, str], specs: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        # Fan out to the read-only list endpoints behind the provisioner token.
+        # A failing category (e.g. IAM-denied on the backend account, or an
+        # endpoint the provider doesn't support) degrades to an empty table
+        # with an error note instead of blanking the page.
+        # Rows are capped per category (the AMI catalog alone is thousands);
+        # `total` keeps the true count so the portal can say "showing N of M".
+        max_rows = self._settings().inventory_max_rows
+        categories: list[dict[str, Any]] = []
+        for spec in specs:
+            cat: dict[str, Any] = {
+                "group": spec["group"],
+                "key": spec["key"],
+                "title": spec["title"],
+                "columns": [{"key": k, "label": label} for k, label in spec["columns"]],
+            }
+            try:
+                data = self._call(client, spec["path"], headers, [], params=spec.get("params"))
+                items = data.get("data", []) if isinstance(data, dict) else data
+                rows = [spec["row"](i) for i in items]
+                cat["total"] = len(rows)
+                cat["rows"] = rows[:max_rows]
+            except Exception as exc:
+                msg = exc.message if isinstance(exc, APIError) else str(exc)
+                log.warning("resource category %s failed: %s", spec["key"], msg)
+                cat["total"] = 0
+                cat["rows"] = []
+                cat["error"] = msg
+            categories.append(cat)
+        return categories
 
     @staticmethod
     def _shape_resources(cloud: str, nodes: list[dict[str, Any]]) -> dict[str, Any]:
         shaped = []
         for n in nodes:
+            public_ips = n.get("public_ips") or []
+            private_ips = n.get("private_ips") or []
             shaped.append({
                 "id": str(n.get("id") or n.get("uuid") or ""),
                 "name": str(n.get("name") or ""),
                 "state": str(n.get("state") or n.get("status") or "unknown"),
                 "size": str(n.get("size") or n.get("size_id") or ""),
+                "public_ips": [str(ip) for ip in public_ips],
+                "private_ips": [str(ip) for ip in private_ips],
             })
         if cloud == "aws":
             s = get_settings()
@@ -135,7 +387,7 @@ class LibcloudProxy:
                 locations = self._call(client, "/v1/compute/locations", headers, steps).get("data", [])
                 sizes = self._call(client, "/v1/compute/sizes", headers, steps).get("data", [])
                 if cloud == "aws":
-                    images = self._call(client, "/v1/compute/images", headers, steps, params={"name": "*ubuntu*"}).get("data", [])
+                    images = self._call(client, "/v1/compute/images", headers, steps, params={"name": "*ubuntu*24.04*amd64*"}).get("data", [])
                 else:
                     images = self._call(client, "/v1/compute/images", headers, steps).get("data", [])
                     self._call(client, "/v1/compute/storage-containers", headers, steps)
@@ -236,24 +488,9 @@ class LibcloudProxy:
 
         # Acquire a libcloud-rest-audience token (same one the script would
         # obtain via idp_login.py) and hand it to the script via a temp cache.
-        token = self._auth.get_token_full(cloud)
-        cache_dir = tempfile.mkdtemp(prefix=f"deprovision-{cloud}-tokens-")
-        user = self._deprovision_user(cloud)
-        cache_path = os.path.join(cache_dir, f"{user}.json")
-        try:
-            with open(cache_path, "w", encoding="utf-8") as fh:
-                json.dump(
-                    {
-                        "access_token": token.get("access_token", ""),
-                        "refresh_token": token.get("refresh_token", ""),
-                    },
-                    fh,
-                )
-        except OSError as exc:
-            self._cleanup_cache(cache_path, cache_dir)
-            raise APIError("deprovision_token_cache", "could not write token cache", 500) from exc
+        cache_dir, cache_path, user = self._token_cache(cloud)
 
-        env = self._deprovision_env(cloud, user, cache_dir)
+        env = self._script_env(cloud, user, cache_dir)
         if vm_id:
             env["VM_ID"] = vm_id
         if vm_name:
@@ -297,7 +534,104 @@ class LibcloudProxy:
             "stderr": (proc.stderr or "")[-4000:],
         }
 
-    # --- deprovision helpers (per-cloud script + env) ------------------------
+    # --- public: provision the bastion + internal private VM pair ------------
+    # The portal's "Provision Private VM Machine" button calls this. As with
+    # deprovision, we do NOT reimplement the orchestration in Python; we invoke
+    # the per-cloud script so it stays the single source of truth for the 2-VM
+    # sequence:
+    #   aws     -> test_script/scripts/provision_aws_private.sh
+    #              (aws_bastion_internal_server.md: dedicated VPC with a public
+    #              subnet for the bastion + a private subnet with NO internet
+    #              route for the internal server)
+    #   nutanix -> test_script/scripts/provision_nutanix_bastion_private.sh
+    #              (nutanix_bastion_internal_server.md: external + isolated
+    #              VLAN pair)
+    # The tenant's cloud credentials are resolved server-side by the libcloud
+    # REST API from Vault (secret/libcloud/<auth_binding>) — never handled here.
+    def provision_private(self, cloud: str, pair_name: str) -> dict[str, Any]:
+        s = self._settings()
+        script = self._provision_private_script(cloud)
+        if not script or not os.path.isfile(script):
+            raise APIError(
+                "provision_private_script_missing",
+                f"private VM pair provisioning script for {cloud} not found on this server",
+                500,
+                {"script": script, "cloud": cloud},
+            )
+        script_name = os.path.basename(script)
+
+        cache_dir, cache_path, user = self._token_cache(cloud)
+
+        env = self._script_env(cloud, user, cache_dir)
+        # Actually create the VMs (the script dry-runs unless PROVISION=1) and
+        # pin both names so the response matches what the script creates.
+        env["PROVISION"] = "1"
+        env["VM_PREFIX"] = pair_name
+        env["BASTION_NAME"] = f"{pair_name}-bastion"
+        env["INTERNAL_NAME"] = f"{pair_name}-internal"
+
+        # Run from the script's repo root so common.sh's REPO_ROOT-relative
+        # paths (if any) resolve — same convention as deprovision above.
+        cwd = str(Path(script).resolve().parent.parent)
+
+        try:
+            proc = subprocess.run(
+                ["bash", script],
+                env=env,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=s.provision_private_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise APIError(
+                "provision_private_timeout",
+                f"{script_name} timed out",
+                504,
+                {"timeout_seconds": s.provision_private_timeout_seconds},
+            ) from exc
+        finally:
+            self._cleanup_cache(cache_path, cache_dir)
+
+        ok = proc.returncode == 0
+        return {
+            "provider": cloud,
+            "vmName": pair_name,
+            "bastionName": env["BASTION_NAME"],
+            "internalName": env["INTERNAL_NAME"],
+            "status": "provisioned" if ok else "failed",
+            "message": f"{script_name} exit={proc.returncode}",
+            "exitCode": proc.returncode,
+            # Truncate so a chatty script run doesn't blow up the JSON response.
+            "stdout": (proc.stdout or "")[-4000:],
+            "stderr": (proc.stderr or "")[-4000:],
+        }
+
+    # --- script shell-out helpers (shared by deprovision + private-pair) -----
+    def _token_cache(self, cloud: str) -> tuple[str, str, str]:
+        """Acquire a libcloud-rest-audience token (same one the script would
+        obtain via idp_login.py) and write it to a temp cache the script's
+        require_token() can read, so the script works without a host-side
+        generated/tokens/<user>.json having been written first.
+        Returns (cache_dir, cache_path, user); the caller MUST _cleanup_cache()."""
+        token = self._auth.get_token_full(cloud)
+        cache_dir = tempfile.mkdtemp(prefix=f"script-{cloud}-tokens-")
+        user = self._script_user(cloud)
+        cache_path = os.path.join(cache_dir, f"{user}.json")
+        try:
+            with open(cache_path, "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "access_token": token.get("access_token", ""),
+                        "refresh_token": token.get("refresh_token", ""),
+                    },
+                    fh,
+                )
+        except OSError as exc:
+            self._cleanup_cache(cache_path, cache_dir)
+            raise APIError("script_token_cache", "could not write token cache", 500) from exc
+        return cache_dir, cache_path, user
+
     @staticmethod
     def _deprovision_script(cloud: str) -> str:
         s = get_settings()
@@ -308,7 +642,16 @@ class LibcloudProxy:
         return ""
 
     @staticmethod
-    def _deprovision_user(cloud: str) -> str:
+    def _provision_private_script(cloud: str) -> str:
+        s = get_settings()
+        if cloud == "aws":
+            return s.provision_private_aws_script
+        if cloud == "nutanix":
+            return s.provision_private_ntnx_script
+        return ""
+
+    @staticmethod
+    def _script_user(cloud: str) -> str:
         s = get_settings()
         if cloud == "aws":
             return s.provisioner_aws_user or "aws-admin"
@@ -317,20 +660,15 @@ class LibcloudProxy:
         return "cloud-admin"
 
     @staticmethod
-    def _deprovision_env(cloud: str, user: str, cache_dir: str) -> dict[str, str]:
-        # Common env shared by both deprovision_<cloud>.sh scripts: PATH/HOME,
-        # the OpenFGA JWKS-refresh skip, the libcloud REST + Dex + FGA endpoints,
-        # and the temp token cache we just populated.
+    def _script_env(cloud: str, user: str, cache_dir: str) -> dict[str, str]:
+        # Common env shared by the shelled-out scripts: PATH/HOME, the libcloud
+        # REST + Dex + FGA endpoints, and the temp token cache we just populated.
         s = get_settings()
         env = {
             "PATH": os.environ.get(
                 "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             ),
             "HOME": os.environ.get("HOME", "/tmp"),
-            # Suppress common.sh's openfga_ensure_fresh.sh call (the identity
-            # service already keeps OpenFGA's JWKS fresh; the helper is not
-            # mounted in the container and would just emit a warning).
-            "OPENFGA_SKIP_RESTART": "1",
             "LIBCLOUD_USER": user,
             "LIBCLOUD_REST_URL": s.libcloud_rest_url,
             "DEX_URL": s.dex_url,

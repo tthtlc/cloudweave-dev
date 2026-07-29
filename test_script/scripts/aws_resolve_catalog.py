@@ -107,9 +107,9 @@ def score_image(image: dict[str, Any]) -> int:
     if "deep learning" in name or "elasticsearch" in name or "laravel" in name:
         score -= 40
     if "22.04 lts" in name or "ubuntu 22.04" in name:
-        score += 30
+        score += 20
     if "24.04 lts" in name or "ubuntu 24.04" in name:
-        score += 25
+        score += 35
     if len(name) > 80:
         score -= 20
     return score

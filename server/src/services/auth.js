@@ -58,6 +58,7 @@ export function roleHome(role) {
     case "superadmin": return "/superadmin";
     case "admin": return "/admin";
     case "owner": return "/owner";
+    case "pending": return "/pending";
     case "viewer":
     default: return "/viewer";
   }
