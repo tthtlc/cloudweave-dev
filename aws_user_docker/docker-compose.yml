@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  aws-bootstrap:
+    build: .
+    image: aws-iam-bootstrap:latest
+    # The container uses the host's admin AWS session and writes the new
+    # user's credentials back to a host directory.
+    volumes:
+      # Read-only: host admin credentials so the container can call IAM/EC2
+      - ${HOME}/.aws:/root/.aws:ro
+      # Read-write: new credentials land here and survive container teardown
+      - ./aws_output:/aws_output
+    environment:
+      - AWS_OUTPUT_DIR=/aws_output
+    # If the host has AWS_PROFILE set, pass it through so the admin calls
+    # use the correct profile.
+      - AWS_PROFILE=${AWS_PROFILE:-default}
+    # Prevent the container from picking up the newly-written profile
+    # mid-script (the verification step unsets AWS_PROFILE on purpose).
+    stdin_open: true
+    tty: false
