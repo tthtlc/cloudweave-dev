@@ -1,0 +1,24 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 387
+Date: Wed, 23 Jul 2026 14:22:12 GMT
+
+{
+  "sub": "CiQgT1JURV9VU0VFOkJMQk9DSw==",
+  "principal": "aws-admin",
+  "email": "aws-admin@libcloud.local",
+  "name": "AWS Admin",
+  "scopes": [
+    "compute:read",
+    "compute:node:create",
+    "compute:node:delete",
+    "compute:node:update",
+    "compute:image:read",
+    "compute:size:read",
+    "compute:location:read",
+    "compute:network:read"
+  ],
+  "allowed_providers": ["aws"],
+  "iss": "http://login.quest4science.xyz:5556/dex",
+  "aud": "libcloud-rest"
+}

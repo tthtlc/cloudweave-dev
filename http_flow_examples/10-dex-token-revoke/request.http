@@ -1,0 +1,10 @@
+POST /dex/token/revoke HTTP/1.1
+Host: dex:5556
+Content-Type: application/x-www-form-urlencoded
+Accept: application/json
+Content-Length: 255
+
+token=ChlDZXgtcmVmcmVzaC10b2tlbi1leGFtcGxlLTEyMzQ1Njc4OTBhYmNkZWY&
+token_type_hint=refresh_token&
+client_id=libcloud-portal&
+client_secret=ZXhhbXBsZS1wb3J0YWwtc2VjcmV0LWtleS0xMjM0NTY3OA

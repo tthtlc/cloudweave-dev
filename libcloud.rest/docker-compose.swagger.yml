@@ -1,0 +1,37 @@
+# Serve the generated OpenAPI spec via Swagger UI.
+#
+# Prerequisites:
+#   1. Run `python scripts/generate_openapi.py` first (or use run-swagger.sh).
+#   2. The spec must exist at generated/openapi.json.
+#
+# Usage:
+#   docker compose -f docker-compose.swagger.yml up -d
+#   # → Swagger UI at http://localhost:8080
+#
+#   # Or use the convenience wrapper:
+#   ./run-swagger.sh
+#
+# This container is independent of the API service — it only needs the static
+# openapi.json file. The API service does NOT need to be running.
+
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui:v5.18.2
+    container_name: libcloud-swagger-ui
+    restart: unless-stopped
+    ports:
+      - "${SWAGGER_PORT:-8080}:8080"
+    environment:
+      SWAGGER_JSON: /spec/openapi.json
+      # Show the full URL in the page so users can deep-link to endpoints
+      QUERY_CONFIG_ENABLED: "true"
+      # Collapse tags by default for cleaner overview
+      DOC_EXPANSION: list
+      # Show request duration
+      REQUEST_DURATION_ENABLED: "true"
+      # Deep-linking: reflect the current route in the URL bar
+      DEEP_LINKING: "true"
+      # Try-it-out is enabled by default
+      TRY_IT_OUT_ENABLED: "true"
+    volumes:
+      - ./generated/openapi.json:/spec/openapi.json:ro

@@ -1,0 +1,11 @@
+# NOTE: No HTTP request is made here.
+#
+# Stock Dex (ghcr.io/dexidp/dex:v2.41.1) has NO RP-initiated logout endpoint.
+# GET /dex/auth/logout returns 404 "Invalid client_id ("")" because the path
+# matches the connector-login route /dex/auth/{connector}, which parses the
+# query as an authorization request and requires a client_id. Dex also keeps
+# no browser SSO cookie, so there is nothing IdP-side to clear — every
+# /dex/auth request re-prompts the connector login form.
+#
+# Logout therefore ends at step 10 (refresh-token revocation). The portal SPA
+# navigates client-side to /login after POST /api/logout returns.

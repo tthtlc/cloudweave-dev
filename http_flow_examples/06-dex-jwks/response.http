@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Cache-Control: public, max-age=3600
+Content-Length: 1432
+Date: Wed, 23 Jul 2026 14:22:03 GMT
+
+{
+  "keys": [
+    {
+      "use": "sig",
+      "kty": "RSA",
+      "kid": "112233445566778899aabbccddeeff00",
+      "alg": "RS256",
+      "n": "0vx7agoebGcQSuuPiLgXfpt4cPZ7YbAMJHZRj9xP9Y8q9eB3xL5mN2pQ7rS8tU1vW4xY6zA0bC2dE4fG6hI8jK0lM2nO4pQ6rS8tU1vW4xY6zA0bC2dE4fG6hI8jK0lM2n",
+      "e": "AQAB"
+    }
+  ]
+}

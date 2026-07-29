@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 224
+Date: Wed, 23 Jul 2026 14:26:30 GMT
+
+{
+  "internalUserId": "int-pending-a1b2c3d4",
+  "email": "github-user@example.com",
+  "displayName": "github user",
+  "role": "viewer",
+  "linkedIdentities": ["github:12345678"],
+  "tenant": "aws"
+}

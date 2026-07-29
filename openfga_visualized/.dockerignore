@@ -1,0 +1,11 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+.flask_secret
+visualized.log
+Dockerfile
+.dockerignore
+docker-compose.yml
+shutdown.sh
+*.md

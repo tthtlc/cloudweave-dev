@@ -1,0 +1,1 @@
+./libcloud.rest/scripts/rest-api-test.sh
