@@ -412,7 +412,7 @@ def run_lifecycle(tenant: str, conn: dict, token: str) -> None:
     cluster_id = _first_id(locs)
     image_id = _first_id(imgs)
     subnet_id = _first_id(subs)
-    size_id = "small" if tenant == "nutanix" else "t3.micro"
+    size_id = "small" if tenant == "nutanix" else "t3.small"
     print(f"  cluster_id={cluster_id} image_id={image_id} subnet_id={subnet_id} size_id={size_id}")
 
     # ---- network (vpc) -> subnets/security-groups/load-balancers depend on it

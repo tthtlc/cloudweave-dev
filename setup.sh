@@ -105,9 +105,11 @@ export HOST_GID="$(id -g)"
 # Public hostname the browser uses to reach Dex (:5556) and the portal (:3000).
 # dex_bootstrap.py derives the canonical OIDC issuer from this (the issuer MUST
 # be browser-public so federated connector callbacks {issuer}/callback match
-# the redirect URI registered in Google/GitHub OAuth apps). Override per-run
-# with `DEX_PUBLIC_URL=https://your.host:5556 ./setup.sh`.
-export DEX_PUBLIC_URL="${DEX_PUBLIC_URL:-http://login.quest4science.xyz:5556}"
+# the redirect URI registered in Google/GitHub OAuth apps). Derived from
+# PUBLIC_HOSTNAME below; override per-run with
+# `DEX_PUBLIC_URL=https://your.host:5556 ./setup.sh`.
+export PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-login.cloudweave.xyz}"
+export DEX_PUBLIC_URL="${DEX_PUBLIC_URL:-http://${PUBLIC_HOSTNAME}:5556}"
 
 mkdir -p generated "${DEX_DIR}/generated" "${VAULT_DIR}/generated" generated/tokens \
          "${OPENFGA_DIR}/generated"
@@ -407,9 +409,9 @@ PY
 
   if docker compose -f "$REST_DIR/docker-compose.yml" ps --status running api 2>/dev/null | grep -q '\blibcloud-rest-api\b'; then
     echo "  Recreating libcloud-rest-api container to apply new FGA env"
-    docker compose -f "$REST_DIR/docker-compose.yml" up -d --build --force-recreate api
+    docker compose -f "$REST_DIR/docker-compose.yml" up -d --force-recreate api
   else
-    echo "  libcloud-rest-api not running — start it with: docker compose -f $REST_DIR/docker-compose.yml up -d --build api"
+    echo "  libcloud-rest-api not running — start it with: docker compose -f $REST_DIR/docker-compose.yml up -d api"
   fi
 }
 
@@ -443,9 +445,9 @@ PY
 
   if docker compose -f "$REST_DIR/docker-compose.yml" ps --status running api 2>/dev/null | grep -q '\blibcloud-rest-api\b'; then
     echo "  Recreating libcloud-rest-api container to apply Vault env"
-    docker compose -f "$REST_DIR/docker-compose.yml" up -d --build --force-recreate api
+    docker compose -f "$REST_DIR/docker-compose.yml" up -d --force-recreate api
   else
-    echo "  libcloud-rest-api not running — start it with: docker compose -f $REST_DIR/docker-compose.yml up -d --build api"
+    echo "  libcloud-rest-api not running — start it with: docker compose -f $REST_DIR/docker-compose.yml up -d api"
   fi
 }
 

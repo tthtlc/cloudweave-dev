@@ -33,6 +33,8 @@ ARM_FAMILIES = {
     "m7gd",
     "m8g",
     "m8gd",
+    "m9g",
+    "m9gd",
     "r6g",
     "r6gd",
     "r7g",
@@ -44,8 +46,8 @@ ARM_FAMILIES = {
 }
 
 DEFAULT_SIZE_BY_ARCH = {
-    "x86_64": "t3.micro",
-    "arm64": "t4g.micro",
+    "x86_64": "t3.small",
+    "arm64": "m9gd.large",
 }
 
 CANONICAL_OWNER_ID = "099720109477"
@@ -135,7 +137,7 @@ def pick_image(images: list[dict[str, Any]], arch: str) -> str:
 
 
 def pick_size(sizes: list[dict[str, Any]], arch: str) -> str:
-    preferred = PREFERRED_SIZE or DEFAULT_SIZE_BY_ARCH.get(arch, "t3.micro")
+    preferred = PREFERRED_SIZE or DEFAULT_SIZE_BY_ARCH.get(arch, "m9gd.large")
     by_id = {str(size["id"]): size for size in sizes}
     if preferred in by_id and instance_arch(preferred, by_id[preferred].get("extra")) == arch:
         return preferred

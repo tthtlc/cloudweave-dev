@@ -26,7 +26,7 @@ Configuration (environment variables; defaults match the libcloud project):
   OPENFGA_API_URL      default http://localhost:8080
   OPENFGA_STORE_ID     default 01KXFQ6JWFD2MZKFDFSHYNNNXE
   OPENFGA_MODEL_ID     default 01KXWWZY8424AMK2B443FH7TQ0
-  OIDC_ISSUER          default http://login.quest4science.xyz:5556/dex
+  OIDC_ISSUER          default http://login.cloudweave.xyz:5556/dex (derived from PUBLIC_HOSTNAME)
   OIDC_CLIENT_ID       default libcloud-rest (must match OpenFGA's audience)
   OIDC_CLIENT_SECRET   default: read from DEX_CONFIG for OIDC_CLIENT_ID
   DEX_CONFIG           default ../dex/config.yaml
@@ -66,7 +66,10 @@ MODEL_ID = os.environ.get("OPENFGA_MODEL_ID", "01KXWWZY8424AMK2B443FH7TQ0")
 PORT = int(os.environ.get("PORT", "5050"))
 
 OIDC_ISSUER = os.environ.get(
-    "OIDC_ISSUER", "http://login.quest4science.xyz:5556/dex"
+    "OIDC_ISSUER",
+    "http://"
+    + os.environ.get("PUBLIC_HOSTNAME", "login.cloudweave.xyz")
+    + ":5556/dex",
 ).rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "libcloud-rest")
 OIDC_SCOPES = os.environ.get("OIDC_SCOPES", "openid profile email groups")

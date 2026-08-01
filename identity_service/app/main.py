@@ -43,9 +43,12 @@ def create_app() -> FastAPI:
     # credentials=true on the browser side requires a permissive CORS origin
     # AND SameSite handling on the cookie. In production serve both behind the
     # same origin (reverse proxy) so CORS isn't needed and cookies are first-party.
+    # CORS origins are derived from PUBLIC_HOSTNAME env var so a server migration
+    # only needs a DNS change (or /etc/hosts entry), not a code change.
+    _cors_host = f"http://{__import__('os').environ.get('PUBLIC_HOSTNAME', 'login.cloudweave.xyz')}:3000"
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://login.quest4science.xyz:3000", "http://localhost:3000"],
+        allow_origins=[_cors_host, "http://localhost:3000"],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],

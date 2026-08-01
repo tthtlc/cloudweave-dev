@@ -419,8 +419,8 @@ export const mockApi = {
     const bastionName = `${pairName}-bastion`;
     const internalName = `${pairName}-internal`;
     cloudNodes.aws.push(
-      { id: `i-mock-${bastionName}`, name: bastionName, state: "running", size: "t3.micro", public_ips: ["54.254.10.99"], private_ips: ["10.0.0.100"] },
-      { id: `i-mock-${internalName}`, name: internalName, state: "running", size: "t3.micro", public_ips: [], private_ips: ["10.0.16.50"] },
+      { id: `i-mock-${bastionName}`, name: bastionName, state: "running", size: "t3.small", public_ips: ["54.254.10.99"], private_ips: ["10.0.0.100"] },
+      { id: `i-mock-${internalName}`, name: internalName, state: "running", size: "t3.small", public_ips: [], private_ips: ["10.0.16.50"] },
     );
     return MOCK_PROVISION_PRIVATE_RESULT("aws", pairName);
   },

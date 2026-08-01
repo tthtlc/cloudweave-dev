@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ./verify_auth.sh                              # defaults to http://localhost:8766
-#   BASE_URL=http://login.quest4science.xyz:8766 ./verify_auth.sh
+#   BASE_URL=http://login.cloudweave.xyz:8766 ./verify_auth.sh
 #   BASE_URL=http://localhost:8766 ./verify_auth.sh
 #
 # Exit status: 0 if all checks pass, 1 if any fail.

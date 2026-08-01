@@ -1,49 +1,28 @@
-# Sample docker-compose for running the portal + a Dex instance configured for
-# Google + GitHub federation. This is a starter; the real identity service
-# backend is expected to exist separately and implement the /api/* contract.
+# Portal frontend (React/nginx) — depends on the standalone Dex instance
+# (../dex/docker-compose.yml) for OIDC authentication. The identity service
+# backend (../identity_service) must also be running.
 #
 # Runtime layout mirrors the rest of the stack (./dex, ./vault,
 # ./openfga_postgres, etc.). See system_design/ARCHITECTURE.md.
 
 services:
-  dex:
-    image: ghcr.io/dexidp/dex:v2.41.1
-    container_name: dex
-    restart: unless-stopped
-    networks:
-      - libcloud_net
-    ports:
-      - "${DEX_HTTP_PORT:-5556}:5556"
-    volumes:
-      - ./dex/config.sample.yaml:/etc/dex/config.yaml:ro
-    # TODO: render config.sample.yaml with real secrets before mounting.
-    command: ["dex", "serve", "/etc/dex/config.yaml"]
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-",
-             "http://127.0.0.1:5556/dex/.well-known/openid-configuration"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 5s
-
   portal:
     build:
       context: .
       dockerfile: Dockerfile
       # CRA bakes REACT_APP_* into the static bundle at BUILD time, so these
-      # must be passed as build args (not just runtime environment). Values are
-      # sourced from server/.env, which docker compose auto-loads for variable
-      # substitution in this file. Keep them in sync with server/.env.
+      # must be passed as build args (not just runtime environment). All
+      # browser-facing URLs derive from PUBLIC_HOSTNAME (set in server/.env).
+      # Override individual REACT_APP_* vars for non-standard setups.
       args:
-        REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL}
-        REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID}
-        REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI}
-        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL}
-        REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE}
+        REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
+        REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID:-libcloud-portal}
+        REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:3000/auth/callback}
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:8766}
+        REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE:-false}
+        REACT_APP_DISABLE_FEDERATION: ${REACT_APP_DISABLE_FEDERATION:-true}
     container_name: portal
     restart: unless-stopped
-    depends_on:
-      - dex
     networks:
       - libcloud_net
     ports:
@@ -51,11 +30,12 @@ services:
     # nginx serves a pre-built static bundle, so these runtime env vars have no
     # effect on the served app; kept only for operator introspection.
     environment:
-      REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL}
-      REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID}
-      REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI}
-      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL}
-      REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE}
+      REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
+      REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID:-libcloud-portal}
+      REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:3000/auth/callback}
+      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:8766}
+      REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE:-false}
+      REACT_APP_DISABLE_FEDERATION: ${REACT_APP_DISABLE_FEDERATION:-true}
 
 networks:
   libcloud_net:

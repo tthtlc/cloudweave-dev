@@ -60,6 +60,12 @@ staticClients:
       # identity-service was already running). 8767 is not published by any
       # container, so it is always free on the host.
       - http://127.0.0.1:8767/oauth/callback
+      # OpenFGA RBAC visualizer (openfga_visualized/app.py) — its own SSO
+      # login on port 5050. Multiple host spellings so the flow works however
+      # the dashboard is reached.
+      - http://localhost:5050/callback
+      - http://127.0.0.1:5050/callback
+      - http://login.cloudweave.xyz:5050/callback
 __PORTAL_CLIENT__
 
 connectors:

@@ -23,7 +23,7 @@
 # OAuth client (libcloud-portal) is likewise appended when
 # DEX_PORTAL_REDIRECT_URI is set.
 
-issuer: http://login.quest4science.xyz:5556/dex
+issuer: http://dex:5556/dex
 
 storage:
   type: memory
@@ -43,7 +43,7 @@ oauth2:
 staticClients:
   - id: libcloud-rest
     name: libcloud REST API
-    secret: kPV2bAbb0oOIeUqqvAlZAvrZtqbOULlPILWZn4f5egk
+    secret: ZFKxci25rQX2d7vaug2wq1fTscI3n6j0Qtw3WAni-5c
     redirectURIs:
       # Runtime portal-login callback — the browser lands here after Dex
       # authorization; identity-service (identity_service/docker-compose.yml)
@@ -60,18 +60,18 @@ staticClients:
       # identity-service was already running). 8767 is not published by any
       # container, so it is always free on the host.
       - http://127.0.0.1:8767/oauth/callback
-      # openfga-rbac-visualizer dashboard (openfga_visualized/app.py) — its own
-      # SSO login screen on port 5050. Multiple host spellings so the flow
-      # works however the dashboard is reached.
+      # OpenFGA RBAC visualizer (openfga_visualized/app.py) — its own SSO
+      # login on port 5050. Multiple host spellings so the flow works however
+      # the dashboard is reached.
       - http://localhost:5050/callback
       - http://127.0.0.1:5050/callback
-      - http://167.172.94.123:5050/callback
-      - http://login.quest4science.xyz:5050/callback
+      - http://login.cloudweave.xyz:5050/callback
   - id: libcloud-portal
     name: libcloud Role Portal
-    secret: l33WEHol5lO3CkSXZv7Bw14587VgIHWB_YbxO0oll74
+    secret: MB_UhzSCBvLj2-ITgElpWi83YDtKRVoVPFG3PciN5Co
     redirectURIs:
-      - http://login.quest4science.xyz:3000/auth/callback
+      - http://localhost:3000/auth/callback
+      - http://login.cloudweave.xyz:3000/auth/callback
 
 
 connectors:
@@ -94,20 +94,4 @@ connectors:
         idAttr: uid
         emailAttr: mail
         nameAttr: cn
-  - type: google
-    id: google
-    name: Google
-    config:
-      clientID: 21475866709-orc64alpcr7b62vnnejhverisi79j2hu.apps.googleusercontent.com
-      clientSecret: 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
-      redirectURI: http://login.quest4science.xyz:5556/dex/callback
-      # TODO: restrict to your org domain(s) via hostedDomains.
-  - type: github
-    id: github
-    name: GitHub
-    config:
-      clientID: Ov23liBwYgY2Fub4RuV4
-      clientSecret: 5616d1ff9ef70994589c68e76cba10dad4d68f95
-      redirectURI: http://login.quest4science.xyz:5556/dex/callback
-      # TODO: restrict via orgs/teams if you want group claims.
 

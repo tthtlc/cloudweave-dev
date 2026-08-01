@@ -10,7 +10,7 @@
 #   ./verify_provision.sh                       # AWS, provision + teardown
 #   CLOUD=nutanix ./verify_provision.sh         # Nutanix
 #   TEARDOWN=0 ./verify_provision.sh             # keep the VM
-#   BASE_URL=http://login.quest4science.xyz:8766 ./verify_provision.sh
+#   BASE_URL=http://login.cloudweave.xyz:8766 ./verify_provision.sh
 #
 # Exit status: 0 if the replay reaches POST /v1/compute/nodes with 200, 1 otherwise.
 

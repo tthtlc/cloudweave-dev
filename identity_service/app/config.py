@@ -32,20 +32,34 @@ class Settings(BaseSettings):
     # --- Dex (OIDC issuer) ---
     # dex_base_url is the SERVER-side URL the identity service uses to build the
     # authorize URL it returns to the browser. It MUST be browser-reachable
-    # (public hostname), because the browser navigates to it. The token/JWKS
-    # URLs below are server-to-server (in-container DNS) and stay as dex:5556.
-    dex_base_url: str = "http://login.quest4science.xyz:5556/dex"
+    # (public hostname), because the browser navigates to it. Derived from
+    # PUBLIC_HOSTNAME env var.
+    #
+    # dex_issuer is the canonical `iss` claim Dex puts in ID tokens. Defaults to
+    # the in-container URL (http://dex:5556/dex) so all Docker services can
+    # validate tokens and fetch JWKS without needing public DNS. Must match
+    # Dex's issuer in config.yaml and OpenFGA's --authn-oidc-issuer.
+    #
+    # Override DEX_BASE_URL / DEX_ISSUER explicitly for non-standard setups.
+    # Change PUBLIC_HOSTNAME + DNS (or /etc/hosts) to migrate servers.
+    dex_base_url: str = "http://login.cloudweave.xyz:5556/dex"
     dex_token_url: str = "http://dex:5556/dex/token"
     dex_jwks_url: str = "http://dex:5556/dex/keys"
-    # dex_issuer is the canonical `iss` claim Dex puts in ID tokens. It MUST
-    # match Dex's configured issuer (now the PUBLIC URL, so federated connector
-    # callbacks {issuer}/callback are browser-reachable). The identity service
-    # validates ID-token `iss` against this; the key comes from dex_jwks_url
-    # (in-container, fast) — same key regardless of which URL fetched it.
-    dex_issuer: str = "http://login.quest4science.xyz:5556/dex"
+    dex_issuer: str = "http://dex:5556/dex"
     dex_portal_client_id: str = "libcloud-portal"
     dex_portal_client_secret: str = ""
     dex_portal_redirect_uri: str = "http://localhost:3000/auth/callback"
+
+    @model_validator(mode="after")
+    def _derive_public_urls(self) -> "Settings":
+        """Derive dex_base_url from PUBLIC_HOSTNAME env var (browser-facing only).
+        dex_issuer stays at its in-container default unless explicitly overridden."""
+        import os as _os
+
+        public_host = _os.environ.get("PUBLIC_HOSTNAME", "").strip()
+        if public_host:
+            self.dex_base_url = f"http://{public_host}:5556/dex"
+        return self
 
     # --- OpenFGA (authorization) ---
     fga_enabled: bool = True

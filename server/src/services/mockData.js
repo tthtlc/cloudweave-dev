@@ -98,7 +98,7 @@ export const MOCK_TUPLES = [
 export const MOCK_AWS_RESOURCES = {
   region: "ap-southeast-1",
   nodes: [
-    { id: "i-0abc123", name: "libcloud-demo-1", state: "running", size: "t3.micro", public_ips: ["54.254.10.20"], private_ips: ["10.0.0.10"] },
+    { id: "i-0abc123", name: "libcloud-demo-1", state: "running", size: "t3.small", public_ips: ["54.254.10.20"], private_ips: ["10.0.0.10"] },
     { id: "i-0def456", name: "libcloud-demo-2", state: "stopped", size: "t3.small", public_ips: [], private_ips: ["10.0.0.11"] },
   ],
   categories: [

@@ -11,7 +11,8 @@ services:
       OPENFGA_API_URL: ${OPENFGA_API_URL:-http://localhost:8080}
       OPENFGA_STORE_ID: ${OPENFGA_STORE_ID:-01KXFQ6JWFD2MZKFDFSHYNNNXE}
       OPENFGA_MODEL_ID: ${OPENFGA_MODEL_ID:-01KXWWZY8424AMK2B443FH7TQ0}
-      OIDC_ISSUER: ${OIDC_ISSUER:-http://login.quest4science.xyz:5556/dex}
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-login.cloudweave.xyz}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-libcloud-rest}
       DEX_CONFIG: /app/dex-config.yaml
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-superadmin@libcloud.local}

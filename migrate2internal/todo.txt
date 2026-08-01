@@ -1,0 +1,41 @@
+
+
+
+[+] up 1/1
+ ✔ Container dex Running                                                                                                                                                                                  0.0s
+[RESTORE] 10:13:33 Starting: /home/ubuntu/libcloud_nutanix/openfga_postgres
+WARN[0000] volume "openfga_postgres_openfga-pg-data" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume 
+[+] up 4/4
+ ✔ Container openfga-postgres  Healthy                                                                                                                                                                    6.7s
+ ✘ Container openfga-migrate   Error service "openfga-migrate" didn't complete successfully: exit 1                                                                                                      65.2s
+ ✔ Container openfga           Created                                                                                                                                                                    0.1s
+ ✔ Container openfga-bootstrap Created                                                                                                                                                                    0.1s
+service "openfga-migrate" didn't complete successfully: exit 1
+[WARN]  10:14:39 Failed to start: /home/ubuntu/libcloud_nutanix/openfga_postgres
+[RESTORE] 10:14:39 Starting: /home/ubuntu/libcloud_nutanix/vault
+WARN[0000] volume "vault_vault-data" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume 
+[+] up 2/2
+ ✔ Container vault           Started                                                                                                                                                                      0.3s
+ ✔ Container vault-bootstrap Started                                                                                                                                                                      0.4s
+[RESTORE] 10:14:42 Starting: /home/ubuntu/libcloud_nutanix/stoplight_mock
+
+
+
+
+-name
+# DNS). Host-side provisioning scripts reach OpenFGA via the published port
+# (http://localhost:8080).
+#
+# Datastore: a dedicated `postgres` service holds the OpenFGA schema, stores,
+# authorization models and relationship tuples. Migrations are applied by the
+# one-shot `openfga-migrate` service (runs `openfga migrate --datastore-engine
+# =postgres`) before `openfga` starts. OpenFGA is datastore-agnostic above the
+# storage layer, so openfga_bootstrap.py / scripts/ live in this directory.
+#     
+# The `openfga-local:latest` image is built from ./Dockerfile (multi-stage:
+# downloads the official OpenFGA release tarball from GitHub and verifies its
+# checksum). The OpenFGA binary is NOT vendored into this directory — bump
+# OPENFGA_VERSION / OPENFGA_TARBALL_SHA256 in .env to upgrade. v1.16.0 is
+# pinned because it is the first release to enable JWKS refresh on unknown
+# `kid` (keyfunc `RefreshUnknownKID: true`, rate-limited 1/min) via PR #3101,
+

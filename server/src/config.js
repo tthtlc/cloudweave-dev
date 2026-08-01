@@ -16,6 +16,11 @@ const config = {
   // Mock mode isolates the UI from a live backend. Toggle via env or the
   // runtime override below for quick demos.
   mockMode: env("REACT_APP_MOCK_MODE", "true").toLowerCase() === "true",
+  // Air-gapped (offline) deployments: set to "true" to hide Google/GitHub
+  // sign-in buttons. Dex is configured without those connectors so they
+  // would fail anyway. LLDAP-only login remains available.
+  disableFederation:
+    env("REACT_APP_DISABLE_FEDERATION", "false").toLowerCase() === "true",
 };
 
 export default config;

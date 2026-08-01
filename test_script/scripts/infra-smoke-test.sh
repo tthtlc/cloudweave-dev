@@ -282,7 +282,7 @@ header "6. Cross-service connectivity"
 
 # Dex → LLDAP: The discovery doc issuer should match. Just confirm Dex is
 # serving the discovery doc (the issuer URL in it references LLDAP-backed Dex).
-check_body "Dex issuer matches public hostname" 200 'quest4science' \
+check_body "Dex issuer matches public hostname" 200 'cloudweave' \
   "$DEX_DISCOVERY"
 
 # Vault seal-status → confirms Vault is listening (even if sealed)

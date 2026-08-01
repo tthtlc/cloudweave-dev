@@ -16,8 +16,14 @@
 set -euo pipefail
 
 # ── config ────────────────────────────────────────────────────────────────
+# Set PUBLIC_HOSTNAME to your deployment's hostname (default: login.cloudweave.xyz).
+# Change this one value + DNS (or /etc/hosts) to migrate servers.
+PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-login.cloudweave.xyz}"
 DEX_HOST=http://localhost:5556
-DEX_ISSUER=http://login.quest4science.xyz:5556/dex
+# The issuer MUST match Dex's configured issuer (in-container: http://dex:5556/dex).
+# Host-side scripts use localhost:5556 to reach Dex, but the JWT iss claim is
+# dex:5556/dex. For validation, match the issuer, not the reachable URL.
+DEX_ISSUER="http://dex:5556/dex"
 IDENTITY=http://localhost:8766
 REST=http://localhost:8765
 OPENFGA=http://localhost:8080
@@ -29,7 +35,7 @@ PORTAL=http://localhost:3000
 # From dex/generated/dex.env (in the repo)
 PORTAL_CLIENT=libcloud-portal
 PORTAL_SECRET=l33WEHol5lO3CkSXZv7Bw14587VgIHWB_YbxO0oll74
-PORTAL_REDIRECT=http://login.quest4science.xyz:3000/auth/callback
+PORTAL_REDIRECT="http://${PUBLIC_HOSTNAME}:3000/auth/callback"
 
 REST_CLIENT=libcloud-rest
 REST_SECRET=kPV2bAbb0oOIeUqqvAlZAvrZtqbOULlPILWZn4f5egk

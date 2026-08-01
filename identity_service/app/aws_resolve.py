@@ -9,10 +9,11 @@ from typing import Any
 ARM_FAMILIES = {
     "a1", "c6g", "c6gd", "c6gn", "c7g", "c7gd", "c7gn", "c8g", "c8gd", "c8gn",
     "g5g", "hpc7g", "i4g", "im4gn", "is4gen", "m6g", "m6gd", "m7g", "m7gd",
-    "m8g", "m8gd", "r6g", "r6gd", "r7g", "r7gd", "r8g", "r8gd", "t4g", "x2gd",
+    "m8g", "m8gd", "m9g", "m9gd", "r6g", "r6gd", "r7g", "r7gd", "r8g", "r8gd",
+    "t4g", "x2gd",
 }
 CANONICAL_OWNER_ID = "099720109477"  # Canonical's AWS account (official Ubuntu AMIs)
-DEFAULT_SIZE_BY_ARCH = {"x86_64": "t3.micro", "arm64": "t4g.micro"}
+DEFAULT_SIZE_BY_ARCH = {"x86_64": "t3.small", "arm64": "m9gd.large"}
 
 
 def instance_arch(size_id: str, extra: dict[str, Any] | None = None) -> str:
@@ -64,7 +65,7 @@ def pick_image(images: list[dict[str, Any]], arch: str = "x86_64") -> str:
 def pick_size(sizes: list[dict[str, Any]], arch: str = "x86_64", preferred: str = "") -> str:
     if preferred and any(s.get("id") == preferred for s in sizes):
         return preferred
-    default = DEFAULT_SIZE_BY_ARCH.get(arch, "t3.micro")
+    default = DEFAULT_SIZE_BY_ARCH.get(arch, "m9gd.large")
     if any(s.get("id") == default for s in sizes):
         return default
     same_arch = [s for s in sizes if instance_arch(s.get("id", ""), s.get("extra")) == arch]

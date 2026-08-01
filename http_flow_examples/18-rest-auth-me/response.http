@@ -19,6 +19,6 @@ Date: Wed, 23 Jul 2026 14:22:12 GMT
     "compute:network:read"
   ],
   "allowed_providers": ["aws"],
-  "iss": "http://login.quest4science.xyz:5556/dex",
+  "iss": "http://dex:5556/dex",
   "aud": "libcloud-rest"
 }

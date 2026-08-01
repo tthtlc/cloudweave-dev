@@ -77,6 +77,12 @@ BASTION_SSH_CIDR="${BASTION_SSH_CIDR:-0.0.0.0/0}"
 INTERNAL_APP_PORT="${INTERNAL_APP_PORT:-8080}"
 KEY_PAIR_NAME="${KEY_PAIR_NAME:-libcloud-private-key}"
 KEY_FILE="${KEY_FILE:-${TMPDIR:-/tmp}/${KEY_PAIR_NAME}.pem}"
+# Root volume configuration for EC2 instances (at least 80 GiB gp3 by default).
+# The device name must match the AMI root device: /dev/xvda for Nitro-based
+# instances (t3, t3a, t4g, m5, c5, r5, …), /dev/sda1 for older Xen instances.
+ROOT_VOLUME_SIZE_GB="${ROOT_VOLUME_SIZE_GB:-40}"
+ROOT_DEVICE_NAME="${ROOT_DEVICE_NAME:-/dev/xvda}"
+ROOT_VOLUME_TYPE="${ROOT_VOLUME_TYPE:-gp3}"
 # Pair naming: one prefix, two VM names (same convention as
 # provision_nutanix_bastion_private.sh so the identity service drives both
 # scripts with the same VM_PREFIX/BASTION_NAME/INTERNAL_NAME env).
@@ -446,9 +452,21 @@ echo "Key pair ${KEY_PAIR_NAME} ready."
 # --------------------------------------------------------------------------- #
 NODE_COMMON=$(python3 -c "
 import json
-print(json.dumps({'size': {'id': '${SIZE_ID}'}, 'image': {'id': '${IMAGE_ID}'},
-                  'auth': {'type': 'key_pair', 'key_name': '${KEY_PAIR_NAME}'},
-                  'execution': {'wait_until_running': True, 'timeout_seconds': 300}}))
+bdm = [{
+    'DeviceName': '${ROOT_DEVICE_NAME}',
+    'Ebs': {
+        'VolumeSize': int('${ROOT_VOLUME_SIZE_GB}'),
+        'VolumeType': '${ROOT_VOLUME_TYPE}',
+        'DeleteOnTermination': True,
+    },
+}]
+print(json.dumps({
+    'size': {'id': '${SIZE_ID}'},
+    'image': {'id': '${IMAGE_ID}'},
+    'auth': {'type': 'key_pair', 'key_name': '${KEY_PAIR_NAME}'},
+    'provider_options': {'ex_blockdevicemappings': bdm},
+    'execution': {'wait_until_running': True, 'timeout_seconds': 300},
+}))
 ")
 
 step "14" "Bastion VM ${BASTION_NAME} (public subnet + public IP, SG ${BASTION_SG_NAME})"

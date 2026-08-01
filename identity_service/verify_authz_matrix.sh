@@ -27,7 +27,7 @@
 #   FULL_LIFECYCLE=1 ./verify_authz_matrix.sh      # also provision+deprovision
 #                                                  # a REAL VM per allowed
 #                                                  # user/cloud (AWS = real EC2!)
-#   BASE_URL=http://login.quest4science.xyz:8766 CONTAINER=identity-service ./verify_authz_matrix.sh
+#   BASE_URL=http://login.cloudweave.xyz:8766 CONTAINER=identity-service ./verify_authz_matrix.sh
 #
 # Exit status: 0 if all checks pass, 1 if any fail.
 

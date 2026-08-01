@@ -1,0 +1,349 @@
+Reusing existing POSTGRES_PASSWORD from /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/postgres.env.
+Vendored libcloud at pin v3.9.1 (6c867a3ca).
+openfga-local:latest up to date (openfga v1.16.0).
+Reusing existing LIBCLOUD_OIDC_CLIENT_SECRET from /home/ubuntu/libcloud_nutanix/dex/generated/dex.env.
+Rendering Dex config (LDAP connector → LLDAP) ...
+10:04:58  INFO     Wrote /home/ubuntu/libcloud_nutanix/dex/config.yaml
+10:04:58  INFO     Wrote /home/ubuntu/libcloud_nutanix/dex/generated/dex.env
+{
+  "dex_env": "/home/ubuntu/libcloud_nutanix/dex/generated/dex.env",
+  "issuer": "http://login.quest4science.xyz:5556/dex/",
+  "client_id": "libcloud-rest",
+  "internal_url": "http://dex:5556"
+}
+Starting LLDAP ...
+[+] up 1/1
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Waiting for LLDAP web UI ...
+[+] up 2/2
+ ✔ Container lldap             Running                                                                                                                                                                    0.0s
+ ✔ Container lldap-bootstrap-1 Recreated                                                                                                                                                                  0.5s
+Attaching to bootstrap-1
+Container lldap Waiting 
+Container lldap Healthy 
+bootstrap-1  | Waiting for LLDAP web UI at http://lldap:17170 ...
+bootstrap-1  | Authenticating as admin ...
+bootstrap-1  | Creating custom user attributes ...
+bootstrap-1  |   = department already exists (Database error: `Execution Error: error returned from database: (code: 1555) UNIQUE constraint failed: user_attribute_schema.user_attribute_schema_name`)
+bootstrap-1  |   = role already exists (Database error: `Execution Error: error returned from database: (code: 1555) UNIQUE constraint failed: user_attribute_schema.user_attribute_schema_name`)
+bootstrap-1  |   = jobtitle already exists (Database error: `Execution Error: error returned from database: (code: 1555) UNIQUE constraint failed: user_attribute_schema.user_attribute_schema_name`)
+bootstrap-1  | Current user attribute schema:
+bootstrap-1  | [
+bootstrap-1  |   {
+bootstrap-1  |     "name": "avatar",
+bootstrap-1  |     "attributeType": "JPEG_PHOTO",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "creation_date",
+bootstrap-1  |     "attributeType": "DATE_TIME",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": false,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "department",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": false
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "display_name",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "first_name",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "jobtitle",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": false
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "last_name",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "mail",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "modified_date",
+bootstrap-1  |     "attributeType": "DATE_TIME",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": false,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "password_modified_date",
+bootstrap-1  |     "attributeType": "DATE_TIME",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": false,
+bootstrap-1  |     "isHardcoded": true
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "role",
+bootstrap-1  |     "attributeType": "STRING",
+bootstrap-1  |     "isList": false,
+bootstrap-1  |     "isEditable": true,
+bootstrap-1  |     "isHardcoded": false
+bootstrap-1  |   },
+bootstrap-1  |   {
+bootstrap-1  |     "name": "user_id",
+bootstrap-1  |     "attributeType": "STRING",
+
+
+bootstrap-1 exited with code 0
+
+
+Creating superadmin in LLDAP (break-glass via LLDAP admin) ...
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-e5982fac4557 Creating 
+Container lldap-lldap-tools-run-e5982fac4557 Created 
+LLDAP user superadmin already exists — syncing password ...
+Password set for superadmin (uid=superadmin,ou=people,dc=libcloud,dc=local)
+OK superadmin
+Starting Postgres datastore ...
+[+] up 2/2
+ ✔ Container openfga-postgres Running                                                                                                                                                                     0.0s
+ ✔ Container openfga          Running                                                                                                                                                                     0.0s
+Waiting for Postgres healthcheck ...
+Running OpenFGA migration (postgres) + starting OpenFGA ...
+[+] up 3/3
+ ✔ Container openfga          Running                                                                                                                                                                     0.0s
+ ✔ Container openfga-postgres Healthy                                                                                                                                                                     0.8s
+ ✔ Container openfga-migrate  Started                                                                                                                                                                     1.2s
+[+] up 3/3
+ ✔ Container openfga          Running                                                                                                                                                                     0.0s
+ ✔ Container openfga-postgres Healthy                                                                                                                                                                     1.3s
+ ✔ Container openfga-migrate  Exited                                                                                                                                                                      0.8s
+[+] up 1/1
+ ✔ Container dex Running                                                                                                                                                                                  0.0s
+[+] up 1/1
+ ✔ Container vault Running                                                                                                                                                                                0.0s
+Waiting for Dex OIDC discovery ...
+10:05:10  INFO     Wrote /home/ubuntu/libcloud_nutanix/dex/config.yaml
+10:05:10  INFO     Wrote /home/ubuntu/libcloud_nutanix/dex/generated/dex.env
+10:05:10  INFO     Dex OIDC discovery available at http://login.quest4science.xyz:5556/dex/.well-known/openid-configuration
+{
+  "dex_env": "/home/ubuntu/libcloud_nutanix/dex/generated/dex.env",
+  "issuer": "http://login.quest4science.xyz:5556/dex/",
+  "client_id": "libcloud-rest",
+  "internal_url": "http://dex:5556"
+}
+[+] up 1/1
+ ✔ Container dex Started                                                                                                                                                                                  0.9s
+Restarting OpenFGA to refresh cached Dex JWKS ...
+[+] up 3/3
+ ✔ Container openfga-postgres Healthy                                                                                                                                                                     1.9s
+ ✔ Container openfga          Started                                                                                                                                                                     2.3s
+ ✔ Container openfga-migrate  Exited                                                                                                                                                                      0.8s
+Authenticating as superadmin (gating credential) ...
+Logging in to Dex as superadmin ...
+Verifying superadmin JWT ...
+superadmin JWT verified (sub=CgpzdXBlcmFkbWluEgVsbGRhcA, email=superadmin@libcloud.local)
+SUPERADMIN_JWT exported (length=769).
+  superadmin JWT acquired and verified.
+Creating per-cloud tenant users in LLDAP (gated by superadmin) ...
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-40e4d2b187e8 Creating 
+Container lldap-lldap-tools-run-40e4d2b187e8 Created 
+LLDAP user aws-owner already exists — syncing password ...
+Password set for aws-owner (uid=aws-owner,ou=people,dc=libcloud,dc=local)
+OK aws-owner
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-8c603f3e8da7 Creating 
+Container lldap-lldap-tools-run-8c603f3e8da7 Created 
+LLDAP user aws-admin already exists — syncing password ...
+Password set for aws-admin (uid=aws-admin,ou=people,dc=libcloud,dc=local)
+OK aws-admin
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-a34e81a5843d Creating 
+Container lldap-lldap-tools-run-a34e81a5843d Created 
+LLDAP user aws-viewer already exists — syncing password ...
+Password set for aws-viewer (uid=aws-viewer,ou=people,dc=libcloud,dc=local)
+OK aws-viewer
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-647c6485db34 Creating 
+Container lldap-lldap-tools-run-647c6485db34 Created 
+LLDAP user ntnx-owner already exists — syncing password ...
+Password set for ntnx-owner (uid=ntnx-owner,ou=people,dc=libcloud,dc=local)
+OK ntnx-owner
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-b9be4e7cf18d Creating 
+Container lldap-lldap-tools-run-b9be4e7cf18d Created 
+LLDAP user ntnx-admin already exists — syncing password ...
+Password set for ntnx-admin (uid=ntnx-admin,ou=people,dc=libcloud,dc=local)
+OK ntnx-admin
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-b5ed1682017e Creating 
+Container lldap-lldap-tools-run-b5ed1682017e Created 
+LLDAP user ntnx-viewer already exists — syncing password ...
+Password set for ntnx-viewer (uid=ntnx-viewer,ou=people,dc=libcloud,dc=local)
+OK ntnx-viewer
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                                                                                                                                                0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-e54bac04337d Creating 
+Container lldap-lldap-tools-run-e54bac04337d Created 
+LLDAP user cloud-denied already exists — syncing password ...
+Password set for cloud-denied (uid=cloud-denied,ou=people,dc=libcloud,dc=local)
+OK cloud-denied
+Waiting for OpenFGA bootstrap (superadmin-gated, clean re-seed) ...
+[+] up 3/3
+ ✔ Container openfga           Running                                                                                                                                                                    0.0s
+ ✔ Container openfga-postgres  Running                                                                                                                                                                    0.0s
+ ✔ Container openfga-bootstrap Recreated                                                                                                                                                                  0.3s
+Attaching to openfga-bootstrap
+openfga-bootstrap  | 10:05:39  INFO     OpenFGA bootstrap targeting http://openfga:8080 (store='libcloud-rest-store')
+openfga-bootstrap  | 10:05:39  INFO     Reusing existing store 'libcloud-rest-store' (id=01KXFQ6JWFD2MZKFDFSHYNNNXE)
+openfga-bootstrap  | 10:05:39  INFO     Latest authorization model already matches (id=01KXWWZY8424AMK2B443FH7TQ0) — skipping write
+openfga-bootstrap  | 10:05:39  INFO     All 48 seed tuples already present — nothing to write
+openfga-bootstrap  | 10:05:39  INFO     Validating deployment with 64 check(s) ...
+openfga-bootstrap  | 10:05:40  INFO     ✅ All 64 validation checks passed
+openfga-bootstrap  | 10:05:40  INFO     Bootstrap complete — store_id=01KXFQ6JWFD2MZKFDFSHYNNNXE model_id=01KXWWZY8424AMK2B443FH7TQ0
+openfga-bootstrap  | 10:05:40  INFO     Wrote generated/fga.env
+openfga-bootstrap  | {
+openfga-bootstrap  |   "store_id": "01KXFQ6JWFD2MZKFDFSHYNNNXE",
+openfga-bootstrap  |   "model_id": "01KXWWZY8424AMK2B443FH7TQ0"
+openfga-bootstrap  | }
+openfga-bootstrap exited with code 0
+Bootstrapping Vault (superadmin-gated; seeds cloud creds from env) ...
+[+] up 2/2
+ ✔ Container vault           Running                                                                                                                                                                      0.0s
+ ✔ Container vault-bootstrap Recreated                                                                                                                                                                    0.3s
+Attaching to vault-bootstrap
+vault-bootstrap  | 10:05:42  INFO     Vault already initialized (using stored root token + unseal key)
+vault-bootstrap  | 10:05:42  INFO     Vault already unsealed
+vault-bootstrap  | 10:05:42  INFO     KV v2 enabled at secret/
+vault-bootstrap  | 10:05:42  INFO     Ensured ACL policy libcloud-rest-read
+vault-bootstrap  | 10:05:42  INFO     Issued libcloud REST API read token (policy=libcloud-rest-read)
+vault-bootstrap  | {
+vault-bootstrap  |   "vault_env": "/bootstrap/generated/vault.env",
+vault-bootstrap  |   "vault_addr": "http://localhost:8200",
+vault-bootstrap  |   "kv_path_prefix": "secret/libcloud",
+vault-bootstrap  |   "read_policy": "libcloud-rest-read",
+vault-bootstrap  |   "note": "per-tenant credentials are seeded by scripts/set_tenant_credentials.py (owner-gated)"
+vault-bootstrap  | }
+vault-bootstrap  | 10:05:42  INFO     Wrote /bootstrap/generated/vault.env
+vault-bootstrap exited with code 0
+Syncing OpenFGA IDs -> libcloud.rest ...
+  libcloud.rest FGA IDs already current — no restart needed
+Syncing Vault credentials -> libcloud.rest ...
+  Updated libcloud.rest VAULT_ADDR / VAULT_TOKEN
+  Recreating libcloud-rest-api container to apply Vault env
+[+] Building 50.7s (18/18) FINISHED                                                                                                                                                                           
+ => [internal] load local bake definitions                                                                                                                                                               0.0s
+ => => reading from stdin 530B                                                                                                                                                                           0.0s
+ => [internal] load build definition from Dockerfile                                                                                                                                                     0.0s
+ => => transferring dockerfile: 2.48kB                                                                                                                                                                   0.0s
+ => [internal] load metadata for docker.io/library/python:3.12-slim                                                                                                                                      0.0s
+ => [internal] load .dockerignore                                                                                                                                                                        0.0s
+ => => transferring context: 2B                                                                                                                                                                          0.0s
+ => [ 1/11] FROM docker.io/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                                                              0.0s
+ => => resolve docker.io/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                                                                0.0s
+ => [internal] load build context                                                                                                                                                                        1.4s
+ => => transferring context: 1.32MB                                                                                                                                                                      1.4s
+ => CACHED [ 2/11] WORKDIR /app                                                                                                                                                                          0.0s
+ => CACHED [ 3/11] RUN apt-get update     && apt-get install -y --no-install-recommends curl     && rm -rf /var/lib/apt/lists/*                                                                          0.0s
+ => CACHED [ 4/11] COPY libcloud.rest/requirements.txt .                                                                                                                                                 0.0s
+ => CACHED [ 5/11] RUN pip install --no-cache-dir -r requirements.txt                                                                                                                                    0.0s
+ => [ 6/11] COPY libcloud /libcloud                                                                                                                                                                      5.1s
+ => [ 7/11] RUN pip install --no-cache-dir /libcloud                                                                                                                                                    23.2s
+ => [ 8/11] COPY libcloud.rest/app ./app                                                                                                                                                                 0.3s 
+ => [ 9/11] COPY libcloud.rest/data ./data-seed                                                                                                                                                          0.0s 
+ => [10/11] COPY libcloud.rest/docker/entrypoint.sh /entrypoint.sh                                                                                                                                       0.0s 
+ => [11/11] RUN chmod +x /entrypoint.sh     && useradd --create-home --shell /usr/sbin/nologin appuser     && mkdir -p /app/data     && chown -R appuser:appuser /app                                    0.7s 
+ => exporting to image                                                                                                                                                                                  19.3s 
+ => => exporting layers                                                                                                                                                                                 13.0s 
+ => => exporting manifest sha256:e3ccf81dbb75e6bcd1851ae29864228e48ebf6a6d6de0e8c790133dc992b8ae8                                                                                                        0.0s
+ => => exporting config sha256:8131ac6d329697ffed288f4aa1dc9987fcccbc35d05a2264edbe3e73401f18bf                                                                                                          0.0s
+ => => exporting attestation manifest sha256:31d842f8b4de9e2377d51022fc2d84d011272921f2270bba41f7fcbbf3e4a467                                                                                            0.0s
+ => => exporting manifest list sha256:ccc23f655547fd3aef426fd6fc304781c2c7139a38b2c26f848e3336628794bc                                                                                                   0.0s
+ => => naming to docker.io/library/libcloud-rest-api:latest                                                                                                                                              0.0s
+ => => unpacking to docker.io/library/libcloud-rest-api:latest                                                                                                                                           6.2s
+ => resolving provenance for metadata file                                                                                                                                                               0.0s
+WARN[0051] Found orphan containers (libcloud-swagger-ui) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up. 
+[+] up 2/2
+ ✔ Image libcloud-rest-api:latest Built                                                                                                                                                                  50.9s
+ ✔ Container libcloud-rest-api    Started                                                                                                                                                                 2.9s
+
+Setup complete.
+  OpenFGA env  : /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/fga.env
+  Postgres env : /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/postgres.env  (datastore: postgres://openfga@postgres:5432/openfga)
+  Dex OIDC     : /home/ubuntu/libcloud_nutanix/dex/generated/dex.env
+  Vault        : /home/ubuntu/libcloud_nutanix/vault/generated/vault.env
+
+Identity model:
+  superadmin   / SA-J-qt69FDpQskYRWSkKTqDPO-   (bootstrap: Vault/OpenFGA/LLDAP admin)
+  aws-owner    / SA-DnH8dnifac4wsH5A5W85qDlU    (owner  of tenant:aws)
+  aws-admin    / SA-Bmf-y1uT5Qs3G5BZUvnluVah    (admin  of tenant:aws -> provision AWS)
+  aws-viewer   / SA-Ug1dldJ4aWTilJ8s8pLECqJj   (viewer of tenant:aws -> enumerate only)
+  ntnx-owner   / SA-RexAgMx67Kzgh4jrkOtsvDn0   (owner  of tenant:nutanix)
+  ntnx-admin   / SA-qDvEsfA7iYWp1dyJ-7fbzdFX   (admin  of tenant:nutanix -> provision Nutanix)
+  ntnx-viewer  / SA-3bhUNWlKGKKZJAKgxrGsj-C-  (viewer of tenant:nutanix -> enumerate only)
+  cloud-denied / CloudDenied123! (authenticated but denied)
+
+Datastore: PostgreSQL (container openfga-postgres, volume openfga_postgres-pg-data / openfga-pg-data).
+Inspect tuples via SQL:
+  docker exec -it openfga-postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'select count(*) from tuple;'
+
+OpenFGA image: openfga-local:latest, built from /home/ubuntu/libcloud_nutanix/openfga_postgres/Dockerfile (openfga v1.16.0).
+
+Cloud backend credentials are per-tenant and NOT set by setup.sh.
+Each tenant's OWNER writes its credentials to Vault (gated by OpenFGA
+can_manage_credentials; admins/viewers cannot):
+  TENANT=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_AWS_OWNER \
+    LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \
+    python3 test_script/scripts/set_tenant_credentials.py
+  TENANT=nutanix LIBCLOUD_USER=ntnx-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_NTNX_OWNER \
+    LIBCLOUD_NTNX_USER=admin LIBCLOUD_NTNX_PASSWORD=... \
+    python3 test_script/scripts/set_tenant_credentials.py
+superadmin (owner on both tenants) can set them too.
+
+Then run:
+  LIBCLOUD_USER=aws-admin   ./test_script/scripts/provision_aws.sh
+  LIBCLOUD_USER=aws-viewer  ./test_script/scripts/provision_aws.sh
+  LIBCLOUD_USER=ntnx-admin  ./test_script/scripts/provision_nutanix.sh
+  LIBCLOUD_USER=ntnx-viewer ./test_script/scripts/provision_nutanix.sh
+

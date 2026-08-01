@@ -35,10 +35,15 @@ services:
       # DEX_JWKS_URL stay in-container (dex:5556) for fast server-to-server
       # token exchange and JWKS fetch; the key is identical regardless of
       # which URL fetched it.
-      DEX_BASE_URL: http://login.quest4science.xyz:5556/dex
+      # PUBLIC_HOSTNAME is read by config.py to derive DEX_BASE_URL (browser-facing).
+      # DEX_ISSUER stays at its in-container default (http://dex:5556/dex) so all
+      # Docker services can validate tokens / fetch JWKS without public DNS.
+      # Change PUBLIC_HOSTNAME + DNS (or /etc/hosts) to migrate servers.
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-login.cloudweave.xyz}
+      DEX_BASE_URL: http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex
       DEX_TOKEN_URL: http://dex:5556/dex/token
       DEX_JWKS_URL: http://dex:5556/dex/keys
-      DEX_ISSUER: http://login.quest4science.xyz:5556/dex
+      DEX_ISSUER: http://dex:5556/dex
       DEX_PORTAL_CLIENT_ID: libcloud-portal
       FGA_ENABLED: "true"
       FGA_API_URL: http://openfga:8080
