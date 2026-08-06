@@ -18,7 +18,7 @@ services:
     networks:
       - libcloud_net
     ports:
-      - "${DEX_HTTP_PORT:-5556}:5556"
+      - "127.0.0.1:${DEX_HTTP_PORT:-5556}:5556"
     volumes:
       - ./config.yaml:/etc/dex/config.yaml:ro
     command: ["dex", "serve", "/etc/dex/config.yaml"]

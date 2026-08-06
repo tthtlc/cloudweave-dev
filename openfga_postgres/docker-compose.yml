@@ -57,7 +57,7 @@ services:
     # Do NOT publish 5432 to the host in production. PG_HOST_PORT is provided
     # only for local debugging / running psql against the datastore.
     ports:
-      - "${PG_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${PG_HOST_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openfga} -d ${POSTGRES_DB:-openfga}"]
       interval: 10s
@@ -91,9 +91,9 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${FGA_HTTP_PORT:-8080}:8080"
-      - "${FGA_GRPC_PORT:-8081}:8081"
-      - "${FGA_METRICS_PORT:-2112}:2112"
+      - "127.0.0.1:${FGA_HTTP_PORT:-8080}:8080"
+      - "127.0.0.1:${FGA_GRPC_PORT:-8081}:8081"
+      - "127.0.0.1:${FGA_METRICS_PORT:-2112}:2112"
     command:
       - run
       - --datastore-engine=postgres

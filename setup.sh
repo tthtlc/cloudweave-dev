@@ -102,14 +102,14 @@ export LLDAP_BIND_PW="${LLDAP_LDAP_USER_PASS:-}"
 export HOST_UID="$(id -u)"
 export HOST_GID="$(id -g)"
 
-# Public hostname the browser uses to reach Dex (:5556) and the portal (:3000).
-# dex_bootstrap.py derives the canonical OIDC issuer from this (the issuer MUST
-# be browser-public so federated connector callbacks {issuer}/callback match
-# the redirect URI registered in Google/GitHub OAuth apps). Derived from
-# PUBLIC_HOSTNAME below; override per-run with
-# `DEX_PUBLIC_URL=https://your.host:5556 ./setup.sh`.
+# Public hostname the browser uses to reach the portal (:3000) and Dex through
+# the portal nginx proxy (:3000/dex). Host-side scripts reach Dex directly at
+# localhost:5556 (bound 127.0.0.1 — NOT reachable via the public hostname).
+# dex_bootstrap.py derives the canonical OIDC issuer from DEX_INTERNAL_URL
+# (http://dex:5556, the in-container URL); DEX_PUBLIC_URL is for HOST scripts only.
+# Override per-run: DEX_PUBLIC_URL=http://your-host:3000 ./setup.sh
 export PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-login.cloudweave.xyz}"
-export DEX_PUBLIC_URL="${DEX_PUBLIC_URL:-http://${PUBLIC_HOSTNAME}:5556}"
+export DEX_PUBLIC_URL="${DEX_PUBLIC_URL:-http://localhost:5556}"
 
 mkdir -p generated "${DEX_DIR}/generated" "${VAULT_DIR}/generated" generated/tokens \
          "${OPENFGA_DIR}/generated"
@@ -241,6 +241,14 @@ export LIBCLOUD_OIDC_CLIENT_SECRET
 echo "Rendering Dex config (LDAP connector → LLDAP) ..."
 DEX_WAIT=0 DEX_DIR="${DEX_DIR}" python3 "${OPENFGA_DIR}/dex_bootstrap.py"
 
+# dex_bootstrap.py may have regenerated dex/generated/dex.env. The identity-service
+# container reads dex.env via env_file only at creation time — force-recreate it
+# now so it picks up the current DEX_PORTAL_CLIENT_SECRET and other values.
+if docker ps --filter name=^identity-service$ --format '{{.Names}}' 2>/dev/null | grep -qx identity-service; then
+  echo "Recreating identity-service to pick up current dex.env ..."
+  docker compose -f "${REPO_ROOT}/identity_service/docker-compose.yml" up -d --force-recreate identity-service
+fi
+
 # dex_bootstrap.py generated/collected user passwords into generated/dex.env.
 # Source them so setup.sh can create the matching LLDAP users.
 set -a
@@ -284,6 +292,19 @@ for i in $(seq 1 60); do
   [[ "$i" -eq 60 ]] && { echo "Postgres did not become healthy in time" >&2; exit 1; }
 done
 
+# Verify the PostgreSQL password matches the data volume. POSTGRES_PASSWORD
+# only takes effect on FIRST database init — if the volume was initialised
+# with a different password, the env var is ignored and OpenFGA will fail to
+# connect. Use local-socket (peer) auth to reset the password if needed.
+echo "Verifying PostgreSQL password for openfga user ..."
+if docker exec openfga-postgres psql -U openfga -d openfga -c "SELECT 1" >/dev/null 2>&1; then
+  docker exec openfga-postgres psql -U openfga -d openfga \
+    -c "ALTER USER openfga PASSWORD '${POSTGRES_PASSWORD}';" >/dev/null 2>&1 || true
+  echo "  PostgreSQL password verified and synced."
+else
+  echo "  WARN: Cannot connect to PostgreSQL via local socket — OpenFGA may fail to authenticate."
+fi
+
 echo "Running OpenFGA migration (postgres) + starting OpenFGA ..."
 docker compose -f "${OPENFGA_COMPOSE}" up -d --force-recreate openfga-migrate
 # Wait for the one-shot migrate container to finish successfully.
@@ -306,6 +327,14 @@ docker compose -f "${VAULT_DIR}/docker-compose.yml" up -d vault
 echo "Waiting for Dex OIDC discovery ..."
 DEX_WAIT=1 DEX_DIR="${DEX_DIR}" python3 "${OPENFGA_DIR}/dex_bootstrap.py"
 docker compose -f "${DEX_DIR}/docker-compose.yml" up -d --force-recreate dex
+
+# dex_bootstrap.py may have regenerated dex.env again (e.g., to reconcile
+# the portal client secret after Dex OIDC discovery). Force-recreate
+# identity-service so its env_file values stay current.
+if docker ps --filter name=^identity-service$ --format '{{.Names}}' 2>/dev/null | grep -qx identity-service; then
+  echo "Recreating identity-service to pick up current dex.env ..."
+  docker compose -f "${REPO_ROOT}/identity_service/docker-compose.yml" up -d --force-recreate identity-service
+fi
 for i in $(seq 1 30); do
   if curl -fsS "http://localhost:5556/dex/.well-known/openid-configuration" >/dev/null 2>&1; then
     break

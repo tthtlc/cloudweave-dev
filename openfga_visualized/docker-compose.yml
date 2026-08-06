@@ -3,16 +3,21 @@ services:
     build: .
     image: openfga-rbac-visualizer
     container_name: openfga-visualizer
-    # Host networking: the app reaches OpenFGA (localhost:8080) and Dex
-    # exactly like the bare-metal `python3 app.py`, and the OAuth callback
-    # stays http://localhost:5050/callback as registered in dex/config.yaml.
-    network_mode: host
+    networks:
+      - libcloud_net
+    ports:
+      - "0.0.0.0:5050:5050"
     environment:
-      OPENFGA_API_URL: ${OPENFGA_API_URL:-http://localhost:8080}
+      OPENFGA_API_URL: ${OPENFGA_API_URL:-http://openfga:8080}
       OPENFGA_STORE_ID: ${OPENFGA_STORE_ID:-01KXFQ6JWFD2MZKFDFSHYNNNXE}
       OPENFGA_MODEL_ID: ${OPENFGA_MODEL_ID:-01KXWWZY8424AMK2B443FH7TQ0}
-      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-login.cloudweave.xyz}
-      OIDC_ISSUER: ${OIDC_ISSUER:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
+      # OIDC_ISSUER must match Dex's actual issuer (used for JWT validation
+      # and server-side token/JWKS calls). Browser redirects use DEX_BROWSER_URL.
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://dex:5556/dex}
+      # Browser-facing Dex URL — redirects go through the portal's nginx proxy
+      # on port 3000 so the browser never talks to port 5556 directly.
+      DEX_BROWSER_URL: ${DEX_BROWSER_URL:-http://${PUBLIC_HOSTNAME:-localhost}:3000/dex}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-libcloud-rest}
       DEX_CONFIG: /app/dex-config.yaml
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-superadmin@libcloud.local}
@@ -26,10 +31,6 @@ services:
       - ../dex/config.yaml:/app/dex-config.yaml:ro
     restart: unless-stopped
 
-    # Bridge-network alternative (no host networking):
-    #   remove `network_mode: host` above, then uncomment:
-    # ports:
-    #   - "5050:5050"
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
-    # and set OPENFGA_API_URL=http://host.docker.internal:8080
+networks:
+  libcloud_net:
+    external: true

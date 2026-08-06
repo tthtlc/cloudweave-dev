@@ -154,6 +154,80 @@ if [[ -z "$IMAGE_LIST" ]]; then
     exit 1
 fi
 
+# ------------------------------------------------------------------
+# 2b. Pull any registry images referenced by compose files that may not
+#     have running (or even exited) containers running on the source.
+#
+#     Step 2 above captures images from all containers (docker ps -a),
+#     but images that were pruned after their container was removed will
+#     be absent from the save.  When restore-system.sh later tries to
+#     start those compose services on a machine with no internet access,
+#     Docker attempts to pull from the registry and hangs until timeout.
+#
+#     This step scans every docker-compose file for `image:` lines and
+#     ensures each referenced image is present in the local Docker store
+#     before the tarball is created.
+# ------------------------------------------------------------------
+log "=== Step 2b: Pull compose-file images not already captured ==="
+
+FOUND_EXTRA=0
+while IFS= read -r compose_file; do
+    while IFS= read -r img; do
+        [[ -z "$img" ]] && continue
+        [[ "$img" == "&"* ]] && continue        # YAML anchor (e.g. &openfga-image)
+        [[ "$img" == *'$'* ]] && continue       # variable substitution (e.g. ${REGISTRY}/foo)
+        # Already tracked from container inspection (Step 2)
+        if echo "$IMAGE_LIST" | grep -qwF "$img"; then
+            continue
+        fi
+        # Is this image present locally?
+        if docker image inspect "$img" &>/dev/null; then
+            log "  Already present: $img"
+            IMAGE_LIST="$IMAGE_LIST $img"
+            FOUND_EXTRA=$((FOUND_EXTRA + 1))
+        elif docker pull "$img" 2>/dev/null; then
+            log "  Pulled: $img"
+            IMAGE_LIST="$IMAGE_LIST $img"
+            FOUND_EXTRA=$((FOUND_EXTRA + 1))
+        else
+            # Pull failed — the image isn't in any registry.
+            # If this compose file has a build: directive, try building
+            # the image locally and tag it to match the image: line.
+            if grep -q '^\s*build:' "$compose_file" 2>/dev/null; then
+                log "  Pull failed for $img — attempting local build via compose..."
+                if docker compose -f "$compose_file" build 2>&1; then
+                    log "  Built: $img"
+                    IMAGE_LIST="$IMAGE_LIST $img"
+                    FOUND_EXTRA=$((FOUND_EXTRA + 1))
+                else
+                    warn "  UNAVAILABLE: $img (from $(basename "$compose_file"))"
+                    warn "    This image is not present locally, cannot be pulled,"
+                    warn "    and the local build failed. The corresponding service"
+                    warn "    will not start on the restored system."
+                fi
+            else
+                warn "  UNAVAILABLE: $img (from $(basename "$compose_file"))"
+                warn "    This image is not present locally and cannot be pulled."
+                warn "    The corresponding service will not start on the restored system."
+            fi
+        fi
+    done < <(grep -h '^\s*image:' "$compose_file" 2>/dev/null \
+        | grep -v '^\s*#' \
+        | sed 's/.*image:\s*//; s/"//g' \
+        | sort -u)
+done < <(find "$PROJECT_ROOT" -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' 2>/dev/null \
+    | grep -v '/aws_user_docker/')
+
+if [[ "$FOUND_EXTRA" -gt 0 ]]; then
+    log "Added $FOUND_EXTRA compose-only image(s) to the save list"
+fi
+
+# Rebuild images.txt from the final IMAGE_LIST so the manifest is accurate
+echo "$IMAGE_LIST" | tr ' ' '\n' | grep -v '^$' | sort -u > "$IMAGES_DIR/images.txt"
+
+log "Final image list ($(wc -l < "$IMAGES_DIR/images.txt") images):"
+cat "$IMAGES_DIR/images.txt"
+
 log "Saving $(wc -w <<< "$IMAGE_LIST") image(s) ($SKIPPED skipped)..."
 # shellcheck disable=SC2086
 docker save -o "$IMAGES_DIR/stack-images.tar" $IMAGE_LIST

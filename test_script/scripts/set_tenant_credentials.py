@@ -46,6 +46,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FGA_ENV = REPO_ROOT / "openfga_postgres" / "generated" / "fga.env"
 VAULT_ENV = REPO_ROOT / "vault" / "generated" / "vault.env"
+DEX_ENV = REPO_ROOT / "dex" / "generated" / "dex.env"
 CLOUDS = {"aws", "nutanix"}
 
 
@@ -162,6 +163,13 @@ def main() -> int:
     # 1. Authenticate the caller against Dex (proves the owner identity).
     print(f"Authenticating {user} against Dex ...", file=sys.stderr)
     env = dict(os.environ)
+    # Load Dex OIDC client secret + URL from dex.env so idp_login.py can
+    # authenticate without the caller having to source dex.env by hand.
+    _dex = _load_env(DEX_ENV)
+    for _k in ("LIBCLOUD_OIDC_CLIENT_SECRET", "LIBCLOUD_OIDC_CLIENT_ID",
+               "DEX_URL", "DEX_ISSUER_URL"):
+        if _k in _dex and _k not in env:
+            env[_k] = _dex[_k]
     env["LIBCLOUD_USER"] = user
     env["LIBCLOUD_PASSWORD"] = password
     proc = subprocess.run(

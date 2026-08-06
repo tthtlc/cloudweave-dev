@@ -23,10 +23,10 @@
   Migration Architecture: 3 Phases, 3 Scripts
 
   ┌─────────────────┐         ┌──────────┐         ┌──────────────────┐
-  │  SOURCE (public) │  rsync  │ BASTION  │  rsync  │ DEST (isolated)  │
-  │  167.172.94.123  │────────▶│13.212... │────────▶│  10.0.16.227     │
-  │ backup-system.sh │         │          │         │ restore-system.sh│
-  │ transfer-backup  │         │          │         │                  │
+  │  SOURCE (public)│  rsync  │ BASTION  │  rsync  │ DEST (isolated)  │
+  │  167.172.94.123 │────────▶│13.212... │────────▶│  10.0.16.227     │
+  │ backup-system.sh│         │          │         │ restore-system.sh│
+  │ transfer-backup │         │          │         │                  │
   └─────────────────┘         └──────────┘         └──────────────────┘
 
   Phase 1 — backup-system.sh (on source; ~10 steps)

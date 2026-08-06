@@ -15,10 +15,10 @@ services:
       # browser-facing URLs derive from PUBLIC_HOSTNAME (set in server/.env).
       # Override individual REACT_APP_* vars for non-standard setups.
       args:
-        REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
+        REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-localhost}:3000/dex}
         REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID:-libcloud-portal}
-        REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:3000/auth/callback}
-        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:8766}
+        REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-localhost}:3000/auth/callback}
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-}
         REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE:-false}
         REACT_APP_DISABLE_FEDERATION: ${REACT_APP_DISABLE_FEDERATION:-true}
     container_name: portal
@@ -30,10 +30,10 @@ services:
     # nginx serves a pre-built static bundle, so these runtime env vars have no
     # effect on the served app; kept only for operator introspection.
     environment:
-      REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex}
+      REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-localhost}:3000/dex}
       REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID:-libcloud-portal}
-      REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:3000/auth/callback}
-      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:8766}
+      REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-localhost}:3000/auth/callback}
+      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-}
       REACT_APP_MOCK_MODE: ${REACT_APP_MOCK_MODE:-false}
       REACT_APP_DISABLE_FEDERATION: ${REACT_APP_DISABLE_FEDERATION:-true}
 

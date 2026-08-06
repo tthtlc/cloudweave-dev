@@ -1,0 +1,21 @@
+
+E] 16:14:54 Credential integrity: ALL 4 checks passed.
+
+[RESTORE] 16:14:54 === Restore complete ===
+
+Started:  10 compose projects
+Skipped:  0 (missing compose file)
+Failed:   1 (compose up error)
+
+Health-check commands:
+  docker compose -f /home/ubuntu/libcloud_nutanix/openfga_postgres/docker-compose.yml ps
+  curl -s http://localhost:8766/health           # identity service
+  curl -s http://localhost:8765/health           # libcloud REST API
+  curl -s http://localhost:3000                  # portal
+  curl -s http://localhost:8081/healthz          # OpenFGA
+  curl -s http://localhost:8200/v1/sys/health    # Vault
+  curl -s http://localhost:5556/dex/healthz      # Dex
+  curl -s http://localhost:9898                  # Swagger UI
+  ssh -p 2222 root@localhost                     # bastion (password auth)
+  docker compose -f /home/ubuntu/libcloud_nutanix/migrate2internal/docker-compose.infra.yml ps            # infrastructure
+ubuntu@ubuntu-s-2vcpu-2gb-amd-nyc1:~/offline$ 

@@ -17,13 +17,14 @@ services:
       # network — reach them by container-name DNS. OIDC_ISSUER_URL stays
       # http://localhost:5556/dex (matching Dex's issuer claim) and is read from
       # .env; only the JWKS/FGA/Vault endpoints use the internal container names.
+      OIDC_ISSUER_URL: http://dex:5556/dex
       OIDC_JWKS_URL: http://dex:5556/dex/keys
       FGA_API_URL: http://openfga:8080
       VAULT_ADDR: http://vault:8200
       # VAULT_TOKEN is read from .env (synced from ../vault/generated/vault.env
       # by ../openfga_postgres/setup.sh). VAULT_KV_MOUNT / VAULT_KV_PREFIX come from .env when set.
     ports:
-      - "${API_PORT:-8765}:8765"
+      - "127.0.0.1:${API_PORT:-8765}:8765"
     extra_hosts:
       # Keep host.docker.internal for the Nutanix lab backend (NUTANIX_HOST).
       - "host.docker.internal:host-gateway"

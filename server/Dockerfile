@@ -27,6 +27,33 @@ FROM nginx:alpine
 COPY --from=build /app/build /usr/share/nginx/html
 # SPA fallback so client-side routes (e.g. /auth/callback) hit index.html.
 # nginx listens on 3000 to match EXPOSE and the compose port mapping.
-RUN printf 'server {\n  listen 3000;\n  location / {\n    root /usr/share/nginx/html;\n    try_files $uri /index.html;\n  }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN printf 'server {\n\
+  listen 3000;\n\
+\n\
+  # Proxy portal API calls to the identity service (internal Docker network)\n\
+  location /api/ {\n\
+    proxy_pass http://identity-service:8766;\n\
+    proxy_set_header Host $host;\n\
+    proxy_set_header X-Real-IP $remote_addr;\n\
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+    proxy_set_header X-Forwarded-Proto $scheme;\n\
+  }\n\
+\n\
+  # Proxy Dex OIDC endpoints (login form, auth, token, keys) through\n\
+  # the single entry point so the browser never talks to port 5556 directly\n\
+  location /dex/ {\n\
+    proxy_pass http://dex:5556;\n\
+    proxy_set_header Host $host;\n\
+    proxy_set_header X-Real-IP $remote_addr;\n\
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+    proxy_set_header X-Forwarded-Proto $scheme;\n\
+  }\n\
+\n\
+  # SPA fallback — client-side routes (e.g. /auth/callback) hit index.html\n\
+  location / {\n\
+    root /usr/share/nginx/html;\n\
+    try_files $uri /index.html;\n\
+  }\n\
+}\n' > /etc/nginx/conf.d/default.conf
 EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]

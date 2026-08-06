@@ -17,7 +17,7 @@ services:
     networks:
       - libcloud_net
     ports:
-      - "${IDENTITY_HTTP_PORT:-8766}:8766"
+      - "127.0.0.1:${IDENTITY_HTTP_PORT:-8766}:8766"
     env_file:
       # DEX_PORTAL_CLIENT_SECRET, DEX_PORTAL_REDIRECT_URI, DEX_GOOGLE/GITHUB_CLIENT_ID
       - ../dex/generated/dex.env
@@ -39,8 +39,8 @@ services:
       # DEX_ISSUER stays at its in-container default (http://dex:5556/dex) so all
       # Docker services can validate tokens / fetch JWKS without public DNS.
       # Change PUBLIC_HOSTNAME + DNS (or /etc/hosts) to migrate servers.
-      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-login.cloudweave.xyz}
-      DEX_BASE_URL: http://${PUBLIC_HOSTNAME:-login.cloudweave.xyz}:5556/dex
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
+      DEX_BASE_URL: http://${PUBLIC_HOSTNAME:-localhost}:3000/dex
       DEX_TOKEN_URL: http://dex:5556/dex/token
       DEX_JWKS_URL: http://dex:5556/dex/keys
       DEX_ISSUER: http://dex:5556/dex

@@ -26,7 +26,7 @@ Configuration (environment variables; defaults match the libcloud project):
   OPENFGA_API_URL      default http://localhost:8080
   OPENFGA_STORE_ID     default 01KXFQ6JWFD2MZKFDFSHYNNNXE
   OPENFGA_MODEL_ID     default 01KXWWZY8424AMK2B443FH7TQ0
-  OIDC_ISSUER          default http://login.cloudweave.xyz:5556/dex (derived from PUBLIC_HOSTNAME)
+  OIDC_ISSUER          default http://dex:5556/dex (derived from PUBLIC_HOSTNAME)
   OIDC_CLIENT_ID       default libcloud-rest (must match OpenFGA's audience)
   OIDC_CLIENT_SECRET   default: read from DEX_CONFIG for OIDC_CLIENT_ID
   DEX_CONFIG           default ../dex/config.yaml
@@ -68,11 +68,17 @@ PORT = int(os.environ.get("PORT", "5050"))
 OIDC_ISSUER = os.environ.get(
     "OIDC_ISSUER",
     "http://"
-    + os.environ.get("PUBLIC_HOSTNAME", "login.cloudweave.xyz")
+    + os.environ.get("PUBLIC_HOSTNAME", "localhost")
     + ":5556/dex",
 ).rstrip("/")
 OIDC_CLIENT_ID = os.environ.get("OIDC_CLIENT_ID", "libcloud-rest")
 OIDC_SCOPES = os.environ.get("OIDC_SCOPES", "openid profile email groups")
+
+# Browser-facing Dex URL for OAuth redirects. When set, the browser is sent to
+# this URL instead of the issuer's discovery authorization_endpoint, so Dex
+# traffic goes through a reverse proxy (e.g. the portal nginx on port 3000).
+# Server-side calls (token exchange, JWKS) still use OIDC_ISSUER directly.
+DEX_BROWSER_URL = os.environ.get("DEX_BROWSER_URL", "").rstrip("/")
 
 # Access gate: only the LLDAP superadmin may sign in. Dex deliberately
 # issues the same token shape for every connector (lldap/google/github) --
@@ -1081,7 +1087,12 @@ def auth_start():
         "state": state,
         "nonce": nonce,
     }
-    return redirect(discovery()["authorization_endpoint"] + "?" + urlencode(params))
+    authorize_url = (
+        f"{DEX_BROWSER_URL}/auth"
+        if DEX_BROWSER_URL
+        else discovery()["authorization_endpoint"]
+    )
+    return redirect(authorize_url + "?" + urlencode(params))
 
 
 @app.get("/callback")

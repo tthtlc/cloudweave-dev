@@ -320,8 +320,6 @@ log "=== Step 6: Recreate Docker networks ==="
 # has incorrect label" errors.
 EXTERNAL_NETWORKS=(
     "libcloud_net"                 # shared by most compose projects
-    "digitaloceancloud_public"     # mock cloud bastion (infrastructure)
-    "digitaloceancloud_private"    # mock cloud private droplet (infrastructure)
 )
 for net in "${EXTERNAL_NETWORKS[@]}"; do
     if docker network ls --format '{{.Name}}' | grep -qxF "$net"; then
@@ -432,8 +430,120 @@ if [[ "$CRITICAL_FAIL" -gt 0 ]]; then
 fi
 
 # ------------------------------------------------------------------
+# 9b. Secret Reconciliation — ensure dex config and env agree.
+#
+# Both dex_bootstrap.py (setup.sh) and the backup/restore cycle write
+# OAuth client secrets into two places:
+#   dex/config.yaml        — what Dex reads at startup
+#   dex/generated/dex.env  — consumed by identity-service via env_file
+#
+# If they drift apart (e.g. a re-bootstrap after backup, or a partial
+# restore), the identity-service token exchange fails with "invalid
+# client_secret" in Dex logs.  dex.env is the authoritative source
+# (dex_bootstrap.py writes it last); reconcile config.yaml to match.
+# ------------------------------------------------------------------
+log "=== Step 9b: Secret Reconciliation ==="
+
+DEX_ENV_FILE="$ORIG_PROJECT_ROOT/dex/generated/dex.env"
+DEX_CONFIG_FILE="$ORIG_PROJECT_ROOT/dex/config.yaml"
+
+reconcile_secret() {
+    local env_key="$1"   # env var key in dex.env
+    local client_id="$2"  # client id in config.yaml (staticClients entry)
+    local label="$3"      # human label for logging
+
+    if [[ ! -f "$DEX_ENV_FILE" || ! -f "$DEX_CONFIG_FILE" ]]; then
+        return 0
+    fi
+
+    local env_secret config_secret
+    env_secret=$(grep -E "^${env_key}=" "$DEX_ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    # Extract the secret line that follows the client id entry in config.yaml.
+    # Dex config has the form:
+    #   - id: <client_id>
+    #     name: ...
+    #     secret: <the-secret>
+    config_secret=$(grep -A3 "id: ${client_id}" "$DEX_CONFIG_FILE" 2>/dev/null \
+        | grep -E '^\s+secret:' | sed 's/.*secret:\s*//' || true)
+
+    if [[ -z "$env_secret" || -z "$config_secret" ]]; then
+        warn "  Cannot extract ${label} secret (env='${env_secret:-<missing>}' config='${config_secret:-<missing>}')"
+        return 0
+    fi
+
+    if [[ "$env_secret" != "$config_secret" ]]; then
+        warn "  MISMATCH on ${label}: dex.env ≠ config.yaml — syncing config.yaml ← dex.env"
+        # Replace the secret line right after the client id block.
+        # Use a range: find the line with "id: <client_id>", then replace the
+        # next "secret:" line (within 3 lines) with the env value.
+        sed -i "/id: ${client_id}/,/secret:/{s/secret:.*/secret: ${env_secret}/}" "$DEX_CONFIG_FILE"
+        log "  ${label}: reconciled (config.yaml updated)."
+    else
+        log "  ${label}: OK (secrets match)"
+    fi
+}
+
+reconcile_secret "DEX_PORTAL_CLIENT_SECRET"    "libcloud-portal" "portal-client"
+reconcile_secret "LIBCLOUD_OIDC_CLIENT_SECRET" "libcloud-rest"   "libcloud-rest-client"
+
+# ------------------------------------------------------------------
+
+# ------------------------------------------------------------------
 # 10. Start the stack — dependency order
 # ------------------------------------------------------------------
+
+# Helper: check that every image referenced in a compose file exists locally.
+# On a machine with no internet access, docker compose tries to pull missing
+# images from the registry and hangs until DNS/timeout.  This pre-check lets
+# us skip the project gracefully instead.
+#
+# Usage:  compose_images_available <compose-file> [<extra-image>...]
+# Returns 0 (success) if ALL referenced images are present locally,
+#         1 (failure) if any are missing (with warnings to stderr).
+compose_images_available() {
+    local compose_file="$1"
+    shift
+    # Extra images to also require (e.g. local builds that use a different
+    # tag than what the compose file references).
+    local extra_images=("$@")
+
+    local missing=0
+    local -a imgs=()
+
+    # Extract image: lines from the compose file
+    if [[ -f "$compose_file" ]]; then
+        while IFS= read -r img; do
+            [[ -z "$img" ]] && continue
+            [[ "$img" == "&"* ]] && continue
+            [[ "$img" == *'$'* ]] && continue
+            imgs+=("$img")
+        done < <(grep -h '^\s*image:' "$compose_file" 2>/dev/null \
+            | grep -v '^\s*#' \
+            | sed 's/.*image:\s*//; s/"//g' \
+            | sort -u)
+    fi
+
+    # Append any extra images
+    for extra in "${extra_images[@]}"; do
+        [[ -z "$extra" ]] && continue
+        imgs+=("$extra")
+    done
+
+    for img in "${imgs[@]}"; do
+        if ! docker image inspect "$img" &>/dev/null; then
+            warn "  Missing image: $img"
+            missing=$((missing + 1))
+        fi
+    done
+
+    if [[ "$missing" -gt 0 ]]; then
+        warn "  $missing image(s) not available locally — skipping this project"
+        warn "  (Docker would try to pull from the internet and hang indefinitely)"
+        return 1
+    fi
+    return 0
+}
+
 log "=== Step 10: Start the stack ==="
 
 # Startup order is critical — later services depend on earlier ones:
@@ -463,8 +573,6 @@ COMPOSE_DIRS=(
 # Additional compose files (same project, different compose file):
 # Swagger UI uses a separate compose file in the libcloud.rest project
 SWAGGER_COMPOSE="$ORIG_PROJECT_ROOT/libcloud.rest/docker-compose.swagger.yml"
-# Mock cloud infrastructure (bastion + private droplet)
-INFRA_COMPOSE="$ORIG_PROJECT_ROOT/migrate2internal/docker-compose.infra.yml"
 
 STARTED=0
 SKIPPED=0
@@ -505,9 +613,45 @@ for dir in "${COMPOSE_DIRS[@]}"; do
         fi
 
         log "Starting: $dir"
-        if run docker compose -f "$COMPOSE_FILE" up -d; then
+        if compose_images_available "$COMPOSE_FILE" && run docker compose -f "$COMPOSE_FILE" up -d; then
             STARTED=$((STARTED + 1))
             sleep 2
+
+            # --- Post-start self-healing hooks ---
+
+            # openfga_postgres: verify the PostgreSQL password matches the
+            # restored data volume. POSTGRES_PASSWORD only takes effect on
+            # FIRST database init — if the volume was initialised with a
+            # different password, the env var is ignored. Use local-socket
+            # (peer) auth to reset the openfga user's password so the
+            # OpenFGA container can connect.
+            if [[ "$dir" == *"openfga_postgres"* ]]; then
+                log "  Verifying PostgreSQL password for openfga user ..."
+                # Wait for postgres to be ready for socket connections
+                sleep 3
+                if docker exec openfga-postgres psql -U openfga -d openfga -c "SELECT 1" >/dev/null 2>&1; then
+                    docker exec openfga-postgres psql -U openfga -d openfga \
+                        -c "ALTER USER openfga PASSWORD '${POSTGRES_PASSWORD}';" >/dev/null 2>&1 || true
+                    log "  PostgreSQL password verified and synced."
+                else
+                    warn "  Cannot connect to PostgreSQL via local socket — OpenFGA may fail."
+                fi
+                # Wait for openfga to become healthy before proceeding
+                log "  Waiting for OpenFGA health check ..."
+                for _i in $(seq 1 60); do
+                    if docker inspect --format '{{ .State.Health.Status }}' openfga 2>/dev/null | grep -qx healthy; then break; fi
+                    sleep 1
+                done
+            fi
+
+            # identity_service: force-recreate so it picks up the current
+            # dex/generated/dex.env values (DEX_PORTAL_CLIENT_SECRET, etc.).
+            # The container reads env_file only at creation time — a stale
+            # container from a previous restore run would hold old secrets.
+            if [[ "$dir" == *"identity_service"* ]]; then
+                log "  Force-recreating identity-service to pick up current dex.env ..."
+                run docker compose -f "$COMPOSE_FILE" up -d --force-recreate identity-service
+            fi
         else
             warn "Failed to start: $dir"
             FAILED=$((FAILED + 1))
@@ -521,31 +665,21 @@ done
 # Start additional compose projects that use non-default compose filenames
 log "Starting additional compose projects..."
 
+# Swagger UI: uses a separate compose file in the libcloud.rest project.
+# The helper checks that the swagger-ui image is available locally before
+# attempting to start — without this, Docker would try to pull from Docker
+# Hub and hang until timeout on a machine with no internet access.
 if [[ -f "$SWAGGER_COMPOSE" ]]; then
     log "Starting: swagger-ui ($SWAGGER_COMPOSE)"
-    if run docker compose -f "$SWAGGER_COMPOSE" up -d; then
+    if compose_images_available "$SWAGGER_COMPOSE" && run docker compose -f "$SWAGGER_COMPOSE" up -d; then
         STARTED=$((STARTED + 1))
         sleep 1
     else
-        warn "Failed to start: swagger-ui"
+        warn "Failed to start: swagger-ui (image missing or compose error)"
         FAILED=$((FAILED + 1))
     fi
 else
     warn "Swagger compose not found: $SWAGGER_COMPOSE"
-    SKIPPED=$((SKIPPED + 1))
-fi
-
-if [[ -f "$INFRA_COMPOSE" ]]; then
-    log "Starting: infrastructure — bastion + private-droplet ($INFRA_COMPOSE)"
-    if run docker compose -f "$INFRA_COMPOSE" up -d; then
-        STARTED=$((STARTED + 1))
-        sleep 1
-    else
-        warn "Failed to start: infrastructure"
-        FAILED=$((FAILED + 1))
-    fi
-else
-    warn "Infrastructure compose not found: $INFRA_COMPOSE"
     SKIPPED=$((SKIPPED + 1))
 fi
 
@@ -561,6 +695,76 @@ docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null || tr
 echo ""
 info "Docker volumes:"
 docker volume ls 2>/dev/null || true
+
+# ------------------------------------------------------------------
+# 12. Targeted credential-integrity checks
+#
+# Verify the two credential-drift issues discovered during login
+# debugging (DEX_PORTAL_CLIENT_SECRET mismatch, PostgreSQL password
+# drift) are actually resolved in the running stack, not just on disk.
+# ------------------------------------------------------------------
+log "=== Step 12: Credential integrity checks ==="
+
+CRED_OK=0
+CRED_FAIL=0
+
+# 12a. DEX_PORTAL_CLIENT_SECRET in identity-service container vs config.yaml
+if docker ps --filter name=^identity-service$ --format '{{.Names}}' 2>/dev/null | grep -qx identity-service; then
+    CONTAINER_SECRET=$(docker exec identity-service printenv DEX_PORTAL_CLIENT_SECRET 2>/dev/null || true)
+    DEX_ENV_SECRET=$(grep -E '^DEX_PORTAL_CLIENT_SECRET=' "$DEX_ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    if [[ -n "$CONTAINER_SECRET" && -n "$DEX_ENV_SECRET" ]]; then
+        if [[ "$CONTAINER_SECRET" == "$DEX_ENV_SECRET" ]]; then
+            log "  PASS: identity-service DEX_PORTAL_CLIENT_SECRET matches dex.env"
+            CRED_OK=$((CRED_OK + 1))
+        else
+            warn "  FAIL: identity-service DEX_PORTAL_CLIENT_SECRET ($(printf '%.12s' "$CONTAINER_SECRET")...) != dex.env ($(printf '%.12s' "$DEX_ENV_SECRET")...)"
+            CRED_FAIL=$((CRED_FAIL + 1))
+        fi
+    fi
+else
+    warn "  SKIP: identity-service container not running"
+fi
+
+# 12b. OpenFGA container health
+OPENFGA_STATUS=$(docker inspect --format '{{ .State.Health.Status }}' openfga 2>/dev/null || echo "not-found")
+if [[ "$OPENFGA_STATUS" == "healthy" ]]; then
+    log "  PASS: OpenFGA container is healthy"
+    CRED_OK=$((CRED_OK + 1))
+else
+    warn "  FAIL: OpenFGA status is '$OPENFGA_STATUS' (expected 'healthy')"
+    CRED_FAIL=$((CRED_FAIL + 1))
+fi
+
+# 12c. No PostgreSQL auth errors in recent logs
+PG_AUTH_ERRORS=$(docker logs openfga-postgres --since 5m 2>&1 | grep -c "password authentication failed" || true)
+if [[ "$PG_AUTH_ERRORS" -eq 0 ]]; then
+    log "  PASS: No PostgreSQL auth failures in recent logs"
+    CRED_OK=$((CRED_OK + 1))
+else
+    warn "  FAIL: $PG_AUTH_ERRORS PostgreSQL auth failure(s) in recent logs"
+    CRED_FAIL=$((CRED_FAIL + 1))
+fi
+
+# 12d. No Dex client_secret errors in recent logs
+DEX_SECRET_ERRORS=$(docker logs dex --since 5m 2>&1 | grep -c "invalid client_secret" || true)
+if [[ "$DEX_SECRET_ERRORS" -eq 0 ]]; then
+    log "  PASS: No Dex client_secret errors in recent logs"
+    CRED_OK=$((CRED_OK + 1))
+else
+    warn "  FAIL: $DEX_SECRET_ERRORS Dex client_secret error(s) in recent logs"
+    CRED_FAIL=$((CRED_FAIL + 1))
+fi
+
+echo ""
+if [[ "$CRED_FAIL" -eq 0 ]]; then
+    log "Credential integrity: ALL $CRED_OK checks passed."
+else
+    warn "Credential integrity: $CRED_OK passed, $CRED_FAIL FAILED."
+    warn "Login may fail until these are resolved."
+    warn "To fix manually:"
+    warn "  1) Recreate identity-service: docker compose -f $ORIG_PROJECT_ROOT/identity_service/docker-compose.yml up -d --force-recreate"
+    warn "  2) Reset postgres password: docker exec openfga-postgres psql -U openfga -d openfga -c \"ALTER USER openfga PASSWORD '\$POSTGRES_PASSWORD';\""
+fi
 
 # ------------------------------------------------------------------
 # Summary
@@ -581,5 +785,3 @@ echo "  curl -s http://localhost:8081/healthz          # OpenFGA"
 echo "  curl -s http://localhost:8200/v1/sys/health    # Vault"
 echo "  curl -s http://localhost:5556/dex/healthz      # Dex"
 echo "  curl -s http://localhost:9898                  # Swagger UI"
-echo "  ssh -p 2222 root@localhost                     # bastion (password auth)"
-echo "  docker compose -f $INFRA_COMPOSE ps            # infrastructure"

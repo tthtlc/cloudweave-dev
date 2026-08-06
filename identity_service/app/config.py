@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     #
     # Override DEX_BASE_URL / DEX_ISSUER explicitly for non-standard setups.
     # Change PUBLIC_HOSTNAME + DNS (or /etc/hosts) to migrate servers.
-    dex_base_url: str = "http://login.cloudweave.xyz:5556/dex"
+    dex_base_url: str = "http://dex:5556/dex"
     dex_token_url: str = "http://dex:5556/dex/token"
     dex_jwks_url: str = "http://dex:5556/dex/keys"
     dex_issuer: str = "http://dex:5556/dex"
@@ -53,12 +53,17 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _derive_public_urls(self) -> "Settings":
         """Derive dex_base_url from PUBLIC_HOSTNAME env var (browser-facing only).
-        dex_issuer stays at its in-container default unless explicitly overridden."""
+        dex_issuer stays at its in-container default unless explicitly overridden.
+        dex_base_url is only derived when not already explicitly set."""
         import os as _os
 
         public_host = _os.environ.get("PUBLIC_HOSTNAME", "").strip()
-        if public_host:
-            self.dex_base_url = f"http://{public_host}:5556/dex"
+        # Only derive if PUBLIC_HOSTNAME is set AND dex_base_url wasn't
+        # explicitly overridden (e.g. via DEX_BASE_URL env var).
+        # Check: the current value still matches the class default pattern
+        # (port 5556), meaning nobody overrode it through compose/env.
+        if public_host and ":5556/dex" in self.dex_base_url:
+            self.dex_base_url = f"http://{public_host}:3000/dex"
         return self
 
     # --- OpenFGA (authorization) ---

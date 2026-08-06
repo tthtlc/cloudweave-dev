@@ -20,7 +20,7 @@ services:
     container_name: libcloud-swagger-ui
     restart: unless-stopped
     ports:
-      - "${SWAGGER_PORT:-8080}:8080"
+      - "127.0.0.1:${SWAGGER_PORT:-9090}:8080"
     environment:
       SWAGGER_JSON: /spec/openapi.json
       # Show the full URL in the page so users can deep-link to endpoints

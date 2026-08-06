@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
     # same origin (reverse proxy) so CORS isn't needed and cookies are first-party.
     # CORS origins are derived from PUBLIC_HOSTNAME env var so a server migration
     # only needs a DNS change (or /etc/hosts entry), not a code change.
-    _cors_host = f"http://{__import__('os').environ.get('PUBLIC_HOSTNAME', 'login.cloudweave.xyz')}:3000"
+    _cors_host = f"http://{__import__('os').environ.get('PUBLIC_HOSTNAME', 'localhost')}:3000"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[_cors_host, "http://localhost:3000"],
