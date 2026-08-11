@@ -65,7 +65,8 @@ staticClients:
       # the dashboard is reached.
       - http://localhost:5050/callback
       - http://127.0.0.1:5050/callback
-      - http://localhost:5050/callback
+      - http://login.cloudweave.xyz:5050/callback
+
 __PORTAL_CLIENT__
 
 connectors:

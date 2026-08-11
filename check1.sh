@@ -38,8 +38,9 @@
 #
 #  Containers recreated
 #
-  cd /home/ubuntu/libcloud_nutanix/identity_service && docker compose down && docker compose up -d
-  cd /home/ubuntu/libcloud_nutanix/openfga_visualized && docker compose down && docker compose up -d
+  cd $HOME/libcloud_nutanix/identity_service && docker compose down && docker compose up -d
+  cd $HOME/libcloud_nutanix/openfga_visualized && docker compose down && docker compose up -d
+  cd ..
 #
 #  Note: docker compose up -d --force-recreate did NOT work — the containers kept
 #  old env vars. Only docker compose down && docker compose up -d actually
@@ -107,7 +108,7 @@
 #  Run setup.sh to repopulate LLDAP users (idempotent — preserves existing
 #  secrets):
 #
-#  cd /home/ubuntu/libcloud_nutanix && ./setup.sh
+#  cd $HOME/libcloud_nutanix && ./setup.sh
 #
 #  ---
 #  4. Full Architecture (How the Redirect Chain Works)
@@ -162,6 +163,6 @@
 #
 #  Run setup.sh to repopulate LLDAP users — that's the last piece blocking login:
 #
-#  ! cd /home/ubuntu/libcloud_nutanix && ./setup.sh
+#  ! cd $HOME/libcloud_nutanix && ./setup.sh
 #
 #✻ Baked for 27s

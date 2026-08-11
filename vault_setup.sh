@@ -6,7 +6,7 @@
 #
 #  Run once to bootstrap the entire stack (LLDAP, Dex, OpenFGA, Vault, users, policies, credentials). Takes ~5 minutes.
 #
-#  cd /home/ubuntu/libcloud_nutanix
+#  cd $REPO_ROOT
 #  ./setup.sh
 #
 #  After this, everything should work. No need to run fix_vault_token.sh or recover_vault.sh.

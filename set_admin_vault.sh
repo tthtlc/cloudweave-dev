@@ -9,7 +9,6 @@ source tenant_vault_secret.env
 #    LIBCLOUD_NTNX_PASSWORD='admin' \
 #    python3 test_script/scripts/set_tenant_credentials.py
 
-
 LIBCLOUD_OIDC_CLIENT_SECRET=${LIBCLOUD_OIDC_CLIENT_SECRET} TENANT=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_AWS_OWNER \
     LIBCLOUD_AWS_KEY=${AWS_ACCESS_KEY} LIBCLOUD_AWS_SECRET=${AWS_SECRET_ACCESS_KEY} \
     python3 test_script/scripts/set_tenant_credentials.py

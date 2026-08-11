@@ -518,8 +518,10 @@ _seed_tenant nutanix nutanix ntnx-owner "${LIBCLOUD_PASSWORD_NTNX_OWNER:-}" \
 echo "Tenant credential seeding complete."
 
 # ---------------------------------------------------------------------------
-# 8. Restart REST API so it picks up fresh OpenFGA state (store / model IDs
-#    are now auto-discovered from the OpenFGA API at runtime — no .env sync).
+# 8. Restart REST API + visualizer so they pick up fresh OpenFGA state
+#    (store / model IDs are now auto-discovered from the OpenFGA API at
+#    runtime — no .env sync).  Containers are force-recreated to clear any
+#    stale OPENFGA_STORE_ID / OPENFGA_MODEL_ID env vars from prior runs.
 # ---------------------------------------------------------------------------
 sync_libcloud_rest_fga() {
   # The REST API and identity-service now auto-discover FGA_STORE_ID /
@@ -540,6 +542,26 @@ sync_libcloud_rest_fga() {
 
 echo "Restarting REST API for fresh OpenFGA state ..."
 sync_libcloud_rest_fga
+
+sync_visualizer_fga() {
+  # The visualizer also auto-discovers store / model IDs from OpenFGA at
+  # runtime (identical pattern to the REST API and identity-service).  We
+  # --build + --force-recreate so the Docker image is rebuilt with the
+  # latest app.py (which defaults to empty string → auto-discovery) and
+  # any stale OPENFGA_STORE_ID / OPENFGA_MODEL_ID env vars from a
+  # previous run are cleared.
+  local viz_compose="${REPO_ROOT}/openfga_visualized/docker-compose.yml"
+  echo "  Visualizer auto-discovers store/model IDs — rebuilding image + recreating container"
+  if docker compose -f "$viz_compose" ps --status running 2>/dev/null | grep -q 'openfga-visualizer'; then
+    echo "  Rebuilding + recreating openfga-visualizer for fresh OpenFGA state"
+    docker compose -f "$viz_compose" up -d --build --force-recreate
+  else
+    echo "  openfga-visualizer not running — start it with: docker compose -f ${viz_compose} up -d --build"
+  fi
+}
+
+echo "Restarting visualizer for fresh OpenFGA state ..."
+sync_visualizer_fga
 
 sync_libcloud_rest_vault() {
   local rest_env="${REST_DIR}/.env"

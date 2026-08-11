@@ -25,7 +25,18 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# Auto-detect repo root: walk up until we find .env (or stay at SCRIPT_DIR if we
+# are already there). This makes the script location-independent — it works whether
+# invoked via a symlink at the repo root, or directly from libcloud.rest/scripts/.
+_REPO_ROOT="$SCRIPT_DIR"
+while [[ "$_REPO_ROOT" != "/" ]]; do
+  if [[ -f "${_REPO_ROOT}/.env" ]]; then
+    break
+  fi
+  _REPO_ROOT="$(dirname "$_REPO_ROOT")"
+done
+REPO_ROOT="$_REPO_ROOT"
+unset _REPO_ROOT
 
 # ── Resolve common.sh (test_script/scripts/common.sh) ────────────────────────
 # common.sh loads .env + dex/generated/dex.env + openfga_postgres/generated/fga.env
@@ -65,8 +76,8 @@ if [[ -f "$_vault_env" ]]; then
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     [[ "$line" =~ ^[[:space:]]*$ ]] && continue
     [[ "$line" != *=* ]] && continue
-    local _key="${line%%=*}"
-    local _val="${line#*=}"
+    _key="${line%%=*}"
+    _val="${line#*=}"
     [[ -z "${!_key:-}" ]] && export "${_key}=${_val}"
   done < "$_vault_env"
 fi
@@ -86,10 +97,10 @@ PASS=0
 FAIL=0
 SKIP=0
 
-green()  { printf '\033[32m✓ %s\033[0m\n' "$*"; ((PASS++)); }
-red()    { printf '\033[31m✗ %s\033[0m\n' "$*"; ((FAIL++)); }
+green()  { printf '\033[32m✓ %s\033[0m\n' "$*"; (( ++PASS )); }
+red()    { printf '\033[31m✗ %s\033[0m\n' "$*"; (( ++FAIL )); }
 header() { printf '\n\033[1;36m── %s ──\033[0m\n' "$*"; }
-skip()   { printf '\033[33m⊘ %s\033[0m\n' "$*"; ((SKIP++)); }
+skip()   { printf '\033[33m⊘ %s\033[0m\n' "$*"; (( ++SKIP )); }
 
 # check <desc> <expected_code> [curl args...]
 check() {
@@ -538,12 +549,12 @@ else
       continue
     fi
     # Save the current ACCESS_TOKEN so we can restore it.
-    local _saved_token="${ACCESS_TOKEN:-}"
+    _saved_token="${ACCESS_TOKEN:-}"
     if auth_user "$user" "$pass"; then
       USER_TOKENS["$user"]="${ACCESS_TOKEN}"
-      ((AUTH_OK++))
+      (( ++AUTH_OK ))
     else
-      ((AUTH_FAIL++))
+      (( ++AUTH_FAIL ))
     fi
     ACCESS_TOKEN="${_saved_token}"
   done
@@ -578,7 +589,6 @@ else
     fi
 
     ACCESS_TOKEN="$token"
-    local read_exp write_exp conn_exp
     read_exp=$(aws_role_expect "$user" "read")
     write_exp=$(aws_role_expect "$user" "write")
     conn_exp=$(aws_role_expect "$user" "conn")
@@ -608,7 +618,7 @@ else
     fi
 
     # Write endpoint: POST /v1/compute/nodes with minimal body (auth check only).
-    local aws_min_body='{"name":"rbac-test-aws","size":{"id":"t3.micro"},"image":{"id":"ami-test"}}'
+    aws_min_body='{"name":"rbac-test-aws","size":{"id":"t3.micro"},"image":{"id":"ami-test"}}'
     rbac_with_retry "$user" rbac_post "${user} POST /v1/compute/nodes (AWS)" \
       "aws" "/v1/compute/nodes" "$aws_min_body" "$write_exp"
 
@@ -645,7 +655,6 @@ else
     fi
 
     ACCESS_TOKEN="$token"
-    local read_exp write_exp conn_exp
     read_exp=$(nutanix_role_expect "$user" "read")
     write_exp=$(nutanix_role_expect "$user" "write")
     conn_exp=$(nutanix_role_expect "$user" "conn")
@@ -675,7 +684,7 @@ else
     fi
 
     # Write endpoint: POST /v1/compute/nodes with minimal body.
-    local ntnx_min_body='{"name":"rbac-test-ntnx","size":{"id":"small"},"image":{"id":"test-image"},"location":{"id":"test-cluster"}}'
+    ntnx_min_body='{"name":"rbac-test-ntnx","size":{"id":"small"},"image":{"id":"test-image"},"location":{"id":"test-cluster"}}'
     rbac_with_retry "$user" rbac_post "${user} POST /v1/compute/nodes (Nutanix)" \
       "nutanix" "/v1/compute/nodes" "$ntnx_min_body" "$write_exp"
 
@@ -696,7 +705,7 @@ if [[ "${SKIP_RBAC:-0}" == "1" ]]; then
   skip "SKIP_RBAC=1 — skipping cross-tenant isolation tests"
 else
   # AWS tenant users should be denied on Nutanix.
-  local aws_tenant_users=("aws-owner" "aws-admin" "aws-viewer")
+  aws_tenant_users=("aws-owner" "aws-admin" "aws-viewer")
   for user in "${aws_tenant_users[@]}"; do
     token="${USER_TOKENS[$user]:-}"
     if [[ -z "$token" ]]; then
@@ -713,7 +722,7 @@ else
   done
 
   # Nutanix tenant users should be denied on AWS.
-  local ntnx_tenant_users=("ntnx-owner" "ntnx-admin" "ntnx-viewer")
+  ntnx_tenant_users=("ntnx-owner" "ntnx-admin" "ntnx-viewer")
   for user in "${ntnx_tenant_users[@]}"; do
     token="${USER_TOKENS[$user]:-}"
     if [[ -z "$token" ]]; then
@@ -730,7 +739,7 @@ else
   done
 
   # cloud-denied should be denied on both providers.
-  local denied_token="${USER_TOKENS[cloud-denied]:-}"
+  denied_token="${USER_TOKENS[cloud-denied]:-}"
   if [[ -n "$denied_token" ]]; then
     ACCESS_TOKEN="$denied_token"
     echo ""
@@ -765,7 +774,7 @@ else
   else
     # ── AWS provisioning (as aws-owner) ─────────────────────────────────────
     header "9b. AWS provisioning (aws-owner)"
-    local aws_token="${USER_TOKENS[aws-owner]:-}"
+    aws_token="${USER_TOKENS[aws-owner]:-}"
     if [[ -z "$aws_token" ]]; then
       skip "AWS provisioning: aws-owner not authenticated"
     else
@@ -864,7 +873,7 @@ print(json.dumps(body))
 
     # ── Nutanix provisioning (as ntnx-owner) ────────────────────────────────
     header "9c. Nutanix provisioning (ntnx-owner)"
-    local ntnx_token="${USER_TOKENS[ntnx-owner]:-}"
+    ntnx_token="${USER_TOKENS[ntnx-owner]:-}"
     if [[ -z "$ntnx_token" ]]; then
       skip "Nutanix provisioning: ntnx-owner not authenticated"
     else
@@ -898,7 +907,7 @@ print(json.dumps(body))
         red "provision-ntnx: could not resolve CLUSTER_ID or IMAGE_ID from catalog"
       else
         green "provision-ntnx: resolved CLUSTER_ID=${CLUSTER_ID} IMAGE_ID=${IMAGE_ID}"
-        local ntnx_size="${NTNX_DEFAULT_SIZE_ID:-small}"
+        ntnx_size="${NTNX_DEFAULT_SIZE_ID:-small}"
         CREATE_BODY=$(python3 -c "
 import json
 body = {'name': '${NTNX_VM_NAME}', 'size': {'id': '${ntnx_size}'}, 'image': {'id': '${IMAGE_ID}'}, 'location': {'id': '${CLUSTER_ID}'}}

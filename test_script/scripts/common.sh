@@ -78,6 +78,8 @@ else
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_NTNX_ADMIN:-}" ;;
     ntnx-viewer)
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_NTNX_VIEWER:-}" ;;
+    cloud-admin)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_CLOUD_ADMIN:-}" ;;
     cloud-denied|outsider)
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_CLOUD_DENIED:-}" ;;
     *)
@@ -94,6 +96,7 @@ else
         ntnx-owner)   LIBCLOUD_PASSWORD="NtnxOwner123!" ;;
         ntnx-admin)   LIBCLOUD_PASSWORD="NtnxAdmin123!" ;;
         ntnx-viewer)  LIBCLOUD_PASSWORD="NtnxView123!" ;;
+        cloud-admin)  LIBCLOUD_PASSWORD="CloudAdmin123!" ;;
         cloud-denied|outsider) LIBCLOUD_PASSWORD="CloudDenied123!" ;;
       esac
       echo "WARNING: using embedded dev-default password (ALLOW_DEV_DEFAULTS=1)." >&2

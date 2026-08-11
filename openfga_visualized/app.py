@@ -102,8 +102,11 @@ def get_store_id():
     if _resolved_store_id:
         return _resolved_store_id
     try:
-        r = requests.get(f"{API_URL}/stores",
-                         headers={"Content-Type": "application/json"}, timeout=10)
+        headers = {"Content-Type": "application/json"}
+        tok = get_token()
+        if tok:
+            headers["Authorization"] = "Bearer " + tok
+        r = requests.get(f"{API_URL}/stores", headers=headers, timeout=10)
         if r.status_code == 200:
             stores = r.json().get("stores", [])
             # prefer name match, then first store
