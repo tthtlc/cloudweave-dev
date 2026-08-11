@@ -36,7 +36,7 @@ openfga_visualized/
 └── prompt.md              # original task description
 ```
 
-Run: `.venv/bin/python app.py` → http://localhost:5050
+Run: `.venv/bin/python app.py` → http://${PUBLIC_HOSTNAME:-localhost}:5050
 
 ---
 

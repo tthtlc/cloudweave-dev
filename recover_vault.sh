@@ -201,7 +201,68 @@ else
   echo ""
 fi
 
-# ── 8. verify ───────────────────────────────────────────────────────────────
+# ── 8. re-seed AWS credentials ──────────────────────────────────────────────
+echo ""
+info "Now seed the AWS tenant credentials."
+info "The set_tenant_credentials.py script requires these env vars:"
+echo ""
+echo "  TENANT=aws"
+echo "  LIBCLOUD_USER=aws-owner"
+echo "  LIBCLOUD_PASSWORD='<aws-owner LLDAP password>'"
+echo "  LIBCLOUD_AWS_KEY='<AWS access key>'"
+echo "  LIBCLOUD_AWS_SECRET='<AWS secret key>'"
+echo ""
+
+# Try to auto-detect the aws-owner password from .env
+AWS_OWNER_PW="${LIBCLOUD_PASSWORD_AWS_OWNER:-}"
+if [[ -z "${AWS_OWNER_PW}" ]]; then
+  AWS_OWNER_PW="$(grep -E '^LIBCLOUD_PASSWORD_AWS_OWNER=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- || true)"
+fi
+
+# Try to auto-detect AWS key/secret from env or .env
+AWS_KEY="${LIBCLOUD_AWS_KEY:-}"
+if [[ -z "${AWS_KEY}" ]]; then
+  AWS_KEY="$(grep -E '^LIBCLOUD_AWS_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- || true)"
+fi
+AWS_SECRET="${LIBCLOUD_AWS_SECRET:-}"
+if [[ -z "${AWS_SECRET}" ]]; then
+  AWS_SECRET="$(grep -E '^LIBCLOUD_AWS_SECRET=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- || true)"
+fi
+
+if [[ -n "${AWS_OWNER_PW}" && -n "${AWS_KEY}" && -n "${AWS_SECRET}" ]]; then
+  info "Found aws-owner password, AWS key, and AWS secret — running credential seed automatically ..."
+  TENANT=aws \
+    LIBCLOUD_USER=aws-owner \
+    LIBCLOUD_PASSWORD="${AWS_OWNER_PW}" \
+    LIBCLOUD_AWS_KEY="${AWS_KEY}" \
+    LIBCLOUD_AWS_SECRET="${AWS_SECRET}" \
+    python3 "${SCRIPTS_DIR}/set_tenant_credentials.py" || {
+    warn "AWS credential seed returned an error. You may need to run it manually:"
+    echo ""
+    echo "  TENANT=aws \\"
+    echo "    LIBCLOUD_USER=aws-owner \\"
+    echo "    LIBCLOUD_PASSWORD='...' \\"
+    echo "    LIBCLOUD_AWS_KEY='...' \\"
+    echo "    LIBCLOUD_AWS_SECRET='...' \\"
+    echo "    python3 test_script/scripts/set_tenant_credentials.py"
+    echo ""
+  }
+else
+  warn "Could not auto-detect all AWS credentials. Run this manually:"
+  echo ""
+  echo "  TENANT=aws \\"
+  echo "    LIBCLOUD_USER=aws-owner \\"
+  echo "    LIBCLOUD_PASSWORD='<aws-owner LLDAP password>' \\"
+  echo "    LIBCLOUD_AWS_KEY='<AWS access key>' \\"
+  echo "    LIBCLOUD_AWS_SECRET='<AWS secret key>' \\"
+  echo "    python3 test_script/scripts/set_tenant_credentials.py"
+  echo ""
+  [[ -z "${AWS_OWNER_PW}" ]] && warn "  → Missing: LIBCLOUD_PASSWORD_AWS_OWNER"
+  [[ -z "${AWS_KEY}" ]] && warn "  → Missing: LIBCLOUD_AWS_KEY"
+  [[ -z "${AWS_SECRET}" ]] && warn "  → Missing: LIBCLOUD_AWS_SECRET"
+fi
+
+# ── 9. verify ───────────────────────────────────────────────────────────────
 info "Verifying the fix ..."
 VERIFY="$(curl -fsS -w '\n%{http_code}' \
   -H 'Origin: http://login.cloudweave.xyz:3000' \

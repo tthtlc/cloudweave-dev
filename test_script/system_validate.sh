@@ -283,7 +283,7 @@ superadmin_login_succeeds() {
   LIBCLOUD_USER=superadmin LIBCLOUD_PASSWORD="$pw" \
     python3 "${REPO_ROOT}/test_script/scripts/idp_login.py" 2>/dev/null >"${TMP}/sa.jwt" || return 1
   [[ -s "${TMP}/sa.jwt" ]] || return 1
-  SUPERADMIN_JWT="$(cat "${TMP}/sa.jwt")" python3 "${REPO_ROOT}/test_script/scripts/verify_superadmin_jwt.py" >/dev/null 2>&1
+  SUPERADMIN_JWT="$(cat "${TMP}/sa.jwt")" docker exec -i -e SUPERADMIN_JWT="$(cat "${TMP}/sa.jwt")" identity-service python3 /opt/libcloud-scripts/scripts/verify_superadmin_jwt.py >/dev/null 2>&1
 }
 
 openfga_bootstrap_refuses_without_superadmin() {

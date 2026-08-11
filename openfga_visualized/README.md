@@ -27,10 +27,10 @@ Once authenticated it shows the complete RBAC flow of the live store:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python app.py          # -> http://localhost:5050
+.venv/bin/python app.py          # -> http://${PUBLIC_HOSTNAME:-localhost}:5050
 ```
 
-Open http://localhost:5050 — you are redirected to the dashboard's own
+Open http://${PUBLIC_HOSTNAME}:5050 (default http://localhost:5050) — you are redirected to the dashboard's own
 sign-in page, then to Dex, then back. **Only the LLDAP superadmin account
 is allowed in**; every other login (Google, GitHub, or any other LLDAP
 user) is denied at the callback — see below.
@@ -47,7 +47,7 @@ docker run --rm --network host \
 
 or simply `docker compose up --build` (the compose file uses host
 networking, so OpenFGA at `localhost:8080`, Dex, and the registered
-`http://localhost:5050/callback` redirect URI all behave exactly like the
+`http://${PUBLIC_HOSTNAME}:5050/callback` redirect URI all behave exactly like the
 bare-metal run; a bridge-network variant is commented in
 `docker-compose.yml`).
 

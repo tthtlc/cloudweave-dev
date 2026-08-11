@@ -47,7 +47,10 @@ if [[ -z "${SUPERADMIN_JWT:-}" ]]; then
   source "${SCRIPT_DIR}/superadmin_auth.sh"
 fi
 export SUPERADMIN_JWT
-SUPERADMIN_JWT="${SUPERADMIN_JWT}" python3 "${SCRIPT_DIR}/verify_superadmin_jwt.py" >/dev/null \
+echo "${SUPERADMIN_JWT}" | docker exec -i \
+    -e SUPERADMIN_JWT="${SUPERADMIN_JWT}" \
+    identity-service \
+    python3 /opt/libcloud-scripts/scripts/verify_superadmin_jwt.py >/dev/null \
   || { echo "FATAL: superadmin JWT verification failed — tenant creation denied." >&2; exit 3; }
 
 # shellcheck source=common.sh

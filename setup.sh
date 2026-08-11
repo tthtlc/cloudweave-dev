@@ -115,6 +115,55 @@ mkdir -p generated "${DEX_DIR}/generated" "${VAULT_DIR}/generated" generated/tok
          "${OPENFGA_DIR}/generated"
 
 # ---------------------------------------------------------------------------
+# 0a0. Sync PUBLIC_HOSTNAME to sub-project .env files.
+#   Docker Compose reads the .env file in its project directory when resolving
+#   ${PUBLIC_HOSTNAME:-localhost} variable substitutions. When containers are
+#   started outside of setup.sh (manual restart, system reboot), the shell
+#   environment is absent and only the project-local .env is read. If it still
+#   says localhost, browser-facing URLs (Dex authorize endpoint, OAuth
+#   redirects) will point to localhost instead of the real public hostname.
+#   This helper ensures every sub-project .env stays in sync with the root
+#   .env's PUBLIC_HOSTNAME so the stack works regardless of how containers
+#   were started.
+# ---------------------------------------------------------------------------
+sync_subproject_env() {
+  local dir="$1"
+  local env_file="${dir}/.env"
+  local example="${dir}/.env.example"
+  local created=0
+
+  if [[ ! -f "${env_file}" ]]; then
+    if [[ -f "${example}" ]]; then
+      cp "${example}" "${env_file}"
+      echo "  Created ${env_file} from .env.example"
+    else
+      touch "${env_file}"
+      echo "  Created empty ${env_file}"
+    fi
+    created=1
+  fi
+
+  if grep -qE '^PUBLIC_HOSTNAME=' "${env_file}" 2>/dev/null; then
+    local cur
+    cur=$(grep -E '^PUBLIC_HOSTNAME=' "${env_file}" | head -1 | cut -d= -f2-)
+    if [[ "${cur}" != "${PUBLIC_HOSTNAME}" ]]; then
+      sed -i "s/^PUBLIC_HOSTNAME=.*/PUBLIC_HOSTNAME=${PUBLIC_HOSTNAME}/" "${env_file}"
+      echo "  ${env_file}: PUBLIC_HOSTNAME=${cur} -> ${PUBLIC_HOSTNAME}"
+    else
+      echo "  ${env_file}: PUBLIC_HOSTNAME already ${PUBLIC_HOSTNAME}"
+    fi
+  else
+    echo "PUBLIC_HOSTNAME=${PUBLIC_HOSTNAME}" >> "${env_file}"
+    [[ "${created}" -eq 0 ]] && echo "  ${env_file}: added PUBLIC_HOSTNAME=${PUBLIC_HOSTNAME}"
+  fi
+}
+
+echo "Syncing PUBLIC_HOSTNAME to sub-project .env files ..."
+sync_subproject_env "${REPO_ROOT}/identity_service"
+sync_subproject_env "${REPO_ROOT}/server"
+sync_subproject_env "${REPO_ROOT}/openfga_visualized"
+
+# ---------------------------------------------------------------------------
 # 0a. Persistent Postgres credentials (generated/reused across re-runs).
 # ---------------------------------------------------------------------------
 if [[ -z "${POSTGRES_PASSWORD:-}" && -f "${PG_ENV}" ]]; then
@@ -400,51 +449,96 @@ echo "Bootstrapping Vault (superadmin-gated; seeds cloud creds from env) ..."
 docker compose -f "${VAULT_DIR}/docker-compose.yml" up --no-deps vault-bootstrap
 
 # ---------------------------------------------------------------------------
-# 8. Sync OpenFGA IDs + Vault token into ../libcloud.rest/.env.
-#    The Postgres re-seed mints NEW store/model IDs (the SQLite store ID
-#    01KW9EZ0Q706Y580FGQ2488THC does not carry over); sync_libcloud_rest_fga
-#    updates libcloud.rest/.env and restarts the REST API so it points at the
-#    Postgres-backed store.
+# 7a. Seed per-tenant cloud credentials into Vault (superadmin-gated).
+#     Reads credential values from the root .env (LIBCLOUD_AWS_KEY/SECRET,
+#     LIBCLOUD_NTNX_USER/PASSWORD). When a value is empty, the tenant is
+#     skipped with a clear warning so the operator knows to either set the
+#     .env or run set_tenant_credentials.py manually later.
+#     The set_tenant_credentials.py script does its own Dex login as the
+#     tenant owner, so SUPERADMIN_JWT is not needed here — it uses the
+#     owner's LLDAP password from dex/generated/dex.env.
 # ---------------------------------------------------------------------------
-sync_libcloud_rest_fga() {
-  local rest_env="${REST_DIR}/.env"
-  [[ -f "$FGA_ENV" && -f "$rest_env" ]] || return 0
+echo "Seeding tenant cloud credentials into Vault ..."
 
-  local store_id model_id
-  store_id=$(grep -E '^FGA_STORE_ID=' "$FGA_ENV" | cut -d= -f2-)
-  model_id=$(grep -E '^FGA_MODEL_ID=' "$FGA_ENV" | cut -d= -f2-)
-  [[ -n "$store_id" && -n "$model_id" ]] || { echo "  ${FGA_ENV} missing IDs — skipping sync"; return 0; }
+# Ensure VAULT_ROOT_TOKEN is available for set_tenant_credentials.py (it reads
+# vault/generated/vault.env directly, but also checks the env var).
+set -a
+# shellcheck source=/dev/null
+source "${VAULT_ENV}"
+set +a
 
-  local cur_store cur_model
-  cur_store=$(grep -E '^FGA_STORE_ID=' "$rest_env" | cut -d= -f2-)
-  cur_model=$(grep -E '^FGA_MODEL_ID=' "$rest_env" | cut -d= -f2-)
+_seed_tenant() {
+  local tenant="$1" cloud="$2" owner_user="$3" owner_pw="$4"
+  shift 4
+  # Remaining args are the credential env vars to pass through (key=value pairs).
+  echo "  Seeding tenant:${tenant} (cloud=${cloud}, owner=${owner_user}) ..."
 
-  if [[ "$cur_store" == "$store_id" && "$cur_model" == "$model_id" ]]; then
-    echo "  libcloud.rest FGA IDs already current — no restart needed"
+  if [[ -z "${owner_pw}" ]]; then
+    echo "    WARNING: no owner password for ${owner_user} — cannot seed tenant:${tenant}"
+    echo "    Run manually: TENANT=${tenant} CLOUD=${cloud} LIBCLOUD_USER=${owner_user} LIBCLOUD_PASSWORD=... python3 ${SCRIPTS_REL}/set_tenant_credentials.py"
     return 0
   fi
 
-  echo "  Updating libcloud.rest FGA_STORE_ID / FGA_MODEL_ID (OpenFGA IDs changed)"
-  python3 - "$rest_env" "$store_id" "$model_id" <<'PY'
-import re, sys
-path, store_id, model_id = sys.argv[1:4]
-with open(path, "r", encoding="utf-8") as fh:
-    text = fh.read()
-text = re.sub(r"^FGA_STORE_ID=.*$", f"FGA_STORE_ID={store_id}", text, flags=re.M)
-text = re.sub(r"^FGA_MODEL_ID=.*$", f"FGA_MODEL_ID={model_id}", text, flags=re.M)
-with open(path, "w", encoding="utf-8") as fh:
-    fh.write(text)
-PY
+  # Collect the credential env vars; bail if any required value is empty.
+  local missing=0 extra_env=()
+  for kv in "$@"; do
+    local k="${kv%%=*}" v="${kv#*=}"
+    extra_env+=("${k}=${v}")
+    if [[ -z "${v}" ]]; then
+      echo "    WARNING: ${k} is empty in .env"
+      missing=1
+    fi
+  done
+  if [[ "${missing}" -eq 1 ]]; then
+    echo "    Skipping tenant:${tenant} — one or more credential values are empty."
+    echo "    Run manually: TENANT=${tenant} CLOUD=${cloud} LIBCLOUD_USER=${owner_user} LIBCLOUD_PASSWORD=... python3 ${SCRIPTS_REL}/set_tenant_credentials.py"
+    return 0
+  fi
+
+  TENANT="${tenant}" CLOUD="${cloud}" \
+    LIBCLOUD_USER="${owner_user}" LIBCLOUD_PASSWORD="${owner_pw}" \
+    "${extra_env[@]}" \
+    python3 "${SCRIPTS_DIR}/set_tenant_credentials.py" && \
+    echo "    tenant:${tenant} credentials seeded." || {
+    echo "    ERROR: tenant:${tenant} credential seed failed (see above)."
+    echo "    Run manually: TENANT=${tenant} CLOUD=${cloud} LIBCLOUD_USER=${owner_user} LIBCLOUD_PASSWORD=... python3 ${SCRIPTS_REL}/set_tenant_credentials.py"
+  }
+}
+
+# AWS tenant — reads LIBCLOUD_AWS_KEY / LIBCLOUD_AWS_SECRET from root .env.
+_seed_tenant aws aws aws-owner "${LIBCLOUD_PASSWORD_AWS_OWNER:-}" \
+  "LIBCLOUD_AWS_KEY=${LIBCLOUD_AWS_KEY:-}" \
+  "LIBCLOUD_AWS_SECRET=${LIBCLOUD_AWS_SECRET:-}"
+
+# Nutanix tenant — reads LIBCLOUD_NTNX_USER / LIBCLOUD_NTNX_PASSWORD from root .env.
+_seed_tenant nutanix nutanix ntnx-owner "${LIBCLOUD_PASSWORD_NTNX_OWNER:-}" \
+  "LIBCLOUD_NTNX_USER=${LIBCLOUD_NTNX_USER:-}" \
+  "LIBCLOUD_NTNX_PASSWORD=${LIBCLOUD_NTNX_PASSWORD:-}"
+
+echo "Tenant credential seeding complete."
+
+# ---------------------------------------------------------------------------
+# 8. Restart REST API so it picks up fresh OpenFGA state (store / model IDs
+#    are now auto-discovered from the OpenFGA API at runtime — no .env sync).
+# ---------------------------------------------------------------------------
+sync_libcloud_rest_fga() {
+  # The REST API and identity-service now auto-discover FGA_STORE_ID /
+  # FGA_MODEL_ID from the OpenFGA API at runtime (find store by name +
+  # pick latest authorization model).  fga.env (written by
+  # openfga_bootstrap.py) remains the authoritative source for host-side
+  # shell scripts.  We still recreate the REST API container so it picks
+  # up any cached state from a fresh bootstrap.
+  echo "  OpenFGA store/model IDs are auto-discovered by the services — no .env sync needed"
 
   if docker compose -f "$REST_DIR/docker-compose.yml" ps --status running api 2>/dev/null | grep -q '\blibcloud-rest-api\b'; then
-    echo "  Recreating libcloud-rest-api container to apply new FGA env"
+    echo "  Recreating libcloud-rest-api container to pick up fresh OpenFGA state"
     docker compose -f "$REST_DIR/docker-compose.yml" up -d --force-recreate api
   else
     echo "  libcloud-rest-api not running — start it with: docker compose -f $REST_DIR/docker-compose.yml up -d api"
   fi
 }
 
-echo "Syncing OpenFGA IDs -> libcloud.rest ..."
+echo "Restarting REST API for fresh OpenFGA state ..."
 sync_libcloud_rest_fga
 
 sync_libcloud_rest_vault() {
@@ -483,6 +577,18 @@ PY
 echo "Syncing Vault credentials -> libcloud.rest ..."
 sync_libcloud_rest_vault
 
+# ---------------------------------------------------------------------------
+# 9. Rebuild and restart the portal so REACT_APP_* build args reflect the
+#    current .env values. CRA bakes these into the static JS bundle at build
+#    time — a stale image would keep old values (e.g. localhost:3000 redirect)
+#    and break the OAuth callback from a different hostname. --no-cache ensures
+#    no old layer with a hardcoded localhost URI survives.
+# ---------------------------------------------------------------------------
+echo "Rebuilding portal image (no-cache) to bake current REACT_APP_* values ..."
+docker compose -f "${REPO_ROOT}/server/docker-compose.yml" build --no-cache portal
+echo "Recreating portal container ..."
+docker compose -f "${REPO_ROOT}/server/docker-compose.yml" up -d --force-recreate portal
+
 echo
 echo "Setup complete."
 echo "  OpenFGA env  : ${FGA_ENV}"
@@ -506,9 +612,9 @@ echo "  docker exec -it openfga-postgres psql -U \${POSTGRES_USER} -d \${POSTGRE
 echo
 echo "OpenFGA image: openfga-local:latest, built from ${OPENFGA_DIR}/Dockerfile (openfga ${OPENFGA_VERSION})."
 echo
-echo "Cloud backend credentials are per-tenant and NOT set by setup.sh."
-echo "Each tenant's OWNER writes its credentials to Vault (gated by OpenFGA"
-echo "can_manage_credentials; admins/viewers cannot):"
+echo "Cloud backend credentials are seeded into Vault from the root .env"
+echo "(LIBCLOUD_AWS_KEY/SECRET, LIBCLOUD_NTNX_USER/PASSWORD). If a value is"
+echo "empty, that tenant is skipped — the owner can seed it later manually:"
 echo "  TENANT=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=\$LIBCLOUD_PASSWORD_AWS_OWNER \\"
 echo "    LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \\"
 echo "    python3 ${SCRIPTS_REL}/set_tenant_credentials.py"

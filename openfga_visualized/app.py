@@ -24,8 +24,8 @@ Once authenticated it renders:
 
 Configuration (environment variables; defaults match the libcloud project):
   OPENFGA_API_URL      default http://localhost:8080
-  OPENFGA_STORE_ID     default 01KXFQ6JWFD2MZKFDFSHYNNNXE
-  OPENFGA_MODEL_ID     default 01KXWWZY8424AMK2B443FH7TQ0
+  OPENFGA_STORE_ID     default: auto-discover by store name (OPENFGA_STORE_NAME)
+  OPENFGA_MODEL_ID     default: auto-discover (latest model in store)
   OIDC_ISSUER          default http://dex:5556/dex (derived from PUBLIC_HOSTNAME)
   OIDC_CLIENT_ID       default libcloud-rest (must match OpenFGA's audience)
   OIDC_CLIENT_SECRET   default: read from DEX_CONFIG for OIDC_CLIENT_ID
@@ -39,7 +39,7 @@ Configuration (environment variables; defaults match the libcloud project):
   FLASK_SECRET_KEY     default: generated and stored in ./.flask_secret
   PORT                 dashboard port, default 5050
 
-Run:  python3 app.py   ->  http://localhost:5050
+Run:  python3 app.py   ->  http://${PUBLIC_HOSTNAME}:5050  (default: http://localhost:5050)
 """
 
 import os
@@ -61,8 +61,9 @@ from jwt import PyJWKClient
 # --------------------------------------------------------------------------
 
 API_URL = os.environ.get("OPENFGA_API_URL", "http://localhost:8080").rstrip("/")
-STORE_ID = os.environ.get("OPENFGA_STORE_ID", "01KXFQ6JWFD2MZKFDFSHYNNNXE")
-MODEL_ID = os.environ.get("OPENFGA_MODEL_ID", "01KXWWZY8424AMK2B443FH7TQ0")
+STORE_ID = os.environ.get("OPENFGA_STORE_ID", "").strip()  # empty = auto-discover
+MODEL_ID = os.environ.get("OPENFGA_MODEL_ID", "").strip()  # empty = auto-discover (latest)
+STORE_NAME = os.environ.get("OPENFGA_STORE_NAME", "libcloud-rest-store")
 PORT = int(os.environ.get("PORT", "5050"))
 
 OIDC_ISSUER = os.environ.get(
@@ -91,6 +92,37 @@ SUPERADMIN_EMAIL = os.environ.get(
     "SUPERADMIN_EMAIL", "superadmin@libcloud.local"
 ).lower()
 SUPERADMIN_SUB = os.environ.get("SUPERADMIN_SUB", "")
+
+_resolved_store_id = STORE_ID  # may be empty until first discovery
+
+
+def get_store_id():
+    """Return the OpenFGA store id, auto-discovering it when not configured."""
+    global _resolved_store_id
+    if _resolved_store_id:
+        return _resolved_store_id
+    try:
+        r = requests.get(f"{API_URL}/stores",
+                         headers={"Content-Type": "application/json"}, timeout=10)
+        if r.status_code == 200:
+            stores = r.json().get("stores", [])
+            # prefer name match, then first store
+            for s in stores:
+                if s.get("name") == STORE_NAME:
+                    _resolved_store_id = s["id"]
+                    break
+            if not _resolved_store_id and stores:
+                _resolved_store_id = stores[0]["id"]
+    except requests.RequestException:
+        pass
+    if not _resolved_store_id:
+        raise FGAError(
+            "No OPENFGA_STORE_ID set and could not auto-discover an OpenFGA store. "
+            "Set OPENFGA_STORE_ID or ensure OpenFGA is reachable at " + API_URL
+        )
+    print(f"* Discovered OpenFGA store: {_resolved_store_id}")
+    return _resolved_store_id
+
 
 _here = os.path.dirname(os.path.abspath(__file__))
 DEX_CONFIG = os.environ.get("DEX_CONFIG", os.path.join(_here, "..", "dex", "config.yaml"))
@@ -202,7 +234,7 @@ def _headers(token=None):
 
 
 def fga_get(path, token=None):
-    url = f"{API_URL}/stores/{STORE_ID}/{path}"
+    url = f"{API_URL}/stores/{get_store_id()}/{path}"
     try:
         r = requests.get(url, headers=_headers(token), timeout=15)
     except requests.RequestException as exc:
@@ -215,7 +247,7 @@ def fga_get(path, token=None):
 
 
 def fga_post(path, body, token=None):
-    url = f"{API_URL}/stores/{STORE_ID}/{path}"
+    url = f"{API_URL}/stores/{get_store_id()}/{path}"
     try:
         r = requests.post(url, json=body, headers=_headers(token), timeout=30)
     except requests.RequestException as exc:
@@ -430,10 +462,14 @@ def api(fn):
 @require_auth
 def api_config():
     ent = current_session()
+    try:
+        sid = get_store_id()
+    except FGAError:
+        sid = "(discovery failed)"
     return jsonify(
         {
             "api_url": API_URL,
-            "store_id": STORE_ID,
+            "store_id": sid,
             "model_id": MODEL_ID or "(latest)",
             "user": ent["user"],
         }
@@ -1178,7 +1214,10 @@ def index():
 
 
 if __name__ == "__main__":
-    print(f"OpenFGA RBAC Visualizer -> http://localhost:{PORT}")
-    print(f"  upstream {API_URL}  store {STORE_ID}  model {MODEL_ID or '(latest)'}")
+    public_host = os.environ.get("PUBLIC_HOSTNAME", "localhost")
+    print(f"OpenFGA RBAC Visualizer -> http://{public_host}:{PORT}")
+    print(f"  upstream {API_URL}"
+          f"  store {'(auto-discover)' if not STORE_ID else STORE_ID}"
+          f"  model {'(auto-discover latest)' if not MODEL_ID else MODEL_ID}")
     print(f"  login: Dex SSO at {OIDC_ISSUER} (client {OIDC_CLIENT_ID})")
     app.run(host="0.0.0.0", port=PORT, threaded=True)

@@ -114,6 +114,7 @@ class Settings(BaseSettings):
 
     fga_enabled: bool = False
     fga_api_url: str = "http://localhost:8080"
+    fga_store_name: str = "libcloud-rest-store"
     fga_store_id: str = ""
     fga_model_id: str = ""
     fga_api_object: str = "libcloud_api:main"

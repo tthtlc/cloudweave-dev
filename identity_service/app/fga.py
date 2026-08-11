@@ -86,6 +86,8 @@ class FgaService:
         self.base_url = s.fga_api_url.rstrip("/")
         self.store_id = s.fga_store_id
         self.model_id = s.fga_model_id
+        self.store_name = s.fga_store_name
+        self._discovered = False
         # OpenFGA is configured with --authn-method=oidc (issuer=Dex, audience=
         # libcloud-rest), so every API call needs a bearer token. We reuse the
         # provisioner service-account token (ProvisionerAuth performs a Dex
@@ -94,6 +96,78 @@ class FgaService:
         # the actual authz decision is on the tuple's `user` principal, so the
         # provisioner's subject is fine here.
         self._auth = ProvisionerAuth()
+
+    # -- auto-discovery --------------------------------------------------------
+
+    def _ensure_discovered(self) -> None:
+        """Auto-discover store and model IDs from the OpenFGA API at runtime
+        when they are not explicitly configured.  Keeps ``fga.env`` (written by
+        the bootstrap container) the single source of truth."""
+        if self._discovered:
+            return
+        self._discovered = True
+
+        s = get_settings()
+        if not s.fga_enabled:
+            return
+
+        if not self.store_id:
+            sid = self._find_store_by_name(self.store_name)
+            if sid:
+                self.store_id = sid
+                log.info("Auto-discovered FGA store '%s' -> %s", self.store_name, sid)
+            else:
+                log.warning(
+                    "FGA store '%s' not found at %s — authorization checks skipped",
+                    self.store_name, self.base_url,
+                )
+
+        if self.store_id and not self.model_id:
+            mid = self._latest_model(self.store_id)
+            if mid:
+                self.model_id = mid
+                log.info("Auto-discovered latest FGA model -> %s", mid)
+            else:
+                log.warning(
+                    "No authorization model in store %s — authorization checks skipped",
+                    self.store_id,
+                )
+
+    def _find_store_by_name(self, name: str) -> str:
+        """Find an OpenFGA store by name.  Returns the store id or ``""``."""
+        try:
+            url = f"{self.base_url}/stores"
+            headers = {"Accept": "application/json"}
+            token = self._bearer()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            req = urllib.request.Request(url, method="GET", headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8") or "{}")
+                for store in body.get("stores", []):
+                    if store.get("name") == name:
+                        return store["id"]
+        except Exception as exc:
+            log.warning("Failed to auto-discover FGA store by name '%s': %s", name, exc)
+        return ""
+
+    def _latest_model(self, store_id: str) -> str:
+        """Return the latest authorization model id for *store_id*, or ``""``."""
+        try:
+            url = f"{self.base_url}/stores/{store_id}/authorization-models?page_size=1"
+            headers = {"Accept": "application/json"}
+            token = self._bearer()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            req = urllib.request.Request(url, method="GET", headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8") or "{}")
+                models = body.get("authorization_models", [])
+                if models:
+                    return models[0]["id"]
+        except Exception as exc:
+            log.warning("Failed to auto-discover latest FGA model: %s", exc)
+        return ""
 
     def _bearer(self) -> str:
         try:
@@ -105,7 +179,10 @@ class FgaService:
     @property
     def enabled(self) -> bool:
         s = get_settings()
-        return s.fga_enabled and bool(self.store_id and self.model_id)
+        if not s.fga_enabled:
+            return False
+        self._ensure_discovered()
+        return bool(self.store_id and self.model_id)
 
     # --- low-level -----------------------------------------------------------
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:

@@ -9,8 +9,10 @@ services:
       - "0.0.0.0:5050:5050"
     environment:
       OPENFGA_API_URL: ${OPENFGA_API_URL:-http://openfga:8080}
-      OPENFGA_STORE_ID: ${OPENFGA_STORE_ID:-01KXFQ6JWFD2MZKFDFSHYNNNXE}
-      OPENFGA_MODEL_ID: ${OPENFGA_MODEL_ID:-01KXWWZY8424AMK2B443FH7TQ0}
+      OPENFGA_STORE_NAME: ${OPENFGA_STORE_NAME:-libcloud-rest-store}
+      # Optional overrides — leave unset to auto-discover from OpenFGA.
+      # OPENFGA_STORE_ID: ${OPENFGA_STORE_ID:-}
+      # OPENFGA_MODEL_ID: ${OPENFGA_MODEL_ID:-}
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       # OIDC_ISSUER must match Dex's actual issuer (used for JWT validation
       # and server-side token/JWKS calls). Browser redirects use DEX_BROWSER_URL.

@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # --- OpenFGA (authorization) ---
     fga_enabled: bool = True
     fga_api_url: str = "http://openfga:8081"
+    fga_store_name: str = "libcloud-rest-store"
     fga_store_id: str = ""
     fga_model_id: str = ""
     fga_aws_tenant: str = "tenant:aws"

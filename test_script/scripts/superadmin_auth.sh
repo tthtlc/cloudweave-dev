@@ -69,7 +69,13 @@ if [[ -z "${SUPERADMIN_JWT}" ]]; then
 fi
 
 echo "Verifying superadmin JWT ..." >&2
-if ! SUPERADMIN_JWT="${SUPERADMIN_JWT}" python3 "${SCRIPT_DIR}/verify_superadmin_jwt.py"; then
+# Run JWT verification inside identity-service (which has the `cryptography`
+# package) rather than on the host, so setup.sh has no host Python dependency
+# beyond the stdlib used by idp_login.py.
+if ! echo "${SUPERADMIN_JWT}" | docker exec -i \
+    -e SUPERADMIN_JWT="${SUPERADMIN_JWT}" \
+    identity-service \
+    python3 /opt/libcloud-scripts/scripts/verify_superadmin_jwt.py; then
   exit 1
 fi
 

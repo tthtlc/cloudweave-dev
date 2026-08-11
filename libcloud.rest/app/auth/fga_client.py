@@ -18,11 +18,93 @@ class FgaClient:
         self.base_url = settings.fga_api_url.rstrip("/")
         self.store_id = settings.fga_store_id
         self.model_id = settings.fga_model_id
+        self.store_name = settings.fga_store_name
+        self._discovered = False
+
+    # -- auto-discovery --------------------------------------------------------
+
+    def _ensure_discovered(self) -> None:
+        """Auto-discover store and model IDs from the OpenFGA API.
+
+        When FGA_STORE_ID / FGA_MODEL_ID are not explicitly configured the
+        client queries OpenFGA at runtime: find the store by name, then pick
+        the latest authorization model.  This keeps ``fga.env`` (written by
+        the bootstrap container) the single source of truth and avoids
+        hard-coding IDs in ``libcloud.rest/.env``.
+        """
+        if self._discovered:
+            return
+        self._discovered = True
+
+        settings = get_settings()
+        if not settings.fga_enabled:
+            return
+
+        if not self.store_id:
+            sid = self._find_store_by_name(self.store_name)
+            if sid:
+                self.store_id = sid
+                log.info("Auto-discovered FGA store '%s' -> %s", self.store_name, sid)
+            else:
+                log.warning(
+                    "FGA store '%s' not found at %s — authorization checks will be skipped",
+                    self.store_name, self.base_url,
+                )
+
+        if self.store_id and not self.model_id:
+            mid = self._latest_model(self.store_id)
+            if mid:
+                self.model_id = mid
+                log.info("Auto-discovered latest FGA model -> %s", mid)
+            else:
+                log.warning(
+                    "No authorization model found in store %s — authorization checks will be skipped",
+                    self.store_id,
+                )
+
+    def _find_store_by_name(self, name: str) -> str:
+        """Find an OpenFGA store by name.  Returns the store id or ``""``."""
+        try:
+            url = f"{self.base_url}/stores"
+            req = urllib.request.Request(
+                url, method="GET", headers={"Accept": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8") or "{}")
+                for store in body.get("stores", []):
+                    if store.get("name") == name:
+                        return store["id"]
+        except Exception as exc:
+            log.warning("Failed to auto-discover FGA store by name '%s': %s", name, exc)
+        return ""
+
+    def _latest_model(self, store_id: str) -> str:
+        """Return the latest authorization model id for *store_id*, or ``""``."""
+        try:
+            url = f"{self.base_url}/stores/{store_id}/authorization-models?page_size=1"
+            req = urllib.request.Request(
+                url, method="GET", headers={"Accept": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8") or "{}")
+                models = body.get("authorization_models", [])
+                if models:
+                    return models[0]["id"]
+        except Exception as exc:
+            log.warning("Failed to auto-discover latest FGA model: %s", exc)
+        return ""
+
+    # -- properties ------------------------------------------------------------
 
     @property
     def enabled(self) -> bool:
         settings = get_settings()
-        return settings.fga_enabled and bool(self.store_id and self.model_id)
+        if not settings.fga_enabled:
+            return False
+        self._ensure_discovered()
+        return bool(self.store_id and self.model_id)
+
+    # -- check -----------------------------------------------------------------
 
     def check(self, user: str, relation: str, obj: str, bearer: str | None = None) -> bool:
         if not self.enabled:
