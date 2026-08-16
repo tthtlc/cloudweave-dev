@@ -13,7 +13,7 @@ import httpx
 from app.config import get_settings
 from app.errors import APIError
 from app.idp_login import ProvisionerAuth
-from app import aws_resolve
+from app import aws_resolve, hot_config
 
 log = logging.getLogger(__name__)
 
@@ -256,14 +256,22 @@ class LibcloudProxy:
                 "config": {"region": s.aws_region, "secure": True},
                 "auth_binding": s.aws_auth_binding,
             }
+        # Live-reload NUTANIX_* from the bind-mounted my.env (hot_config); the
+        # cached settings values are the fallback when my.env is absent/unset.
+        ntnx_host = hot_config.get("NUTANIX_HOST") or s.ntnx_host
+        ntnx_port = int(hot_config.get("NUTANIX_PORT") or s.ntnx_port)
+        ntnx_api_version = hot_config.get("NUTANIX_API_VERSION") or s.ntnx_api_version
+        ntnx_verify_ssl = (
+            hot_config.get("NUTANIX_VERIFY_SSL") or str(s.ntnx_verify_ssl)
+        ).lower() in ("true", "1", "yes")
         return {
             "provider": "nutanix",
             "config": {
-                "host": s.ntnx_host,
-                "port": s.ntnx_port,
+                "host": ntnx_host,
+                "port": ntnx_port,
                 "secure": True,
-                "api_version": s.ntnx_api_version,
-                "verify_ssl_cert": s.ntnx_verify_ssl,
+                "api_version": ntnx_api_version,
+                "verify_ssl_cert": ntnx_verify_ssl,
             },
             "auth_binding": s.ntnx_auth_binding,
         }
@@ -699,10 +707,11 @@ class LibcloudProxy:
                     "LIBCLOUD_PASSWORD": s.provisioner_ntnx_password,
                     "LIBCLOUD_PASSWORD_NTNX_ADMIN": s.provisioner_ntnx_password,
                     "LIBCLOUD_NTNX_AUTH_BINDING": s.ntnx_auth_binding,
-                    "NUTANIX_HOST": s.ntnx_host,
-                    "NUTANIX_PORT": str(s.ntnx_port),
-                    "NUTANIX_API_VERSION": s.ntnx_api_version,
-                    "NUTANIX_VERIFY_SSL": "true" if s.ntnx_verify_ssl else "false",
+                    "NUTANIX_HOST": hot_config.get("NUTANIX_HOST") or s.ntnx_host,
+                    "NUTANIX_PORT": hot_config.get("NUTANIX_PORT") or str(s.ntnx_port),
+                    "NUTANIX_API_VERSION": hot_config.get("NUTANIX_API_VERSION") or s.ntnx_api_version,
+                    "NUTANIX_VERIFY_SSL": hot_config.get("NUTANIX_VERIFY_SSL")
+                    or ("true" if s.ntnx_verify_ssl else "false"),
                 }
             )
         return env

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Thin runner for the authenticated REST API test suite.
-# REPO_ROOT is the system root (/home/ubuntu/libcloud_nutanix), not "ROOT".
+# REPO_ROOT resolves to the repository root (determined at runtime).
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

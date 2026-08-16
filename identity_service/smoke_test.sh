@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ./smoke_test.sh                              # defaults to http://localhost:8766
-#   BASE_URL=http://login.cloudweave.xyz:8766 ./smoke_test.sh
+#   BASE_URL=http://\$PUBLIC_HOSTNAME:8766 ./smoke_test.sh
 #   CONTAINER_NAME=identity-service ./smoke_test.sh
 #
 # Exit status: 0 if all checks pass, 1 if any fail.

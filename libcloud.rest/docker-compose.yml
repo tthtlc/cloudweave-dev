@@ -11,7 +11,12 @@ services:
     env_file:
       - .env
     environment:
+      # Nutanix provider — set in root .env; defaults target the Docker host
+      # where the Prism emulator (or a real CVM) is reachable on 9440.
       NUTANIX_HOST: ${NUTANIX_HOST:-host.docker.internal}
+      NUTANIX_PORT: ${NUTANIX_PORT:-9440}
+      NUTANIX_API_VERSION: ${NUTANIX_API_VERSION:-v4.0}
+      NUTANIX_VERIFY_SSL: ${NUTANIX_VERIFY_SSL:-false}
       USERS_FILE: data/users.json
       # Dex/OpenFGA/Vault are sibling compose projects on the shared libcloud_net
       # network — reach them by container-name DNS. OIDC_ISSUER_URL stays
@@ -29,6 +34,11 @@ services:
       # Keep host.docker.internal for the Nutanix lab backend (NUTANIX_HOST).
       - "host.docker.internal:host-gateway"
     volumes:
+      # Live-reload config (NUTANIX_* + PUBLIC_HOSTNAME) — mounted for parity
+      # with identity_service. NOTE: libcloud.rest's Settings does not read this
+      # file (its NUTANIX_HOST is only a fallback; the actual host arrives via
+      # the X-Provider-Connection header), so the mount alone is inert.
+      - ../my.env:/run/config/my.env:ro
       - api-data:/app/data
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health')"]

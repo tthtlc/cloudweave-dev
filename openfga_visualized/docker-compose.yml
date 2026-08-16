@@ -31,6 +31,8 @@ services:
       # Read-only mount so the container can read the OAuth client secret
       # (override with OIDC_CLIENT_SECRET instead if preferred).
       - ../dex/config.yaml:/app/dex-config.yaml:ro
+      # Live-reload config (PUBLIC_HOSTNAME source of truth; restart-bound).
+      - ../my.env:/run/config/my.env:ro
     restart: unless-stopped
 
 networks:

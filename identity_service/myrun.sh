@@ -1,13 +1,13 @@
 
 
-#  cd /home/ubuntu/libcloud_nutanix/identity_service
+#  cd $REPO_ROOT/identity_service
   # Path 1 (auth hardening) — 13 checks
   ./verify_auth.sh
   # Path 2 (provision replay) — provisions a real VM, then tears it down
   ./verify_provision.sh                       # AWS, provision + teardown
   CLOUD=nutanix ./verify_provision.sh         # Nutanix
   TEARDOWN=0 ./verify_provision.sh             # keep the VM
-  BASE_URL=http://login.cloudweave.xyz:8766 ./verify_provision.sh
+  BASE_URL=http://\$PUBLIC_HOSTNAME:8766 ./verify_provision.sh
 
 
 
@@ -22,12 +22,12 @@
 
   How to test it yourself
 
-  cd /home/ubuntu/libcloud_nutanix/identity_service
+  cd $REPO_ROOT/identity_service
   # Path 1 (auth hardening) — 13 checks
   ./verify_auth.sh
   # Path 2 (provision replay) — provisions a real VM, then tears it down
   ./verify_provision.sh                       # AWS, provision + teardown
   CLOUD=nutanix ./verify_provision.sh         # Nutanix
   TEARDOWN=0 ./verify_provision.sh             # keep the VM
-  BASE_URL=http://login.cloudweave.xyz:8766 ./verify_provision.sh
+  BASE_URL=http://\$PUBLIC_HOSTNAME:8766 ./verify_provision.sh
 

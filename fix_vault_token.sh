@@ -177,7 +177,7 @@ done
 # --- 12. verify the fix ------------------------------------------------------
 info "Verifying the fix — test /api/resources/nutanix via the portal ..."
 VERIFY="$(curl -fsS -w '\n%{http_code}' \
-  -H 'Origin: http://login.cloudweave.xyz:3000' \
+  -H 'Origin: http://${PUBLIC_HOSTNAME}:3000' \
   -H 'Accept: application/json' \
   "http://localhost:3000/api/resources/nutanix" 2>&1 || true)"
 

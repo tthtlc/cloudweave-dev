@@ -3,11 +3,22 @@
 # restore-system.sh — Full-system restore of the libcloud-nutanix Docker stack
 #
 # Run this on the DESTINATION (internal) machine after transferring the
-# ~/offline/ directory from the source. It installs Docker, loads images,
-# restores volumes, bind mounts, and project files, then starts the stack.
+# ~/offline/ directory from the source. Docker is assumed to be already
+# installed and running. Loads images, restores volumes, bind mounts, and
+# project files, then starts the stack.
 #
 # PREREQUISITE: The ~/offline/ directory tree from backup-system.sh must be
-# present on this machine (at /home/ubuntu/offline/).
+# present on this machine (at $HOME/offline/). Docker is assumed to be already
+# installed and running.
+#
+# NO builds, NO pulls, NO apt — the restore only `docker load`s the images that
+# backup-system.sh already built and saved, then starts them with
+# `docker compose up --no-build --pull=never` (the `build:` directives that remain
+# in the compose files are inert — the Dockerfiles are never executed).
+#
+# Target hostname / backend overrides are read straight from the command line
+# (shell env), e.g.:
+#   PUBLIC_HOSTNAME=rocky96 NUTANIX_HOST=192.111.111.111 ./restore-system.sh
 #
 # Usage:
 #   chmod +x restore-system.sh
@@ -17,8 +28,7 @@
 
 set -euo pipefail
 
-OFFLINE_DIR="$HOME/offline"
-DEB_DIR="$OFFLINE_DIR/docker-debs"
+OFFLINE_DIR="${OFFLINE_DIR:-$HOME/offline}"
 BACKUP_DIR="$OFFLINE_DIR/backup"
 IMAGES_DIR="$BACKUP_DIR/images"
 PROJECT_DIR="$BACKUP_DIR/project"
@@ -27,10 +37,10 @@ BINDS_DIR="$BACKUP_DIR/binds"
 
 # The original project root on the source machine.
 # The backup tarball has paths like: libcloud_nutanix/.env
-# so we extract with -C /home/ubuntu to get /home/ubuntu/libcloud_nutanix/.env
-ORIG_PROJECT_ROOT="/home/ubuntu/libcloud_nutanix"
+# so we extract with -C "$HOME" to get "$HOME/libcloud_nutanix/.env"
+ORIG_PROJECT_ROOT="$HOME/libcloud_nutanix"
 PROJECT_NAME="libcloud_nutanix"
-PARENT_DIR="/home/ubuntu"
+PARENT_DIR="$HOME"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -50,14 +60,6 @@ run() {
         info "[DRY-RUN] $*"
     else
         "$@"
-    fi
-}
-
-run_sudo() {
-    if [[ "$DRY_RUN" == "1" ]]; then
-        info "[DRY-RUN] sudo $*"
-    else
-        sudo "$@"
     fi
 }
 
@@ -85,73 +87,19 @@ fi
 log "Manifest found. Source system details:"
 head -10 "$BACKUP_DIR/MANIFEST.txt" | sed 's/^/  /'
 
-if command -v docker &>/dev/null; then
-    warn "Docker is already installed: $(docker --version 2>/dev/null || echo 'unknown')"
-    warn "If this is a distro-packaged Docker, it will be replaced with the offline bundle."
-    warn "Press Ctrl-C within 10s to abort, or wait to continue..."
-    sleep 10
-else
-    info "Docker not installed — will install from offline .deb bundle"
-fi
-
-# ------------------------------------------------------------------
-# 1. Remove conflicting distro Docker packages
-# ------------------------------------------------------------------
-log "=== Step 1: Remove conflicting distro packages (if any) ==="
-
-run_sudo apt remove -y docker.io docker-compose docker-compose-v2 docker-doc \
-    docker-buildx podman-docker containerd runc 2>/dev/null || true
-
-# ------------------------------------------------------------------
-# 2. Install Docker + Compose from offline .deb bundle
-# ------------------------------------------------------------------
-log "=== Step 2: Install Docker from offline .deb bundle ==="
-
-if [[ ! -d "$DEB_DIR" ]] || ! ls "$DEB_DIR"/*.deb &>/dev/null; then
-    err "No .deb packages found in $DEB_DIR"
-    err "Make sure the docker-debs directory was transferred from the source."
+# Docker is assumed to be installed and running already.
+if ! command -v docker &>/dev/null; then
+    err "Docker is not installed. Please install Docker first, then re-run."
     exit 1
 fi
-
-log "Verifying .deb checksums..."
-if [[ -f "$DEB_DIR/SHA256SUMS" ]]; then
-    (cd "$DEB_DIR" && sha256sum -c SHA256SUMS) || warn "Some .deb checksums failed — continuing anyway"
-else
-    warn "No SHA256SUMS for .deb packages — skipping verification"
-fi
-
-log "Installing Docker packages ($(ls "$DEB_DIR"/*.deb 2>/dev/null | wc -l) files)..."
-
-# Use dpkg for the primary install — it does NOT contact remote repositories,
-# so it works in fully-offline environments.  apt install on local .deb files
-# still tries to resolve dependencies from remote repos (e.g., pigz from
-# archive.ubuntu.com) and will fail when the machine has no internet access.
-if run_sudo dpkg -i "$DEB_DIR"/*.deb 2>&1; then
-    log "All packages installed successfully via dpkg"
-else
-    warn "dpkg reported issues (likely missing dependencies)"
-    warn "Attempting to configure any partially-installed packages..."
-    run_sudo dpkg --configure -a 2>/dev/null || true
-
-    # If we ARE online, fix remaining dependency issues
-    if run_sudo apt-get install -f -y --no-install-recommends 2>/dev/null; then
-        log "Dependencies fixed via apt-get"
-    else
-        warn "Could not auto-resolve dependencies (expected if offline)"
-        warn "If pigz or other packages are missing, install them manually later"
-    fi
-fi
-
-log "Enabling and starting Docker..."
-run_sudo systemctl enable --now docker
 
 log "Docker version: $(docker --version 2>/dev/null || echo 'N/A')"
 log "Compose version: $(docker compose version 2>/dev/null || echo 'N/A')"
 
 # ------------------------------------------------------------------
-# 3. Load Docker images
+# 1. Load Docker images
 # ------------------------------------------------------------------
-log "=== Step 3: Load Docker images ==="
+log "=== Step 1: Load Docker images ==="
 
 if [[ -f "$IMAGES_DIR/stack-images.tar" ]]; then
     log "Loading images from stack-images.tar ($(du -h "$IMAGES_DIR/stack-images.tar" | cut -f1))..."
@@ -164,9 +112,9 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 4. Restore project files
+# 2. Restore project files
 # ------------------------------------------------------------------
-log "=== Step 4: Restore project files ==="
+log "=== Step 2: Restore project files ==="
 
 PROJECT_TARBALL="$PROJECT_DIR/project-files.tgz"
 if [[ ! -f "$PROJECT_TARBALL" ]]; then
@@ -175,20 +123,20 @@ if [[ ! -f "$PROJECT_TARBALL" ]]; then
 fi
 
 # The tarball has paths like "libcloud_nutanix/.env" because the backup
-# did:  tar -czf ... -C /home/ubuntu libcloud_nutanix
-# So we extract with -C /home/ubuntu (PARENT_DIR) so files land at:
-#   /home/ubuntu/libcloud_nutanix/.env
-#   /home/ubuntu/libcloud_nutanix/dex/docker-compose.yml
+# did:  tar -czf ... -C "$HOME" libcloud_nutanix
+# So we extract with -C "$HOME" (PARENT_DIR) so files land at:
+#   $HOME/libcloud_nutanix/.env
+#   $HOME/libcloud_nutanix/dex/docker-compose.yml
 #   ...etc...
 # Clean up stale extraction from a previous failed restore (old script used -C /)
 if [[ -d "/${PROJECT_NAME}" ]] && [[ "/${PROJECT_NAME}" != "$ORIG_PROJECT_ROOT" ]]; then
     warn "Found stale project files at /${PROJECT_NAME} (from a previous restore bug)."
     warn "Removing /${PROJECT_NAME} before extracting to the correct path..."
-    run_sudo rm -rf "/${PROJECT_NAME}"
+    run rm -rf "/${PROJECT_NAME}"
 fi
 
 log "Extracting project files to $PARENT_DIR (restores to $ORIG_PROJECT_ROOT)..."
-run_sudo tar -xzf "$PROJECT_TARBALL" -C "$PARENT_DIR"
+run tar -xzf "$PROJECT_TARBALL" -C "$PARENT_DIR"
 
 # Verify key files landed correctly
 log "Verifying extracted files..."
@@ -218,10 +166,10 @@ fi
 
 # Fix ownership
 log "Setting ownership on project files..."
-run_sudo chown -R "$USER:$USER" "$ORIG_PROJECT_ROOT" 2>/dev/null || true
+run chown -R "$USER:$USER" "$ORIG_PROJECT_ROOT" 2>/dev/null || true
 
 # ------------------------------------------------------------------
-# 4b. Sanitize public hostname references for internal/no-egress environment
+# 2b. Sanitize public hostname references for internal/no-egress environment
 # ------------------------------------------------------------------
 # The backup archive may contain config files from a source machine that was
 # deployed with a public hostname (e.g., login.quest4science.xyz). In the
@@ -233,7 +181,7 @@ run_sudo chown -R "$USER:$USER" "$ORIG_PROJECT_ROOT" 2>/dev/null || true
 # equivalents. The OIDC issuer URL is the most critical — OpenFGA fetches the
 # OIDC discovery document on startup, and if it points to an unresolvable
 # public URL, OpenFGA panics and the health check never passes.
-log "=== Step 4b: Sanitize public hostname references ==="
+log "=== Step 2b: Sanitize public hostname references ==="
 
 # Known public hostnames that must be replaced with internal equivalents.
 # Add new public domains here as the project migrates across hostnames.
@@ -285,9 +233,94 @@ for domain in "${PUBLIC_DOMAINS[@]}"; do
 done
 
 # ------------------------------------------------------------------
-# 5. Restore SSH configuration
+# 2c. Apply target environment overrides (PUBLIC_HOSTNAME, NUTANIX_*).
+#
+# The backup captured .env files from the SOURCE machine, so their
+# PUBLIC_HOSTNAME / NUTANIX_* values point at the source's hostname and Nutanix
+# backend — wrong for this destination. Accept the target values directly from
+# the command line (shell environment):
+#
+#   PUBLIC_HOSTNAME=rocky96 NUTANIX_HOST=192.111.111.111 ./restore-system.sh
+#
+# They are (1) exported so every `docker compose up -d` below inherits them —
+# the shell environment has the highest interpolation precedence, above the
+# project .env files — and (2) written into the root .env, my.env, and the
+# sub-project .env files so later restarts / reboots keep the same values
+# without re-passing the flags. No container rebuild is needed: the portal
+# patches its bundle at startup from my.env (server/docker-entrypoint.sh), and
+# NUTANIX_* are live-reloaded from my.env by the identity service.
 # ------------------------------------------------------------------
-log "=== Step 5: Restore SSH configuration ==="
+log "=== Step 2c: Apply target environment overrides ==="
+
+ROOT_ENV_FILE="$ORIG_PROJECT_ROOT/.env"
+
+# Resolve each value: command line first, then the restored root .env, so a
+# plain re-run (no flags) is idempotent and keeps the source's value.
+if [[ -z "${PUBLIC_HOSTNAME:-}" && -f "$ROOT_ENV_FILE" ]]; then
+    PUBLIC_HOSTNAME="$(grep -E '^PUBLIC_HOSTNAME=' "$ROOT_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+fi
+if [[ -z "${NUTANIX_HOST:-}" && -f "$ROOT_ENV_FILE" ]]; then
+    NUTANIX_HOST="$(grep -E '^NUTANIX_HOST=' "$ROOT_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+fi
+if [[ -z "${NUTANIX_PORT:-}" && -f "$ROOT_ENV_FILE" ]]; then
+    NUTANIX_PORT="$(grep -E '^NUTANIX_PORT=' "$ROOT_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+fi
+if [[ -z "${NUTANIX_API_VERSION:-}" && -f "$ROOT_ENV_FILE" ]]; then
+    NUTANIX_API_VERSION="$(grep -E '^NUTANIX_API_VERSION=' "$ROOT_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+fi
+if [[ -z "${NUTANIX_VERIFY_SSL:-}" && -f "$ROOT_ENV_FILE" ]]; then
+    NUTANIX_VERIFY_SSL="$(grep -E '^NUTANIX_VERIFY_SSL=' "$ROOT_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+fi
+
+# Export for `docker compose` interpolation (empty values are harmless —
+# compose's ${VAR:-default} falls back to its default for unset/empty).
+export PUBLIC_HOSTNAME NUTANIX_HOST NUTANIX_PORT NUTANIX_API_VERSION NUTANIX_VERIFY_SSL
+
+info "  PUBLIC_HOSTNAME     = ${PUBLIC_HOSTNAME:-<unset>}"
+info "  NUTANIX_HOST        = ${NUTANIX_HOST:-<unset>}"
+info "  NUTANIX_PORT        = ${NUTANIX_PORT:-<unset>}"
+info "  NUTANIX_API_VERSION = ${NUTANIX_API_VERSION:-<unset>}"
+info "  NUTANIX_VERIFY_SSL  = ${NUTANIX_VERIFY_SSL:-<unset>}"
+
+# Upsert KEY=VALUE into a file (replace an existing line, else append).
+set_env_key() {
+    local file="$1" key="$2" val="$3"
+    [[ -z "$val" ]] && return 0
+    if [[ ! -f "$file" ]]; then
+        mkdir -p "$(dirname "$file")"
+        : > "$file"
+    fi
+    if grep -qE "^${key}=" "$file" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+    else
+        echo "${key}=${val}" >> "$file"
+    fi
+}
+
+# Persist into the root .env (authoritative) + my.env (live-reload source).
+set_env_key "$ROOT_ENV_FILE"           "PUBLIC_HOSTNAME"     "${PUBLIC_HOSTNAME:-}"
+set_env_key "$ROOT_ENV_FILE"           "NUTANIX_HOST"        "${NUTANIX_HOST:-}"
+set_env_key "$ROOT_ENV_FILE"           "NUTANIX_PORT"        "${NUTANIX_PORT:-}"
+set_env_key "$ROOT_ENV_FILE"           "NUTANIX_API_VERSION" "${NUTANIX_API_VERSION:-}"
+set_env_key "$ROOT_ENV_FILE"           "NUTANIX_VERIFY_SSL"  "${NUTANIX_VERIFY_SSL:-}"
+set_env_key "$ORIG_PROJECT_ROOT/my.env" "PUBLIC_HOSTNAME"     "${PUBLIC_HOSTNAME:-}"
+set_env_key "$ORIG_PROJECT_ROOT/my.env" "NUTANIX_HOST"        "${NUTANIX_HOST:-}"
+set_env_key "$ORIG_PROJECT_ROOT/my.env" "NUTANIX_PORT"        "${NUTANIX_PORT:-}"
+set_env_key "$ORIG_PROJECT_ROOT/my.env" "NUTANIX_API_VERSION" "${NUTANIX_API_VERSION:-}"
+set_env_key "$ORIG_PROJECT_ROOT/my.env" "NUTANIX_VERIFY_SSL"  "${NUTANIX_VERIFY_SSL:-}"
+
+# Sync PUBLIC_HOSTNAME into the sub-project .env files that docker compose reads
+# from its own project directory when started outside of this script.
+for _d in identity_service server openfga_visualized; do
+    set_env_key "$ORIG_PROJECT_ROOT/$_d/.env" "PUBLIC_HOSTNAME" "${PUBLIC_HOSTNAME:-}"
+done
+
+log "Environment overrides applied and persisted."
+
+# ------------------------------------------------------------------
+# 3. Restore SSH configuration
+# ------------------------------------------------------------------
+log "=== Step 3: Restore SSH configuration ==="
 
 if [[ -f "$BACKUP_DIR/libcloud-private-key.pem" ]]; then
     mkdir -p "$HOME/.ssh"
@@ -297,20 +330,25 @@ if [[ -f "$BACKUP_DIR/libcloud-private-key.pem" ]]; then
 fi
 
 if [[ -f "$BACKUP_DIR/ssh-config" ]]; then
+    # The backed-up ssh-config references the source host's home path in its
+    # IdentityFile (e.g. /home/ubuntu/.ssh/libcloud-private-key.pem). Retarget
+    # it to this host's restored key location before writing it out.
     if [[ ! -f "$HOME/.ssh/config" ]]; then
-        cp "$BACKUP_DIR/ssh-config" "$HOME/.ssh/config"
-        chmod 600 "$HOME/.ssh/config"
-        log "SSH config restored: ~/.ssh/config"
+        SSH_DEST="$HOME/.ssh/config"
     else
         warn "~/.ssh/config already exists — saved as ~/.ssh/config.from-backup"
-        cp "$BACKUP_DIR/ssh-config" "$HOME/.ssh/config.from-backup"
+        SSH_DEST="$HOME/.ssh/config.from-backup"
     fi
+    sed "s|IdentityFile .*libcloud-private-key.pem|IdentityFile $HOME/.ssh/libcloud-private-key.pem|" \
+        "$BACKUP_DIR/ssh-config" > "$SSH_DEST"
+    chmod 600 "$SSH_DEST"
+    log "SSH config restored: $SSH_DEST"
 fi
 
 # ------------------------------------------------------------------
-# 6. Recreate Docker networks
+# 4. Recreate Docker networks
 # ------------------------------------------------------------------
-log "=== Step 6: Recreate Docker networks ==="
+log "=== Step 4: Recreate Docker networks ==="
 
 # Only create the shared external networks that are declared as
 # `external: true` in compose files — they MUST exist before docker compose up.
@@ -331,9 +369,9 @@ for net in "${EXTERNAL_NETWORKS[@]}"; do
 done
 
 # ------------------------------------------------------------------
-# 7. Recreate named volumes and restore data
+# 5. Recreate named volumes and restore data
 # ------------------------------------------------------------------
-log "=== Step 7: Restore named volumes ==="
+log "=== Step 5: Restore named volumes ==="
 
 VOLUME_NAMES_FILE="$BACKUP_DIR/volume-names.txt"
 if [[ ! -f "$VOLUME_NAMES_FILE" ]]; then
@@ -350,18 +388,25 @@ else
             run docker volume create "$v"
         fi
 
-        # Restore data if archive exists
+        # Restore data if archive exists.  Extract via a temporary container
+        # rather than straight into /var/lib/docker/volumes/.../_data — the
+        # Docker data dir is root-owned, so a non-root user can neither read
+        # the mountpoint (which made the old check report "mountpoint not
+        # found") nor write into it.  This mirrors the backup side, which also
+        # uses a helper container.  (python:3.12-slim is used because it ships
+        # GNU tar and is already included in stack-images.tar; the backup's
+        # alpine:latest helper was not saved to the image tarball.)
         VOL_ARCHIVE="$VOLUMES_DIR/${v}.tgz"
-        VOL_PATH=$(docker volume inspect -f '{{.Mountpoint}}' "$v" 2>/dev/null) || true
         if [[ -f "$VOL_ARCHIVE" ]]; then
-            if [[ -n "$VOL_PATH" && -d "$VOL_PATH" ]]; then
-                log "Restoring volume data: $v"
-                run_sudo tar --numeric-owner -xzf "$VOL_ARCHIVE" \
-                    -C "$VOL_PATH"
+            log "Restoring volume data: $v"
+            if run docker run --rm \
+                -v "${v}:/volume" \
+                -v "$VOLUMES_DIR:/backup:ro" \
+                python:3.12-slim \
+                tar --numeric-owner -xzf "/backup/${v}.tgz" -C /volume; then
                 VOLUMES_RESTORED=$((VOLUMES_RESTORED + 1))
             else
-                warn "Volume mountpoint not found: ${VOL_PATH:-"<inspect failed>"}"
-                warn "  Volume $v was created but data could not be restored"
+                warn "  Failed to restore volume data for $v"
             fi
         else
             warn "Volume archive not found: $VOL_ARCHIVE"
@@ -372,9 +417,9 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 8. Restore bind-mount contents
+# 6. Restore bind-mount contents
 # ------------------------------------------------------------------
-log "=== Step 8: Restore bind mounts ==="
+log "=== Step 6: Restore bind mounts ==="
 
 BIND_MAP="$BINDS_DIR/bind-map.txt"
 if [[ ! -f "$BIND_MAP" ]]; then
@@ -383,14 +428,34 @@ else
     BINDS_RESTORED=0
     while IFS='|' read idx src; do
         [[ -z "$src" ]] && continue
+        # The archive filename is keyed on the path exactly as the backup wrote
+        # it (absolute for older backups, project-relative for newer ones), so
+        # compute it from $src BEFORE remapping to the destination path.
         safe_name=$(printf "%04d" "$idx")-$(echo "$src" | tr '/' '_')
         BIND_ARCHIVE="$BINDS_DIR/${safe_name}.tgz"
 
+        # Re-anchor the bind source to THIS host's project root:
+        #   - newer backups store a path RELATIVE to the project root
+        #     (e.g. dex/config.yaml) -> prepend $ORIG_PROJECT_ROOT.
+        #   - older backups store an ABSOLUTE path from the source host
+        #     (e.g. /home/ubuntu/libcloud_nutanix/dex/config.yaml) -> strip the
+        #     old prefix and re-anchor.  (Without this, mkdir -p /home/ubuntu
+        #     would fail with "Permission denied" on a different user/host.)
+        if [[ "$src" == /* ]]; then
+            if [[ "$src" == */${PROJECT_NAME}/* ]]; then
+                dest="$ORIG_PROJECT_ROOT/${src#*/${PROJECT_NAME}/}"
+            else
+                dest="$src"
+            fi
+        else
+            dest="$ORIG_PROJECT_ROOT/$src"
+        fi
+
         if [[ -f "$BIND_ARCHIVE" ]]; then
-            run_sudo mkdir -p "$(dirname "$src")"
-            log "Restoring bind mount: $src"
-            run_sudo tar --numeric-owner -xzf "$BIND_ARCHIVE" \
-                -C "$(dirname "$src")"
+            run mkdir -p "$(dirname "$dest")"
+            log "Restoring bind mount: $dest"
+            run tar --numeric-owner -xzf "$BIND_ARCHIVE" \
+                -C "$(dirname "$dest")"
             BINDS_RESTORED=$((BINDS_RESTORED + 1))
         else
             warn "Bind archive not found: $BIND_ARCHIVE"
@@ -400,9 +465,9 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 9. Verify .env and critical configs
+# 7. Verify .env and critical configs
 # ------------------------------------------------------------------
-log "=== Step 9: Verify critical files ==="
+log "=== Step 7: Verify critical files ==="
 
 CRITICAL_OK=0
 CRITICAL_FAIL=0
@@ -430,7 +495,7 @@ if [[ "$CRITICAL_FAIL" -gt 0 ]]; then
 fi
 
 # ------------------------------------------------------------------
-# 9b. Secret Reconciliation — ensure dex config and env agree.
+# 7b. Secret Reconciliation — ensure dex config and env agree.
 #
 # Both dex_bootstrap.py (setup.sh) and the backup/restore cycle write
 # OAuth client secrets into two places:
@@ -442,7 +507,7 @@ fi
 # client_secret" in Dex logs.  dex.env is the authoritative source
 # (dex_bootstrap.py writes it last); reconcile config.yaml to match.
 # ------------------------------------------------------------------
-log "=== Step 9b: Secret Reconciliation ==="
+log "=== Step 7b: Secret Reconciliation ==="
 
 DEX_ENV_FILE="$ORIG_PROJECT_ROOT/dex/generated/dex.env"
 DEX_CONFIG_FILE="$ORIG_PROJECT_ROOT/dex/config.yaml"
@@ -489,7 +554,7 @@ reconcile_secret "LIBCLOUD_OIDC_CLIENT_SECRET" "libcloud-rest"   "libcloud-rest-
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
-# 10. Start the stack — dependency order
+# 8. Start the stack — dependency order
 # ------------------------------------------------------------------
 
 # Helper: check that every image referenced in a compose file exists locally.
@@ -544,7 +609,7 @@ compose_images_available() {
     return 0
 }
 
-log "=== Step 10: Start the stack ==="
+log "=== Step 8: Start the stack ==="
 
 # Startup order is critical — later services depend on earlier ones:
 #   lldap           — no dependencies (LDAP user directory)
@@ -613,7 +678,7 @@ for dir in "${COMPOSE_DIRS[@]}"; do
         fi
 
         log "Starting: $dir"
-        if compose_images_available "$COMPOSE_FILE" && run docker compose -f "$COMPOSE_FILE" up -d; then
+        if compose_images_available "$COMPOSE_FILE" && run docker compose -f "$COMPOSE_FILE" up -d --no-build --pull=never; then
             STARTED=$((STARTED + 1))
             sleep 2
 
@@ -650,7 +715,7 @@ for dir in "${COMPOSE_DIRS[@]}"; do
             # container from a previous restore run would hold old secrets.
             if [[ "$dir" == *"identity_service"* ]]; then
                 log "  Force-recreating identity-service to pick up current dex.env ..."
-                run docker compose -f "$COMPOSE_FILE" up -d --force-recreate identity-service
+                run docker compose -f "$COMPOSE_FILE" up -d --no-build --pull=never --force-recreate identity-service
             fi
         else
             warn "Failed to start: $dir"
@@ -671,7 +736,7 @@ log "Starting additional compose projects..."
 # Hub and hang until timeout on a machine with no internet access.
 if [[ -f "$SWAGGER_COMPOSE" ]]; then
     log "Starting: swagger-ui ($SWAGGER_COMPOSE)"
-    if compose_images_available "$SWAGGER_COMPOSE" && run docker compose -f "$SWAGGER_COMPOSE" up -d; then
+    if compose_images_available "$SWAGGER_COMPOSE" && run docker compose -f "$SWAGGER_COMPOSE" up -d --no-build --pull=never; then
         STARTED=$((STARTED + 1))
         sleep 1
     else
@@ -684,9 +749,9 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 11. Verify
+# 9. Verify
 # ------------------------------------------------------------------
-log "=== Step 11: Verify ==="
+log "=== Step 9: Verify ==="
 
 echo ""
 info "Docker containers:"
@@ -697,18 +762,18 @@ info "Docker volumes:"
 docker volume ls 2>/dev/null || true
 
 # ------------------------------------------------------------------
-# 12. Targeted credential-integrity checks
+# 10. Targeted credential-integrity checks
 #
 # Verify the two credential-drift issues discovered during login
 # debugging (DEX_PORTAL_CLIENT_SECRET mismatch, PostgreSQL password
 # drift) are actually resolved in the running stack, not just on disk.
 # ------------------------------------------------------------------
-log "=== Step 12: Credential integrity checks ==="
+log "=== Step 10: Credential integrity checks ==="
 
 CRED_OK=0
 CRED_FAIL=0
 
-# 12a. DEX_PORTAL_CLIENT_SECRET in identity-service container vs config.yaml
+# 10a. DEX_PORTAL_CLIENT_SECRET in identity-service container vs config.yaml
 if docker ps --filter name=^identity-service$ --format '{{.Names}}' 2>/dev/null | grep -qx identity-service; then
     CONTAINER_SECRET=$(docker exec identity-service printenv DEX_PORTAL_CLIENT_SECRET 2>/dev/null || true)
     DEX_ENV_SECRET=$(grep -E '^DEX_PORTAL_CLIENT_SECRET=' "$DEX_ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
@@ -725,7 +790,7 @@ else
     warn "  SKIP: identity-service container not running"
 fi
 
-# 12b. OpenFGA container health
+# 10b. OpenFGA container health
 OPENFGA_STATUS=$(docker inspect --format '{{ .State.Health.Status }}' openfga 2>/dev/null || echo "not-found")
 if [[ "$OPENFGA_STATUS" == "healthy" ]]; then
     log "  PASS: OpenFGA container is healthy"
@@ -735,7 +800,7 @@ else
     CRED_FAIL=$((CRED_FAIL + 1))
 fi
 
-# 12c. No PostgreSQL auth errors in recent logs
+# 10c. No PostgreSQL auth errors in recent logs
 PG_AUTH_ERRORS=$(docker logs openfga-postgres --since 5m 2>&1 | grep -c "password authentication failed" || true)
 if [[ "$PG_AUTH_ERRORS" -eq 0 ]]; then
     log "  PASS: No PostgreSQL auth failures in recent logs"
@@ -745,7 +810,7 @@ else
     CRED_FAIL=$((CRED_FAIL + 1))
 fi
 
-# 12d. No Dex client_secret errors in recent logs
+# 10d. No Dex client_secret errors in recent logs
 DEX_SECRET_ERRORS=$(docker logs dex --since 5m 2>&1 | grep -c "invalid client_secret" || true)
 if [[ "$DEX_SECRET_ERRORS" -eq 0 ]]; then
     log "  PASS: No Dex client_secret errors in recent logs"
@@ -762,7 +827,7 @@ else
     warn "Credential integrity: $CRED_OK passed, $CRED_FAIL FAILED."
     warn "Login may fail until these are resolved."
     warn "To fix manually:"
-    warn "  1) Recreate identity-service: docker compose -f $ORIG_PROJECT_ROOT/identity_service/docker-compose.yml up -d --force-recreate"
+    warn "  1) Recreate identity-service: docker compose -f $ORIG_PROJECT_ROOT/identity_service/docker-compose.yml up -d --no-build --pull=never --force-recreate"
     warn "  2) Reset postgres password: docker exec openfga-postgres psql -U openfga -d openfga -c \"ALTER USER openfga PASSWORD '\$POSTGRES_PASSWORD';\""
 fi
 

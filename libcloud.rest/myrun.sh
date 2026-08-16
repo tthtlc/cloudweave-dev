@@ -7,7 +7,7 @@ if [[ ! -f .env ]]; then
   echo "Created .env from .env.example — add provider secrets before use."
 fi
 
-cd /home/ubuntu/libcloud_nutanix/libcloud.rest && docker compose build api && docker compose up -d api && sleep 5 && curl -s http://localhost:8765/health
+docker compose build api && docker compose up -d api && sleep 5 && curl -s http://localhost:8765/health
 
 docker compose build api && docker compose up -d api
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d api

@@ -265,7 +265,7 @@ fi
 # ── 9. verify ───────────────────────────────────────────────────────────────
 info "Verifying the fix ..."
 VERIFY="$(curl -fsS -w '\n%{http_code}' \
-  -H 'Origin: http://login.cloudweave.xyz:3000' \
+  -H 'Origin: http://${PUBLIC_HOSTNAME}:3000' \
   -H 'Accept: application/json' \
   "http://localhost:3000/api/resources/nutanix" 2>&1 || true)"
 
@@ -289,6 +289,6 @@ echo "New credentials written to:"
 echo "  • ${VAULT_ENV}"
 echo "  • ${REST_ENV}"
 echo ""
-echo "Test in browser: http://login.cloudweave.xyz:3000/admin"
+echo "Test in browser: http://${PUBLIC_HOSTNAME}:3000/admin"
 echo "Log in and click 'View Nutanix Resources'"
 echo ""

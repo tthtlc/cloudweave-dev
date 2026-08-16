@@ -14,11 +14,11 @@
 #
 # Run: bash demo_curl_flows.sh
 set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # ── config ────────────────────────────────────────────────────────────────
-# Set PUBLIC_HOSTNAME to your deployment's hostname (default: login.cloudweave.xyz).
-# Change this one value + DNS (or /etc/hosts) to migrate servers.
-PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-login.cloudweave.xyz}"
+# PUBLIC_HOSTNAME is read from the environment (set in root .env by setup.sh).
+PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME}"
 DEX_HOST=http://localhost:5556
 # The issuer MUST match Dex's configured issuer (in-container: http://dex:5556/dex).
 # Host-side scripts use localhost:5556 to reach Dex, but the JWT iss claim is
@@ -50,7 +50,7 @@ FGA_STORE=01KXFQ6JWFD2MZKFDFSHYNNNXE
 FGA_MODEL=01KXWWZY8424AMK2B443FH7TQ0
 
 # From libcloud.rest/.env (synced from vault/generated/vault.env)
-VAULT_TOKEN=$(grep '^VAULT_TOKEN=' /home/ubuntu/libcloud_nutanix/libcloud.rest/.env | cut -d= -f2)
+VAULT_TOKEN=$(grep '^VAULT_TOKEN=' "$REPO_ROOT/libcloud.rest/.env" | cut -d= -f2)
 
 JAR=/tmp/demo_cookies.txt
 rm -f "$JAR"; touch "$JAR"
@@ -245,7 +245,7 @@ echo "→ Vault: list secrets under secret/metadata/libcloud/"
 curl -sS -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT/v1/secret/metadata/libcloud/" -w "\n  HTTP %{http_code}\n"
 
 echo "→ LLDAP HTTP/GraphQL: list users (admin bind via HTTP basic)"
-LLDAP_ADMIN_PASS=$(grep '^LLDAP_LDAP_USER_PASS=' /home/ubuntu/libcloud_nutanix/lldap/.env | cut -d= -f2)
+LLDAP_ADMIN_PASS=$(grep '^LLDAP_LDAP_USER_PASS=' "$REPO_ROOT/lldap/.env" | cut -d= -f2)
 curl -sS -u "admin:$LLDAP_ADMIN_PASS" \
   -H 'Content-Type: application/json' \
   -d '{"query":"{ users { id uid email displayName } }"}' \

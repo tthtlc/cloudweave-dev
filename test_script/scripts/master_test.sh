@@ -233,7 +233,7 @@ if [[ "$SKIP_IDENTITY" -eq 0 ]]; then
 
   # Usage from identity_test.md:
   #   identity_service/smoke_test.sh
-  #   BASE_URL=http://login.cloudweave.xyz:8766 identity_service/smoke_test.sh
+  #   BASE_URL=http://\$PUBLIC_HOSTNAME:8766 identity_service/smoke_test.sh
   IDENTITY_OUTPUT=$(BASE_URL="http://${HOST}:${IDENTITY_PORT}" \
                     CONTAINER_NAME="identity-service" \
                     "$REPO_ROOT/identity_service/smoke_test.sh" 2>&1)

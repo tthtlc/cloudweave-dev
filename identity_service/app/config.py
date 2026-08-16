@@ -52,18 +52,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _derive_public_urls(self) -> "Settings":
-        """Derive dex_base_url from PUBLIC_HOSTNAME env var (browser-facing only).
-        dex_issuer stays at its in-container default unless explicitly overridden.
-        dex_base_url is only derived when not already explicitly set."""
+        """Derive dex_base_url and dex_portal_redirect_uri from PUBLIC_HOSTNAME
+        env var (browser-facing only). Only applies when the values still match
+        their original class defaults (i.e. not explicitly overridden)."""
         import os as _os
 
         public_host = _os.environ.get("PUBLIC_HOSTNAME", "").strip()
-        # Only derive if PUBLIC_HOSTNAME is set AND dex_base_url wasn't
-        # explicitly overridden (e.g. via DEX_BASE_URL env var).
-        # Check: the current value still matches the class default pattern
-        # (port 5556), meaning nobody overrode it through compose/env.
-        if public_host and ":5556/dex" in self.dex_base_url:
-            self.dex_base_url = f"http://{public_host}:3000/dex"
+        if public_host:
+            # dex_base_url: default is http://dex:5556/dex (in-container).
+            if ":5556/dex" in self.dex_base_url:
+                self.dex_base_url = f"http://{public_host}:3000/dex"
+            # dex_portal_redirect_uri: default is http://localhost:3000/auth/callback.
+            if "localhost:3000/auth/callback" in self.dex_portal_redirect_uri:
+                self.dex_portal_redirect_uri = (
+                    f"http://{public_host}:3000/auth/callback"
+                )
         return self
 
     # --- OpenFGA (authorization) ---

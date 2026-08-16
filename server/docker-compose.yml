@@ -23,13 +23,22 @@ services:
         REACT_APP_DISABLE_FEDERATION: ${REACT_APP_DISABLE_FEDERATION:-true}
     container_name: portal
     restart: unless-stopped
+    # Offline hostname patcher: swaps the build-time-baked hostname for
+    # $PUBLIC_HOSTNAME at every start, so a hostname change needs no rebuild.
+    volumes:
+      - ./docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      # Live-reload config — entrypoint reads PUBLIC_HOSTNAME from here.
+      - ../my.env:/run/config/my.env:ro
+    entrypoint: ["sh", "/docker-entrypoint.sh"]
     networks:
       - libcloud_net
     ports:
       - "${PORTAL_HTTP_PORT:-3000}:3000"
-    # nginx serves a pre-built static bundle, so these runtime env vars have no
-    # effect on the served app; kept only for operator introspection.
+    # nginx serves a pre-built static bundle; the REACT_APP_* runtime env vars
+    # below are kept only for operator introspection. PUBLIC_HOSTNAME, by
+    # contrast, IS read at runtime by docker-entrypoint.sh to patch the bundle.
     environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-localhost}
       REACT_APP_DEX_BASE_URL: ${REACT_APP_DEX_BASE_URL:-http://${PUBLIC_HOSTNAME:-localhost}:3000/dex}
       REACT_APP_DEX_CLIENT_ID: ${REACT_APP_DEX_CLIENT_ID:-libcloud-portal}
       REACT_APP_DEX_REDIRECT_URI: ${REACT_APP_DEX_REDIRECT_URI:-http://${PUBLIC_HOSTNAME:-localhost}:3000/auth/callback}

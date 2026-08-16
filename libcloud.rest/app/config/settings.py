@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # App root: the libcloud.rest/ directory (the parent of app/). All file-path
 # settings below are resolved against this root so the app works regardless of
 # the current working directory (e.g. when scripts/generate_openapi.py is run
-# from $REPO_ROOT=/home/ubuntu/libcloud_nutanix rather than from libcloud.rest/).
+# from $REPO_ROOT rather than from libcloud.rest/).
 _APP_ROOT = Path(__file__).resolve().parents[2]
 
 _ENV_PATH = _APP_ROOT / ".env"

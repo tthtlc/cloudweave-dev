@@ -72,9 +72,14 @@ services:
       # / compose-dir .env (which don't carry them) and `environment:` would
       # then override the real dex.env values with empty strings.
       AWS_REGION: ap-southeast-1
-      NUTANIX_HOST: host.docker.internal
-      NUTANIX_PORT: "9440"
-      NUTANIX_API_VERSION: v4.0
+      # Nutanix provider — set in root .env; defaults target the Docker host.
+      # NUTANIX_* are live-reloaded from ../my.env (mounted below) via
+      # hot_config.py; these environment lines are only the fallback.
+      HOT_CONFIG_PATH: /run/config/my.env
+      NUTANIX_HOST: ${NUTANIX_HOST:-host.docker.internal}
+      NUTANIX_PORT: ${NUTANIX_PORT:-9440}
+      NUTANIX_API_VERSION: ${NUTANIX_API_VERSION:-v4.0}
+      NUTANIX_VERIFY_SSL: ${NUTANIX_VERIFY_SSL:-false}
       # Generate with: python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
       SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
       SESSION_SECURE: "false"
@@ -95,6 +100,9 @@ services:
       PROVISION_PRIVATE_NTNX_SCRIPT: /opt/libcloud-scripts/scripts/provision_nutanix_bastion_private.sh
       PROVISION_PRIVATE_AWS_SCRIPT: /opt/libcloud-scripts/scripts/provision_aws_private.sh
     volumes:
+      # Live-reload config (NUTANIX_* + PUBLIC_HOSTNAME) — read at request time
+      # by app/hot_config.py so edits to ../my.env need no container restart.
+      - ../my.env:/run/config/my.env:ro
       # Only the scripts the identity service shells out to (deprovision_aws.sh
       # + common.sh). Read-only: the service never writes here.
       - ../test_script/scripts:/opt/libcloud-scripts/scripts:ro

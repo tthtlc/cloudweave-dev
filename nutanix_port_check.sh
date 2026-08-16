@@ -28,7 +28,7 @@
 #
 #● Now restart the mock emulator:
 #
-cd /home/ubuntu/libcloud_nutanix/stoplight_mock && docker compose up -d --force-recreate emulator
+cd "$REPO_ROOT/stoplight_mock" && docker compose up -d --force-recreate emulator
 #
 #  Then verify the REST API can reach it:
 #

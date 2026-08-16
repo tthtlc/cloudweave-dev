@@ -51,10 +51,10 @@ file                                                                            
  ✔ Container libcloud-rest-api    Started                                                                                                                   1.0s
 
 Setup complete.
-  OpenFGA env  : /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/fga.env
-  Postgres env : /home/ubuntu/libcloud_nutanix/test_script/generated/postgres.env  (datastore: postgres://openfga@postgres:5432/openfga)
-  Dex OIDC     : /home/ubuntu/libcloud_nutanix/openfga_postgres/../dex/generated/dex.env
-  Vault        : /home/ubuntu/libcloud_nutanix/openfga_postgres/../vault/generated/vault.env
+  OpenFGA env  : $REPO_ROOT/openfga_postgres/generated/fga.env
+  Postgres env : $REPO_ROOT/test_script/generated/postgres.env  (datastore: postgres://openfga@postgres:5432/openfga)
+  Dex OIDC     : $REPO_ROOT/dex/generated/dex.env
+  Vault        : $REPO_ROOT/vault/generated/vault.env
 
 Identity model:
   superadmin   / SA-M6jUCJdcQ4d7ultmb4YDU2hJ   (bootstrap: Vault/OpenFGA/LLDAP admin)

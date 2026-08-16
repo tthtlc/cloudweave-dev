@@ -69,6 +69,7 @@ def render_config(
     lldap_base_dn: str,
     portal_client_block: str,
     extra_connectors_block: str,
+    visualizer_public_callback: str = "",
 ) -> None:
     if not TEMPLATE.exists():
         raise FileNotFoundError(TEMPLATE)
@@ -81,6 +82,7 @@ def render_config(
         .replace("__LLDAP_BASE_DN__", lldap_base_dn)
         .replace("__PORTAL_CLIENT__", portal_client_block)
         .replace("__EXTRA_CONNECTORS__", extra_connectors_block)
+        .replace("__VISUALIZER_PUBLIC_CALLBACK__", visualizer_public_callback)
     )
     OUTPUT_CONFIG.write_text(rendered, encoding="utf-8")
     log.info("Wrote %s", OUTPUT_CONFIG)
@@ -340,6 +342,11 @@ def main() -> int:
         github_client_id=github_client_id,
         github_client_secret=github_client_secret,
     )
+    # OpenFGA visualizer (port 5050) uses the libcloud-rest OAuth client.
+    # Include the public-hostname callback only when PUBLIC_HOSTNAME is set.
+    visualizer_public_callback = ""
+    if public_hostname:
+        visualizer_public_callback = f"- http://{public_hostname}:5050/callback"
 
     render_config(
         issuer=issuer,
@@ -349,6 +356,7 @@ def main() -> int:
         lldap_base_dn=lldap_base_dn,
         portal_client_block=portal_client_block,
         extra_connectors_block=extra_connectors_block,
+        visualizer_public_callback=visualizer_public_callback,
     )
     env_path = write_env(
         public_url=public_url,
