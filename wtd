@@ -1,90 +1,208 @@
 
- raise APIError("auth_missing_pending_token", "pendingToken required", 400)
-app/main.py:        sessions.create(resp, internal_user=user, refresh_token=None)
-app/auth_state.py:            raise APIError("auth_bad_pending_token", "pending token invalid or expired", 401, {"detail": str(exc)}) from exc
-app/auth_state.py:            raise APIError("auth_bad_pending_token", "wrong token type", 401)
-app/auth_state.py:            raise APIError("auth_bad_pending_token", "pending token already used", 401)
-verify_provision.sh:from app.idp_login import _token_cache
-verify_provision.sh:_token_cache.clear()
-verify_provision.sh:tok = ProvisionerAuth().get_token('${CLOUD}')
-verify_auth.sh:check "POST /api/auth/collapse empty pendingToken" 400 "auth_missing_pending_token" \
-verify_auth.sh:check "POST /api/auth/collapse bad pendingToken" 401 "auth_bad_pending_token" \
-CW/home/ubuntu/libcloud_nutanix/identity_service>grep -R can_connect
-CW/home/ubuntu/libcloud_nutanix/identity_service>cd ..
-CW/home/ubuntu/libcloud_nutanix>grep -R can_connect
-postpost_is.md:  $ cd /home/ubuntu/libcloud_nutanix && rg -n "aws_region|can_use|can_provision|can_view|can_connect|relation|type aws|type nutanix" openfga_postgres/openfga_bootstrap.py 2>/dev/null | head -30 391ms
-postpost_is.md:    271:                "can_connect": {
-openfga_rules_architecture.md:  │ member                 │ union of this ∪ owner ∪ admin ∪ viewer │ Anyone directly added, or holding any of the three roles, is a member. Used by libcloud_api.can_connect and provider.can_use to propagate tenant membership to the API/provider objects. │
-openfga_rules_architecture.md:  │ can_connect │ union of this ∪ tupleToUserset(parent → member) │ A user can connect to the REST API if directly granted, or if they are a member of any tenant that parents this API. This is the gate the REST API's /v1/auth/me checks. │
-openfga_rules_architecture.md:  • superadmin: can_manage_platform, can_connect, can_use on both providers, can_provision on both backends → all True.
-openfga_rules_architecture.md:  • aws-owner: can_connect, can_use provider:aws, can_provision aws_region:aws, can_assign_admin tenant:aws → True.
-openfga_rules_architecture.md:  • cloud-denied (authenticated in Dex but no tuples): can_connect libcloud_api:main → False.
-system_implemented.md:  validates the caller's Dex JWT on every API call and then evaluates relationship tuples (can_connect, can_use, can_provision, can_read,
-system_design/redesign1.md:  • can_connect  libcloud_api:main = true (admin ⊆ member of tenant:aws → parent libcloud_api)
-system_design/redesign1.md:  • can_connect  libcloud_api:main = true
-system_design/redesign1.md:  • can_connect  libcloud_api:main = true
-system_design/redesign1.md:  • can_connect  libcloud_api:main = true
-system_design/redesign1.md:  • can_connect  libcloud_api:main = true
-system_design/admin_scripts_internal.md:  4. Three OpenFGA checks via curl + jq: `can_connect`, `can_use` on `provider:aws`, `can_provision` on `aws_region:{binding}`.
-system_design/admin_scripts_internal.md:  4. Three OpenFGA checks: `can_connect`, `can_use` on `provider:nutanix`, `can_provision` on `nutanix_cluster:{binding}`.
-system_design/RBAC_SECURITY_DESIGN.md:  `can_connect`, `can_use`, `can_provision`, `can_read`, `can_manage_*`), and
-system_design/RBAC_SECURITY_DESIGN.md:| **May they use this provider / backend / tenant?** | OpenFGA | `can_connect` / `can_use` / `can_provision` / `can_read` relationship checks |
-system_design/RBAC_SECURITY_DESIGN.md:| — (admit to API) | `can_connect` | `libcloud_api:main` | May call libcloud REST at all |
-system_design/RBAC_SECURITY_DESIGN.md:  CD["user:cloud-denied"] -.->|no tuples| X["denied at can_connect"]
-system_design/RBAC_SECURITY_DESIGN.md:| `cloud-denied` | LLDAP only | *(no tuples)* | `READER_SCOPES` | `["aws","nutanix"]` | Authenticated, but every `can_connect`/`can_use` fails → 403 |
-system_design/RBAC_SECURITY_DESIGN.md:     - `can_connect` on `libcloud_api:main` — 403 for `cloud-denied`.
-system_design/RBAC_SECURITY_DESIGN.md:| Principal | `can_manage_platform` | `can_connect` | `can_use` AWS/NTNX | `can_provision` AWS | `can_read` AWS | `can_provision` NTNX | `can_read` NTNX |
-system_design/RBAC_SECURITY_DESIGN.md:  provider / aws_region / nutanix_cluster; owner/admin/viewer; can_connect /
-system_design/rest_api_security.md:  | OpenFGA | **OIDC via Dex** — validates caller's Dex JWT (`iss=http://dex:5556/dex`, `aud=libcloud-rest`) against JWKS; unauthenticated → 401 | the model relations (`can_connect`/`can_use`/`can_provision`/`can_read`/`can_manage_credentials`) queried via `/check` |
-system_design/rest_api_security.md:  | libcloud REST API | Bearer JWT decode | JWT scope gate → `allowed_providers` → OpenFGA `can_connect`→`can_use`→`can_provision`/`can_read` per request |
-system_design/security_impactful_script.md:    runs openfga-check.sh against a representative tuple (user:superadmin can_connect libcloud_api:main by default) to confirm the REST→OpenFGA authz path
-system_design/ARCHITECTURE.md:| **May they use AWS/Nutanix on this backend?** | OpenFGA | `can_connect`, `can_use`, `can_provision` / `can_read` checks |
-system_design/ARCHITECTURE.md:  CD["user:cloud-denied"] -.->|no tuples| X["denied at can_connect"]
-system_design/ARCHITECTURE.md:| `can_connect` | `libcloud_api:main` | May use libcloud REST at all |
-system_design/ARCHITECTURE.md:| Principal | `can_connect` | `can_use` AWS / NTNX | `can_provision` | `can_read` |
-system_design/ARCHITECTURE.md:\*`cloud-denied` receives read scopes so callers can reach libcloud REST far enough for **OpenFGA** to deny (`can_connect` fails). This demonstrates authz separation from authentication.
-system_design/ARCHITECTURE.md:  Script->>FGA: Check user:aws-admin can_connect libcloud_api:main
-system_design/ARCHITECTURE.md:   - Always: `can_connect` on `libcloud_api:main`
-system_design/IDENTITY.md:user:cloud-denied    (no tuples — denied at can_connect)
-system_design/IDENTITY.md:  C->>F: can_connect / can_use / can_provision
-system_design/lessons_learned.md:  Script->>FGA: POST /stores/{id}/check (can_connect, can_use, can_provision/can_read)
-system_design/lessons_learned.md:  API->>FGA: Policy checks (can_connect, can_use, can_provision, …)
-system_design/lessons_learned.md:| `cloud-admin` | `cloud-admin@libcloud.local` | `user:cloud-admin` | `can_connect`, `can_use`, `can_provision` |
-system_design/lessons_learned.md:| `cloud-readonly` | `cloud-readonly@libcloud.local` | `user:cloud-readonly` | `can_connect`, `can_use`, `can_read` |
-system_design/lessons_learned.md:| `cloud-denied` | `cloud-denied@libcloud.local` | *(no tuples)* | Denied at `can_connect` |
-system_design/lessons_learned.md:# Dex login → FGA can_connect/can_use/can_provision → /v1/auth/me (provisioner scopes) → AWS catalog
-system_design/lessons_learned.md:# Dex login → FGA can_connect/can_use/can_read → /v1/auth/me (reader scopes) → exits before mutating calls
-system_design/lessons_learned.md:fga_check user:cloud-admin can_connect libcloud_api:main
-system_design/error_fix.md:    model ID for the can_connect check on catalog/node endpoints → authorization_model_not_found.
-system_design/error_fix.md:  internal can_connect check (steps 5–6) used the stale model ID → authorization_model_not_found.
-system_design/notes.md:  means the script no longer fails fast on a user who lacks can_connect/can_use/can_provision before hitting the API; the REST API itself should still
-system_design/security_bug.md:It also performs authorization checks through OpenFGA before doing AWS-related actions, including `can_connect`, `can_use`, and either `can_read` or `can_provision` depending on the user role.  Conceptually, that aligns with the design’s split where authentication proves identity and authorization decides what the caller may do. 
-system_design/table.md:  │ cloud-denied   │ cloud-denied@libcloud.local   │ cloud-denied       │ (none — no tuples)  │ —           │ —              │ Denied at can_connect    │
-system_design/table.md:  These are the checks libcloud REST runs on every compute/network route with a connection (can_connect → can_use → can_provision / can_read):
-system_design/table.md:  │ Princip │ can_connect<br>lib │ can_use<br>p │ can_use<br>prov │ can_provision<br>aws_region │ can_read<br>a │ can_provision<br>nut │ can_read<br>nutan │
-system_design/table.md:  • can_connect on libcloud_api:main — tenant member via tenant:default → parent → API
-system_design/table.md:  1. can_connect → libcloud_api:main
-system_design/table.md:  identity.py is a transitional duplicate; the intended end state is OpenFGA-only (can_connect / can_use / can_provision / can_read and eventually
-system_design/table.md:  │ Authorization model (relation definitions: can_connect, can_use, │ /home/ubuntu/libcloud_nutanix/openfga_my/openfga_bootstrap.py — LIBCLOUD_MODEL      │
-system_design/pre_RBAC_SECURITY_DESIGN.md:  │ Verb                                │ Ope
+openapi.json:   why is the AWS or nutanix provider not inside.
+
+check all the yaml files.
+
+test diff version v4.1 v4.2 etc.
+
+test with github samples SDK files.
+
+change the system_validate.sh to only validate the nutanix server, and not stoplight
+
+https://developers.nutanix.com/api-reference?namespace=clustermgmt&version=v4.1
+
+https://developers.nutanix.com/api-reference?namespace=networking&version=v4.1
+
+./libcloud/contrib/docker/nutanix/run_tests.sh unit
+./libcloud/contrib/docker/nutanix/run_tests.sh integration
+./stoplight_mock/myrun.sh 
+
+/home/ubuntu/libcloud_nutanix/test_script/get_admin_vault.sh
+/home/ubuntu/libcloud_nutanix/test_script/set_admin_vault.sh
+/home/ubuntu/libcloud_nutanix/test_script/system_validate.sh
+
+###RESULT: PASS -- every non-allowlisted endpoint returned 401 without a token.
+### negative audit....bypass OPENFGA
+/home/ubuntu/libcloud_nutanix/test_script/test_all_rest_api_authenticated.sh 
 
 
-deduplication
+cd /home/ubuntu/libcloud_nutanix
+
+./identity_service/verify_authz_matrix.sh
+./identity_service/verify_auth.sh
+./identity_service/verify_provision.sh
+
+CLOUD=nutanix ./verify_provision.sh 
+
+rebuild_all.sh
+
+/home/ubuntu/libcloud_nutanix/nutanix_code_samples
+
+./python/v4api_sdk/query_prism_v4.py
+
+/home/ubuntu/libcloud_nutanix/nutanix_code_samples/python/v4api_sdk>python3 query_prism_v4.py 
+
+==============================================================
+  v4.0   emulator https://localhost:9440   (schema mock http://localhost:4010)
+==============================================================
+  /health                                   -> 200
+     vms=0  subnets=1  tasks=52
+  GET /api/vmm/v4.0/ahv/config/vms                     -> 200  (results: 0)
+  GET /api/vmm/v4.0/content/images                     -> 200  (results: 2)
+  GET /api/networking/v4.0/config/subnets              -> 200  (results: 1)
+  GET /api/clustermgmt/v4.0/config/clusters            -> 200  (results: 1)
+  GET /api/prism/v4.0/config/tasks                     -> 200  (results: 31)
+
+==============================================================
+  v4.1   emulator https://localhost:9441   (schema mock http://localhost:4011)
+==============================================================
+  /health                                   -> 200
+     vms=0  subnets=1  tasks=32
+  GET /api/vmm/v4.1/ahv/config/vms                     -> 200  (results: 0)
+  GET /api/vmm/v4.1/content/images                     -> 200  (results: 2)
+  GET /api/networking/v4.1/config/subnets              -> 200  (results: 1)
+  GET /api/clustermgmt/v4.1/config/clusters            -> 200  (results: 1)
+  GET /api/prism/v4.1/config/tasks                     -> 200  (results: 17)
+
+==============================================================
+  v4.2   emulator https://localhost:9442   (schema mock http://localhost:4012)
+==============================================================
+  /health                                   -> 200
+     vms=9  subnets=3  tasks=75
+  GET /api/vmm/v4.2/ahv/config/vms                     -> 200  (results: 9)
+  GET /api/vmm/v4.2/content/images                     -> 200  (results: 2)
+  GET /api/networking/v4.2/config/subnets              -> 200  (results: 3)
+  GET /api/clustermgmt/v4.2/config/clusters            -> 200  (results: 1)
+  GET /api/prism/v4.2/config/tasks                     -> 200  (results: 17)
+
+==============================================================
+  v4.3   emulator https://localhost:9443   (schema mock http://localhost:4013)
+==============================================================
+  /health                                   -> 200
+     vms=0  subnets=1  tasks=32
+  GET /api/vmm/v4.3/ahv/config/vms                     -> 200  (results: 0)
+  GET /api/vmm/v4.3/content/images                     -> 200  (results: 2)
+  GET /api/networking/v4.3/config/subnets              -> 200  (results: 1)
+  GET /api/clustermgmt/v4.3/config/clusters            -> 200  (results: 1)
+  GET /api/prism/v4.3/config/tasks                     -> 200  (results: 52)
+
+===========================================
+
+NUTANIX_PORT=9440  NUTANIX_API_VERSION=v4.0 
+NUTANIX_PORT=9441  NUTANIX_API_VERSION=v4.1
+NUTANIX_PORT=9442  NUTANIX_API_VERSION=v4.2
+NUTANIX_PORT=9443  NUTANIX_API_VERSION=v4.3
 
 
-JWT invalidation:
-:w
+libcloud.rest:
+.venv/bin/python scripts/generate_openapi.py 
+wrote generated/openapi.json
+wrote generated/openapi.yaml
+Libcloud REST API v1.0.0: 51 paths, 33 schemas
+CW/home/ubuntu/libcloud_nutanix/libcloud.rest>
 
-https://stackoverflow.com/questions/21978658/invalidating-json-web-token
-https://www.reddit.com/r/dotnet/comments/1c5r5v6/how_are_jwt_tokens_discarded_by_pros/
-
-https://dev.to/webjose/how-to-invalidate-jwt-tokens-without-collecting-tokens-47pk
-https://medium.com/@dr34mb0y/why-jwts-valid-after-logout-a-pentesters-guide-to-testing-and-securing-tokens-6fb232fe57d9
-https://news.ycombinator.com/item?id=18354141
-https://oneuptime.com/blog/post/2026-02-02-jwt-revocation/view
-https://supertokens.com/blog/revoking-access-with-a-jwt-blacklist
-https://www.descope.com/blog/post/jwt-logout-risks-mitigations
-https://www.reddit.com/r/dotnet/comments/1c5r5v6/how_are_jwt_tokens_discarded_by_pros/Bydefault,statelessJSONWebTokens(JWTs)cannotbeforcefullyinvalidatedfromtheserversidebeforetheirnaturalexpirationdate.BecauseaJWTcontainsallthenecessarysessiondatawithinitself,aresourceserverwillconsideritvalidaslongasitscryptographicsignaturematchesandtheexpirationtime(expclaim)hasnotyetpassed.ToovercomethislimitationandsecurelyinvalidateaJWT(e.g.,duringlogout,passwordchanges,oraccountblocks),developersrelyonthefollowingstrategies:1.Server-SideTokenBlacklisting(RevocationList)Whenauserlogsout,theserverextractstheuniquetokenidentifier(jticlaim)orthetokensignatureandsavesittoafast,in-memorydatabaselikeRedis.Howitworks:ForeveryincomingAPIrequest,theserverqueriesthedatabasetoseeifthetokenisblacklisted.Ifitexistsintheblacklist,therequestisrejected.Optimization:SettheTime-To-Live(TTL)ofthedatabaserecordtomatchtheremaininglifespanoftheJWT.Oncethetokenexpiresnaturally,itautomaticallydropsofftheblacklist,keepingdatastorageminimal.2.TheHybridApproach:Short-LivedAccessTokens&Long-LivedRefreshTokensThisistheindustrystandardforproductionsystems.Insteadofrelyingonasinglelong-lastingtoken,theserverissuestwoseparatetokens:AccessToken:AstatelessJWTwithaveryshortlifespan(e.g.,5to15minutes)usedforrapid,statelessAPIauthorization.RefreshToken:Along-livedtoken(storedsecurelyinadatabase)usedexclusivelytorequestanewaccesstokenwhentheoldoneexpires.Howinvalidationworks:Whenauserlogsout,theserverdeletesorrevokestherefreshtokenfromthedatabase.Evenifanattackerstealstheactiveaccesstoken,itbecomescompletelyuselessafteritsshort15-minutewindowbecausetheycannotrequestanewone.3.SubjectEpochs(TimestampComparison)ThisapproachallowsyoutoinvalidatemultipletokenssimultaneouslywithouttrackingindividualtokenIDs.Howitworks:StoreaninvalidBeforeorpasswordChangedAttimestampinyouruserprofiledatabase.EnsureyourJWTsincludean%22IssuedAt%22(iat)claim.Validation:DuringAPIcalls,theserverchecksiftoken.iat%3Cuser.invalidBefore.Ifthetokenwasissuedbeforethetimestamp(e.g.,beforeapasswordresetorgloballogoutevent),theservertreatsitasinvalid.4.ChangingtheSigningKey(NuclearOption)JWTsignaturesrelyonasecretkeyknownonlytothebackendserver.GlobalRevocation:Ifyouchangeorrotatethemastersigningkeyontheserver,everysingleactiveJWTacrossyourplatforminstantlybecomesinvalidbecausetheirsignatureswillnolongerverify.Per-UserSecrets:Alternatively,youcangenerateauniquedynamicsecretforeachuser(derivedfromamixoftheglobalsecretandahashoftheuser%27spassword).Ifauserresetstheirpassword,theirspecificsecretchanges,invalidatingonlytheirtokens.5.Client-SideDestructionThesimplestformoflogoutisinstructingtheclientapplicationtodestroyitslocalcopyofthetoken.Howitworks:Thefrontenddeletesthetokenfromitsstoragemechanisms,suchaslocalStorage,sessionStorage,oranHTTP-onlycookie.SecurityCaveat:Thisonlystopsthelegitimateuserfromusingthetoken.Ifthetokenwasinterceptedorstolenpriortodeletion,itremainsactiveonthenetworkuntilithitsitsexpirationdeadline.WouldyouliketoseeapracticalcodeexampleofhowtoimplementaRedis-basedtokenblacklistorasubjectepochcheckinaspecificprogramminglanguage?
+stoplight_mock:
+./scripts/test_read.sh --target mock
 
 
+
+
+
+CW/home/ubuntu/libcloud_nutanix/libcloud>./venv/bin/python -m pytest ./libcloud/test/compute/test_nutanix.py -v
+===================================================================== test session starts ======================================================================
+platform linux -- Python 3.12.3, pytest-9.1.0, pluggy-1.6.0 -- /home/ubuntu/libcloud_nutanix/libcloud/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/libcloud_nutanix/libcloud
+configfile: pyproject.toml
+plugins: requests-mock-1.12.1
+collected 26 items                                                                                                                                             
+
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_attach_and_detach_volume PASSED                                                      [  3%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_image_from_vm_disk PASSED                                                     [  7%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_list_and_destroy_volume_snapshot PASSED                                       [ 11%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_node_ssh_key_uses_cloud_init_config PASSED                                    [ 15%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_node_v43_uses_nic_network_info PASSED                                         [ 19%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_node_with_assign_ip_and_data_disks PASSED                                     [ 23%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_node_with_static_ip PASSED                                                    [ 26%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_node_with_task_polling PASSED                                                 [ 30%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_create_volume_with_task_polling PASSED                                               [ 34%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_delete_image PASSED                                                                  [ 38%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_destroy_volume PASSED                                                                [ 42%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_ex_create_image_from_url PASSED                                                      [ 46%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_ex_create_subnet_ip_pool_requires_network PASSED                                     [ 50%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_ex_create_subnet_with_ip_pool PASSED                                                 [ 53%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_ex_get_node PASSED                                                                   [ 57%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_ex_list_subnets PASSED                                                               [ 61%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_get_image PASSED                                                                     [ 65%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_invalid_credentials_response PASSED                                                  [ 69%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_list_images PASSED                                                                   [ 73%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_list_locations PASSED                                                                [ 76%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_list_nodes_maps_states_and_ips PASSED                                                [ 80%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_list_sizes_synthetic PASSED                                                          [ 84%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_list_volumes PASSED                                                                  [ 88%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_provider_registration PASSED                                                         [ 92%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_start_stop_reboot_destroy PASSED                                                     [ 96%]
+libcloud/test/compute/test_nutanix.py::NutanixNodeDriverTests::test_task_wait_failure PASSED     
+
+
+
+/home/ubuntu/libcloud.rest/.venv/bin/python -m pytest -c libcloud.rest/pyproject.toml libcloud.rest/tests -q
+
+
+/home/ubuntu/libcloud_nutanix/libcloud.rest
+
+.venv/bin/python -m pytest tests/ -v
+
+
+====================================================================== test session starts =======================================================================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/ubuntu/libcloud_nutanix/libcloud.rest/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ubuntu/libcloud_nutanix/libcloud.rest
+plugins: anyio-4.14.0, requests-mock-1.12.1
+collected 37 items                                                                                                                                               
+
+tests/test_authorization.py::test_check_scopes_passes_with_granted_scope PASSED                                                                            [  2%]
+tests/test_authorization.py::test_check_scopes_rejects_missing_scope PASSED                                                                                [  5%]
+tests/test_authorization.py::test_list_locations_authorized PASSED                                                                                         [  8%]
+tests/test_authorization.py::test_list_locations_compute_read_alias_accepted PASSED                                                                        [ 10%]
+tests/test_authorization.py::test_list_locations_rejected_without_scope PASSED                                                                             [ 13%]
+tests/test_authorization.py::test_missing_token_is_401 PASSED                                                                                              [ 16%]
+tests/test_authorization.py::test_missing_connection_is_400 PASSED                                                                                         [ 18%]
+tests/test_authorization.py::test_up
+
+
+
+
+
+=========
+
+
+cd stoplight_mock
+
+# Host-side driver: the emulator (Prism Central stand-in) is published on this
+# host at localhost:9442. Inside Docker the same host is reached as
+# host.docker.internal (my.env), but that alias only resolves inside containers
+# (Docker's host-gateway) — NOT on the host — so pin host-side runs to loopback.
+export NUTANIX_HOST="${NUTANIX_HOST:-localhost}"
+
+  ./scripts/test_read.sh --target real            # read-only enumeration vs localhost
+  ./scripts/test_read.sh --target real --version v4.2 --verbose
+  #./scripts/test.sh --target mock                 # original mock-stack behavior
+
+exit
+
+  ./scripts/test_read.sh  --version v4.2                      # v4.0 read-only, quiet
+  ./scripts/test_write.sh --version v4.2 --verbose
+  ./scripts/test.sh -V 4.2                      # both read + write
+
+exit
+
+ docker run --rm \
+    -v $(pwd):/work \
+    -v $(readlink -f mock/v40):/work/mock/v40:ro \
+    -w /work \
+    node:20-alpine \
+    sh -c 'npm install --no-save js-yaml && node scripts/merge-specs.js'
+
+  docker compose restart prism
 

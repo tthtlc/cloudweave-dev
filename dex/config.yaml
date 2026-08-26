@@ -65,14 +65,14 @@ staticClients:
       # the dashboard is reached.
       - http://localhost:5050/callback
       - http://127.0.0.1:5050/callback
-      - http://cwcloudweave.xyz:5050/callback
+      - http://rocky96:5050/callback
 
   - id: libcloud-portal
     name: libcloud Role Portal
-    secret: 34mvbAqPZe0e7XOO3Q9QXkb1tbVamSMzEDZdX_YwKMM
+    secret: bY3C0oQpwvIiB-WECc6jPz5pXT9g-5FEKrU0lPO7jMg
     redirectURIs:
-      - http://cwcloudweave.xyz:3000/auth/callback
       - http://localhost:3000/auth/callback
+      - http://rocky96:3000/auth/callback
 
 
 connectors:

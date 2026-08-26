@@ -9,7 +9,14 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PORT = 9440;
 const PRISM_URL = process.env.PRISM_URL || 'http://prism:4010';
-const API_VERSIONS = ['v4.0.a1', 'v4.0', 'v4.0/ahv'];
+// API version this emulator front-ends. Defaults to v4.0, which preserves the
+// legacy path variants below. For v4.1/v4.2/v4.3 the Nutanix paths collapse to
+// a single /api/{ns}/v4.x/... form, and AHV VMs live under
+// /api/vmm/v4.x/ahv/config/vms (see vmListPaths below).
+const API_VERSION = process.env.API_VERSION || 'v4.0';
+const API_VERSIONS = API_VERSION === 'v4.0'
+  ? ['v4.0.a1', 'v4.0', 'v4.0/ahv']
+  : [API_VERSION];
 const TASK_TRANSITION_MS = 200;
 
 // ─── Helpers: camelCase ↔ snake_case ────────────────────────────────────────
@@ -150,41 +157,51 @@ function buildVmFromCreate(snakeBody, camelBody) {
   const b = { ...snakeBody, ...camelBody }; // merge both formats
   const extId = uuidv4();
 
-  const nics = (b.nics || []).map((n) => ({
-    ext_id: n.ext_id || uuidv4(),
-    backing_info: {
-      is_connected: n.backing_info?.is_connected ?? false,
-      mac_address: n.backing_info?.mac_address || randomMAC(),
-      model: n.backing_info?.model || 'VIRTIO',
-      num_queues: n.backing_info?.num_queues ?? 1,
-    },
-    network_info: {
-      nic_type: n.network_info?.nic_type || 'NORMAL_NIC',
-      should_allow_unknown_macs: n.network_info?.should_allow_unknown_macs ?? true,
-      subnet: {
-        ext_id: n.network_info?.subnet?.ext_id || SEED_SUBNET_ID,
+  const nics = (b.nics || []).map((n) => {
+    // v4.3 renames network_info -> nic_network_info; accept both.
+    const ni = n.network_info || n.nic_network_info || {};
+    return {
+      ext_id: n.ext_id || uuidv4(),
+      backing_info: {
+        is_connected: n.backing_info?.is_connected ?? false,
+        mac_address: n.backing_info?.mac_address || randomMAC(),
+        model: n.backing_info?.model || 'VIRTIO',
+        num_queues: n.backing_info?.num_queues ?? 1,
       },
-    },
-  }));
-
-  const disks = (b.disks || []).map((d) => ({
-    ext_id: d.ext_id || uuidv4(),
-    disk_address: {
-      bus_type: d.disk_address?.bus_type || 'SCSI',
-      index: d.disk_address?.index ?? 0,
-    },
-    backing_info: {
-      $objectType: 'vmm.v4.ahv.config.VmDisk',
-      ...V4_RESERVED,
-      vm_disk: {
-        disk_ext_id: d.backing_info?.vm_disk?.disk_ext_id || uuidv4(),
-        disk_size_bytes: d.backing_info?.vm_disk?.disk_size_bytes || 10737418240,
-        storage_container: {
-          ext_id: d.backing_info?.vm_disk?.storage_container?.ext_id || SEED_STORAGE_CONTAINER_ID,
+      network_info: {
+        nic_type: ni.nic_type || 'NORMAL_NIC',
+        should_allow_unknown_macs: ni.should_allow_unknown_macs ?? true,
+        subnet: {
+          ext_id: ni.subnet?.ext_id || SEED_SUBNET_ID,
         },
       },
-    },
-  }));
+    };
+  });
+
+  const disks = (b.disks || []).map((d) => {
+    const bi = d.backing_info || {};
+    // v4 disk backing is flat (VmDisk fields directly on backingInfo);
+    // accept the legacy vm_disk wrapper as a fallback for older clients.
+    const legacy = bi.vm_disk || {};
+    const dataSource = bi.data_source || legacy.data_source;
+    return {
+      ext_id: d.ext_id || uuidv4(),
+      disk_address: {
+        bus_type: d.disk_address?.bus_type || 'SCSI',
+        index: d.disk_address?.index ?? 0,
+      },
+      backing_info: {
+        $objectType: 'vmm.v4.ahv.config.VmDisk',
+        ...V4_RESERVED,
+        disk_ext_id: bi.disk_ext_id || legacy.disk_ext_id || uuidv4(),
+        disk_size_bytes: bi.disk_size_bytes || legacy.disk_size_bytes || 10737418240,
+        ...(dataSource ? { data_source: dataSource } : {}),
+        storage_container: {
+          ext_id: bi.storage_container?.ext_id || legacy.storage_container?.ext_id || SEED_STORAGE_CONTAINER_ID,
+        },
+      },
+    };
+  });
 
   return {
     ext_id: extId,
@@ -293,7 +310,18 @@ app.use(express.json({ limit: '2mb' }));
 
 // Request logging
 app.use((req, _res, next) => {
-  console.log(`[${nowISO()}] ${req.method} ${req.path}`);
+  // Log how each request authenticated so we can observe cookie reuse vs
+  // re-sent Basic auth. Never log the credential itself.
+  const auth = req.headers.authorization;
+  const cookie = req.headers.cookie;
+  let authMode = 'none';
+  if (auth) {
+    authMode = auth.startsWith('Basic ') ? 'Basic <masked>' : 'auth-header';
+  } else if (cookie) {
+    const firstName = cookie.split(';')[0].split('=')[0];
+    authMode = `cookie(${firstName})`;
+  }
+  console.log(`[${nowISO()}] ${req.method} ${req.path}  [auth: ${authMode}]`);
   if (req.body && Object.keys(req.body).length > 0) {
     const preview = JSON.stringify(req.body);
     console.log('  body:', preview.length > 400 ? preview.substring(0, 400) + '...' : preview);
@@ -316,6 +344,26 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// ─── Session login (cookie auth) ─────────────────────────────────────────────
+// Emulates a Prism Central API-gateway session endpoint. A Basic-auth POST
+// mints a session cookie (NTNX_IAM_SESSION) so the libcloud driver can switch
+// from per-request Basic auth to cookie reuse after its first login.
+const SESSION_COOKIE_NAME = 'NTNX_IAM_SESSION';
+const sessions = new Map(); // token -> { user, created }
+
+app.post('/api/nutanix/v1/session', (req, res) => {
+  const auth = req.headers.authorization || '';
+  let user = 'anonymous';
+  if (auth.startsWith('Basic ')) {
+    const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf-8');
+    user = decoded.split(':')[0] || 'anonymous';
+  }
+  const token = uuidv4();
+  sessions.set(token, { user, created: nowISO() });
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${token}; Path=/; HttpOnly`);
+  res.json({ data: { user }, metadata: { status: 'SESSION_CREATED' } });
+});
+
 // ─── Path builders ───────────────────────────────────────────────────────────
 // The Nutanix provider uses /api/vmm/v4.0/ahv/config/vms (ahv, not a1).
 // Handle all known variants so the emulator works regardless of SDK version.
@@ -324,7 +372,11 @@ function pathVariants(ns, category, resource) {
 }
 
 // ─── VM CRUD ─────────────────────────────────────────────────────────────────
-const vmListPaths = pathVariants('vmm', 'config', 'vms');
+// v4.0 serves VMs on several legacy path variants (a1 / bare / ahv); v4.1+ uses
+// the canonical AHV path /api/vmm/v4.x/ahv/config/vms.
+const vmListPaths = API_VERSION === 'v4.0'
+  ? pathVariants('vmm', 'config', 'vms')
+  : [`/api/vmm/${API_VERSION}/ahv/config/vms`];
 const vmDetailPaths = vmListPaths.map((p) => p + '/:extId');
 
 // CREATE
@@ -660,7 +712,7 @@ app.delete(fipDetailPaths, (req, res) => {
 });
 
 // ─── Network Security Policies ───────────────────────────────────────────────
-const nspPaths = pathVariants('networking', 'config', 'network-security-policies');
+const nspPaths = pathVariants('microseg', 'config', 'policies');
 const nspDetailPaths = nspPaths.map((p) => p + '/:extId');
 
 app.get(nspPaths, (req, res) => {
@@ -717,7 +769,7 @@ app.delete(nspDetailPaths, (req, res) => {
 
 // ─── Images (legacy config path + v4 content path) ───────────────────────────
 const imagePaths = pathVariants('vmm', 'config', 'images')
-  .concat(['/api/vmm/v4.0/content/images']);
+  .concat([`/api/vmm/${API_VERSION}/content/images`]);
 const imageDetailPaths = imagePaths.map((p) => p + '/:extId');
 
 function imageSummary(img) {
@@ -767,7 +819,7 @@ app.get(imageDetailPaths, (req, res) => {
   res.json(dataEnvelope(imageSummary(img)));
 });
 
-app.post(['/api/vmm/v4.0/content/images'], (req, res) => {
+app.post([`/api/vmm/${API_VERSION}/content/images`], (req, res) => {
   const body = deepConvert(req.body, toSnakeCase);
   const source = body.source || {};
 
@@ -777,10 +829,11 @@ app.post(['/api/vmm/v4.0/content/images'], (req, res) => {
     for (const vm of vmStore.values()) {
       for (const disk of vm.disks || []) {
         const backing = disk.backing_info || {};
-        const vmDisk = backing.vm_disk || {};
+        const legacy = backing.vm_disk || {};
         if (
           disk.ext_id === diskExtId
-          || vmDisk.disk_ext_id === diskExtId
+          || backing.disk_ext_id === diskExtId
+          || legacy.disk_ext_id === diskExtId
         ) {
           found = true;
           break;
@@ -805,7 +858,7 @@ app.post(['/api/vmm/v4.0/content/images'], (req, res) => {
   res.status(202).json(taskRefEnvelope(task.ext_id));
 });
 
-app.delete(['/api/vmm/v4.0/content/images/:extId'], (req, res) => {
+app.delete([`/api/vmm/${API_VERSION}/content/images/:extId`], (req, res) => {
   if (!images.has(req.params.extId)) {
     return res.status(404).json({ message: `Image ${req.params.extId} not found` });
   }
@@ -819,7 +872,8 @@ app.delete(['/api/vmm/v4.0/content/images/:extId'], (req, res) => {
 });
 
 // ─── Storage containers ──────────────────────────────────────────────────────
-const scPaths = pathVariants('vmm', 'config', 'storage-containers')
+const scPaths = pathVariants('clustermgmt', 'config', 'storage-containers')
+  .concat(pathVariants('vmm', 'config', 'storage-containers'))
   .concat(pathVariants('cluster-mgmt', 'config', 'storage-containers'));
 const scDetailPaths = scPaths.map((p) => p + '/:extId');
 
@@ -833,7 +887,7 @@ app.get(scDetailPaths, (req, res) => {
 });
 
 // ─── Volume groups (volumes v4) ──────────────────────────────────────────────
-const vgListPaths = ['/api/volumes/v4.0/config/volume-groups'];
+const vgListPaths = [`/api/volumes/${API_VERSION}/config/volume-groups`];
 const vgDetailPaths = vgListPaths.map((p) => p + '/:extId');
 const vgDiskPaths = vgListPaths.map((p) => p + '/:volumeGroupExtId/disks');
 const vgAttachmentPaths = vgListPaths.map((p) => p + '/:volumeGroupExtId/vm-attachments');
@@ -986,7 +1040,7 @@ app.post(vgDetachVmPaths, (req, res) => {
 });
 
 // ─── Recovery points (dataprotection v4) ─────────────────────────────────────
-const rpListPaths = ['/api/dataprotection/v4.0/config/recovery-points'];
+const rpListPaths = [`/api/dataprotection/${API_VERSION}/config/recovery-points`];
 const rpDetailPaths = rpListPaths.map((p) => p + '/:extId');
 
 function recoveryPointSummary(rp) {

@@ -170,6 +170,35 @@ def _build_auth(request: NodeCreateRequest):
     return None
 
 
+def _enrich_host_bmc(
+    driver, host: dict[str, Any], cluster_ext_id: str | None = None
+) -> dict[str, Any]:
+    """Best-effort attach BMC IP/status to a host detail dict (Nutanix).
+
+    Mirrors the get_host_details sample's per-host stats fetch: after listing
+    hosts, each host's BMC details are fetched individually via
+    ``ex_get_host_bmc_info``. Any failure (e.g. emulator without bmc-info, or a
+    host missing its cluster reference) degrades to leaving the fields unset
+    rather than failing the whole listing.
+    """
+    host_ext_id = host.get("id")
+    resolved_cluster = host.get("cluster_ext_id") or cluster_ext_id
+    if (
+        not host_ext_id
+        or not resolved_cluster
+        or not hasattr(driver, "ex_get_host_bmc_info")
+    ):
+        return host
+    try:
+        bmc = driver.ex_get_host_bmc_info(host_ext_id, resolved_cluster)
+    except Exception:
+        return host
+    if bmc:
+        host["bmc_ip"] = bmc.get("bmc_ip")
+        host["bmc_status"] = bmc.get("bmc_status")
+    return host
+
+
 class ComputeService:
     def list_nodes(self, connection: ProviderConnection, node_id: str | None = None) -> list[NodeResponse]:
         driver = build_driver(connection)
@@ -439,6 +468,89 @@ class ComputeService:
             )
             for loc in driver.list_locations()
         ]
+
+    def list_hosts(
+        self, connection: ProviderConnection, cluster_ext_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """List physical hosts (Nutanix) with full hardware details."""
+        driver = build_driver(connection)
+        if not hasattr(driver, "ex_list_hosts"):
+            raise APIError(
+                code="provider_capability_unsupported",
+                message="Host listing not supported",
+                status_code=400,
+            )
+        try:
+            hosts = driver.ex_list_hosts(cluster_ext_id=cluster_ext_id)
+            return [_enrich_host_bmc(driver, h, cluster_ext_id) for h in hosts]
+        except APIError:
+            raise
+        except Exception as exc:
+            raise APIError(
+                code="provider_operation_failed",
+                message="Failed to list hosts",
+                status_code=502,
+                details={"reason": str(exc)},
+            ) from exc
+
+    def get_host(
+        self,
+        connection: ProviderConnection,
+        host_id: str,
+        cluster_ext_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get the details of a single physical host (Nutanix)."""
+        driver = build_driver(connection)
+        if not hasattr(driver, "ex_get_host"):
+            raise APIError(
+                code="provider_capability_unsupported",
+                message="Host details not supported",
+                status_code=400,
+            )
+        try:
+            host = driver.ex_get_host(host_id, cluster_ext_id=cluster_ext_id)
+            return _enrich_host_bmc(driver, host, cluster_ext_id)
+        except APIError:
+            raise
+        except Exception as exc:
+            raise APIError(
+                code="provider_operation_failed",
+                message="Failed to get host",
+                status_code=502,
+                details={"reason": str(exc)},
+            ) from exc
+
+    def get_host_bmc_info(
+        self,
+        connection: ProviderConnection,
+        host_id: str,
+        cluster_ext_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Get BMC details (IP + credential status) for a single host (Nutanix)."""
+        driver = build_driver(connection)
+        if not hasattr(driver, "ex_get_host_bmc_info"):
+            raise APIError(
+                code="provider_capability_unsupported",
+                message="Host BMC info not supported",
+                status_code=400,
+            )
+        if not cluster_ext_id:
+            raise APIError(
+                code="validation_error",
+                message="cluster_ext_id is required for host BMC info",
+                status_code=400,
+            )
+        try:
+            return driver.ex_get_host_bmc_info(host_id, cluster_ext_id)
+        except APIError:
+            raise
+        except Exception as exc:
+            raise APIError(
+                code="provider_operation_failed",
+                message="Failed to get host BMC info",
+                status_code=502,
+                details={"reason": str(exc)},
+            ) from exc
 
     def create_volume(self, connection: ProviderConnection, request: VolumeCreateRequest) -> VolumeResponse:
         driver = build_driver(connection)

@@ -376,6 +376,28 @@ def create_app() -> FastAPI:
             raise APIError("authz_forbidden", f"Cannot view {cloud} resources", 403)
         return proxy.list_nodes(cloud)
 
+    @app.get("/api/hosts/{cloud}")
+    def hosts_by_cloud(cloud: str, req: Request):
+        # Physical host details for the cluster's hosts (Nutanix only). Read
+        # scope — same can_view gate as /api/resources/{cloud}; the proxy fans
+        # out to /v1/compute/hosts, which replays the driver's ex_list_hosts
+        # (clustermgmt v4 Host API) with full CPU/memory/hypervisor/serial
+        # detail. AWS has no equivalent physical-host list, so it is rejected
+        # here rather than delegated to the REST layer.
+        _require_cloud(cloud)
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.can_view(principal, cloud):
+            raise APIError("authz_forbidden", f"Cannot view {cloud} hosts", 403)
+        if cloud != "nutanix":
+            raise APIError(
+                "not_supported",
+                "Host details are only available for Nutanix",
+                400,
+                {"cloud": cloud},
+            )
+        return proxy.list_hosts(cloud)
+
     @app.post("/api/provision/{cloud}")
     def provision_by_cloud(cloud: str, body: ProvisionRequest, req: Request):
         _require_cloud(cloud)

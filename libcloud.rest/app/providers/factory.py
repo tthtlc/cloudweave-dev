@@ -2,19 +2,48 @@ from typing import Any
 
 from libcloud.compute.base import NodeDriver
 
+from app.config.settings import get_settings
 from app.connections.credentials import effective_credentials
 from app.connections.models import ConnectionCapabilities, ProviderConnection, connection_target
+from app.connections.session_cache import get_session_cookie, put_session_cookie
 from app.providers.aws import create_aws_driver
 from app.providers.nutanix import create_nutanix_driver
 
 
 def build_driver(connection: ProviderConnection) -> NodeDriver:
+    if connection.provider == "nutanix":
+        return _build_nutanix_driver(connection)
+
     creds = effective_credentials(connection)
     if connection.provider == "aws":
         return create_aws_driver(creds.key, creds.secret, connection.config)
-    if connection.provider == "nutanix":
-        return create_nutanix_driver(creds.key, creds.secret, connection.config)
     raise ValueError(f"Unsupported provider: {connection.provider}")
+
+
+def _build_nutanix_driver(connection: ProviderConnection) -> NodeDriver:
+    config = connection.config
+    target = connection_target(connection)
+
+    # Reuse an already-established session cookie (client-supplied or cached) so
+    # we don't need to fetch the backend credential from Vault on every call.
+    session_cookie = config.session_cookie or get_session_cookie(target)
+    if session_cookie:
+        return create_nutanix_driver("", "", config, session_cookie=session_cookie)
+
+    # First auth for this target: resolve credentials (Vault), then perform the
+    # one-time Basic-auth login to derive a session cookie and cache it.
+    creds = effective_credentials(connection)
+    login_path = config.login_path or get_settings().nutanix_login_path
+    driver = create_nutanix_driver(creds.key, creds.secret, config, login_path=login_path)
+
+    if login_path:
+        # Derive the cookie eagerly (no-op if the endpoint issued none, e.g.
+        # real Prism Central — the driver then falls back to Basic auth).
+        driver.connection._get_auth_token()
+        cookie = driver.connection.session_cookie
+        if cookie:
+            put_session_cookie(target, cookie)
+    return driver
 
 
 def probe_capabilities(driver: NodeDriver) -> ConnectionCapabilities:

@@ -13,12 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import base64
 import json
 import os
 import unittest
 from unittest.mock import MagicMock
 
-from libcloud.common.nutanix import NutanixResponse
+from libcloud.common.nutanix import NutanixConnection, NutanixResponse
 from libcloud.common.types import InvalidCredsError, LibcloudError
 from libcloud.compute.providers import Provider, get_driver
 from libcloud.compute.types import NodeState, StorageVolumeState, VolumeSnapshotState
@@ -158,6 +159,45 @@ class NutanixNodeDriverTests(LibcloudTestCase):
         subnets = self.driver.ex_list_subnets()
         self.assertEqual(subnets[0]["name"], "vlan-100")
 
+    def test_ex_list_hosts(self):
+        self.driver.connection._paged_request.return_value = load_fixture("list_hosts.json")["data"]
+        hosts = self.driver.ex_list_hosts()
+        self.assertEqual(len(hosts), 2)
+        self.assertEqual(hosts[0]["name"], "NTNX-POC-A")
+        self.assertEqual(hosts[0]["cpu_model"], "Intel(R) Xeon(R) CPU E5-2640 v4 @ 2.40GHz")
+        self.assertEqual(hosts[0]["num_cpu_threads"], 32)
+        self.assertEqual(hosts[0]["memory_gib"], 128)
+        self.assertEqual(hosts[0]["hypervisor"], "AHV 10.0")
+        self.assertEqual(hosts[0]["cluster_name"], "NTNX-POC")
+
+    def test_ex_get_host(self):
+        self.mock_request.return_value = MockNutanixResponse(load_fixture("get_host.json"))
+        host = self.driver.ex_get_host("host-00000000-0000-0000-0000-000000000001")
+        self.assertEqual(host["id"], "host-00000000-0000-0000-0000-000000000001")
+        self.assertEqual(host["name"], "NTNX-POC-A")
+        self.assertEqual(host["block_serial"], "19FM6F160445")
+        self.assertEqual(host["block_model"], "NX-3060-G5")
+        self.assertEqual(host["number_of_vms"], 4)
+
+    def test_ex_get_host_bmc_info(self):
+        self.mock_request.return_value = MockNutanixResponse(load_fixture("get_host_bmc_info.json"))
+        bmc = self.driver.ex_get_host_bmc_info(
+            "host-00000000-0000-0000-0000-000000000001",
+            cluster_ext_id="00061ebf-cluster-1",
+        )
+        self.assertEqual(bmc["bmc_ip"], "192.168.1.101")
+        self.assertEqual(bmc["bmc_status"], "VALID")
+        # Credentials must never be exposed.
+        self.assertNotIn("credential", bmc)
+        self.assertNotIn("password", bmc)
+
+    def test_ex_get_host_bmc_info_requires_cluster(self):
+        self.assertRaises(
+            LibcloudError,
+            self.driver.ex_get_host_bmc_info,
+            "host-00000000-0000-0000-0000-000000000001",
+        )
+
     def test_ex_get_node(self):
         self.mock_request.return_value = MockNutanixResponse(load_fixture("get_vm.json"))
         node = self.driver.ex_get_node("vm-11111111-1111-1111-1111-111111111111")
@@ -213,10 +253,18 @@ class NutanixNodeDriverTests(LibcloudTestCase):
 
         disks = payload["disks"]
         self.assertEqual(len(disks), 2)
+
+        boot_disk = disks[0]
+        self.assertNotIn("vmDisk", boot_disk["backingInfo"])
+        self.assertEqual(
+            boot_disk["backingInfo"]["dataSource"]["reference"]["imageExtId"],
+            image.id,
+        )
+
         data_disk = disks[1]
-        self.assertEqual(data_disk["backingInfo"]["vmDisk"]["diskSizeBytes"], 20480 * 1024 * 1024)
+        self.assertEqual(data_disk["backingInfo"]["diskSizeBytes"], 20480 * 1024 * 1024)
         self.assertEqual(data_disk["diskAddress"]["busType"], "SCSI")
-        self.assertNotIn("dataSource", data_disk["backingInfo"]["vmDisk"])
+        self.assertNotIn("dataSource", data_disk["backingInfo"])
 
     def test_create_node_with_static_ip(self):
         create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
@@ -243,6 +291,73 @@ class NutanixNodeDriverTests(LibcloudTestCase):
         self.assertTrue(ipv4_config["shouldAssignIp"])
         self.assertEqual(ipv4_config["ipAddress"]["value"], "10.1.200.10")
         self.assertEqual(ipv4_config["ipAddress"]["prefixLength"], 24)
+
+    def test_create_node_ssh_key_uses_cloud_init_config(self):
+        create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
+        get_vm_response = MockNutanixResponse(load_fixture("get_vm.json"))
+        self.mock_request.side_effect = [create_response, get_vm_response]
+
+        size = self.driver.list_sizes()[0]
+        image = self.driver._to_image(load_fixture("list_images.json")["data"][0])
+        location = self.driver._to_location(load_fixture("list_clusters.json")["data"][0])
+
+        class FakeAuth(object):
+            pubkey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ"
+
+        self.driver.create_node(
+            name="keyed-vm",
+            size=size,
+            image=image,
+            location=location,
+            ex_subnet="subnet-11111111-1111-1111-1111-111111111111",
+            auth=FakeAuth(),
+        )
+
+        _, kwargs = self.mock_request.call_args_list[0]
+        payload = json.loads(kwargs["data"])
+        guest_customization = payload["guestCustomization"]
+        self.assertIn("config", guest_customization)
+        self.assertNotIn("cloudInit", guest_customization)
+        cloud_init_script = guest_customization["config"]["cloudInitScript"]
+        decoded = base64.b64decode(cloud_init_script["value"]).decode("utf-8")
+        self.assertIn("ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ", decoded)
+        self.assertEqual(
+            guest_customization["config"]["datasourceType"],
+            "CONFIG_DRIVE_V2",
+        )
+        # v4.0 keeps the non-deprecated networkInfo field.
+        self.assertIn("networkInfo", payload["nics"][0])
+        self.assertNotIn("nicNetworkInfo", payload["nics"][0])
+
+    def test_create_node_v43_uses_nic_network_info(self):
+        self.driver._api_version = "v4.3"
+        self.driver.connection.api_version = "v4.3"
+
+        create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
+        get_vm_response = MockNutanixResponse(load_fixture("get_vm.json"))
+        self.mock_request.side_effect = [create_response, get_vm_response]
+
+        size = self.driver.list_sizes()[0]
+        image = self.driver._to_image(load_fixture("list_images.json")["data"][0])
+        location = self.driver._to_location(load_fixture("list_clusters.json")["data"][0])
+
+        self.driver.create_node(
+            name="v43-vm",
+            size=size,
+            image=image,
+            location=location,
+            ex_subnet="subnet-11111111-1111-1111-1111-111111111111",
+        )
+
+        _, kwargs = self.mock_request.call_args_list[0]
+        payload = json.loads(kwargs["data"])
+        nic = payload["nics"][0]
+        self.assertIn("nicNetworkInfo", nic)
+        self.assertNotIn("networkInfo", nic)
+        self.assertEqual(
+            nic["nicNetworkInfo"]["$objectType"],
+            "vmm.v4.ahv.config.VirtualEthernetNicNetworkInfo",
+        )
 
     def test_ex_create_subnet_with_ip_pool(self):
         create_response = MockNutanixResponse(load_fixture("create_vm_task.json"), status=202)
@@ -425,6 +540,139 @@ class NutanixNodeDriverTests(LibcloudTestCase):
         self.assertEqual(snapshots[0].name, "snapshot-data-volume-01")
 
         self.assertTrue(self.driver.destroy_volume_snapshot(snapshot))
+
+
+class NutanixSessionAuthTests(LibcloudTestCase):
+    """Cookie-based session auth: Basic-auth login -> reuse the session cookie."""
+
+    def test_default_uses_per_request_basic_auth(self):
+        driver = NutanixNodeDriver(
+            key="admin",
+            secret="password",
+            host="prism.example.com",
+            port=9440,
+            verify_ssl_cert=False,
+        )
+        self.assertIsNone(driver.connection.login_path)
+        self.assertIsNone(driver.connection.session_cookie)
+
+        headers = driver.connection.add_default_headers({})
+        self.assertTrue(headers["Authorization"].startswith("Basic "))
+        self.assertNotIn("Cookie", headers)
+
+    def test_session_cookie_kwarg_injects_cookie_header(self):
+        driver = NutanixNodeDriver(
+            key="admin",
+            secret="password",
+            host="prism.example.com",
+            port=9440,
+            verify_ssl_cert=False,
+            session_cookie="NTNX_IAM_SESSION=abc123",
+        )
+        self.assertEqual(driver.connection.session_cookie, "NTNX_IAM_SESSION=abc123")
+
+        headers = driver.connection.add_default_headers({})
+        self.assertEqual(headers["Cookie"], "NTNX_IAM_SESSION=abc123")
+        self.assertNotIn("Authorization", headers)
+
+    def test_login_path_derives_cookie_from_set_cookie(self):
+        connection = NutanixConnection(
+            "admin",
+            "password",
+            host="prism.example.com",
+            port=9440,
+            login_path="/api/nutanix/v1/session",
+        )
+        fake_response = MagicMock()
+        fake_response.headers = {"set-cookie": "NTNX_IAM_SESSION=xyz789; Path=/; HttpOnly"}
+        low_level = MagicMock()
+        low_level.getresponse.return_value = fake_response
+        connection.connection = low_level
+
+        connection._get_auth_token()
+
+        # Login was a POST to login_path carrying the Basic auth header.
+        args, kwargs = low_level.request.call_args
+        self.assertEqual(kwargs["method"], "POST")
+        self.assertEqual(kwargs["url"], "/api/nutanix/v1/session")
+        self.assertTrue(kwargs["headers"]["Authorization"].startswith("Basic "))
+
+        self.assertEqual(
+            connection.session_cookie,
+            "NTNX_IAM_SESSION=xyz789; Path=/; HttpOnly",
+        )
+
+        # Subsequent requests now reuse the cookie instead of Basic auth.
+        headers = connection.add_default_headers({})
+        self.assertEqual(headers["Cookie"], "NTNX_IAM_SESSION=xyz789; Path=/; HttpOnly")
+        self.assertNotIn("Authorization", headers)
+
+    def test_login_path_rejected_credentials_raises(self):
+        connection = NutanixConnection(
+            "admin",
+            "password",
+            host="prism.example.com",
+            port=9440,
+            login_path="/api/nutanix/v1/session",
+        )
+        fake_response = MagicMock()
+        fake_response.headers = {}
+        fake_response.status_code = 401
+        low_level = MagicMock()
+        low_level.getresponse.return_value = fake_response
+        connection.connection = low_level
+        connection.driver = MagicMock()
+
+        self.assertRaises(InvalidCredsError, connection._get_auth_token)
+        self.assertIsNone(connection.session_cookie)
+
+    def test_login_path_missing_set_cookie_falls_back_to_basic_auth(self):
+        connection = NutanixConnection(
+            "admin",
+            "password",
+            host="prism.example.com",
+            port=9440,
+            login_path="/api/nutanix/v1/session",
+        )
+        fake_response = MagicMock()
+        fake_response.headers = {}
+        fake_response.status_code = 404
+        low_level = MagicMock()
+        low_level.getresponse.return_value = fake_response
+        connection.connection = low_level
+        connection.driver = MagicMock()
+
+        # No cookie and a non-auth failure -> cookie flow disabled, no exception.
+        connection._get_auth_token()
+        self.assertIsNone(connection.session_cookie)
+        self.assertIsNone(connection.login_path)
+
+        # Subsequent headers fall back to Basic auth, not a cookie.
+        headers = connection.add_default_headers({})
+        self.assertTrue(headers["Authorization"].startswith("Basic "))
+        self.assertNotIn("Cookie", headers)
+
+    def test_driver_ex_authenticate_returns_cookie(self):
+        driver = NutanixNodeDriver(
+            key="admin",
+            secret="password",
+            host="prism.example.com",
+            port=9440,
+            verify_ssl_cert=False,
+            login_path="/api/nutanix/v1/session",
+        )
+        fake_response = MagicMock()
+        fake_response.headers = {"set-cookie": "NTNX_IAM_SESSION=derived"}
+        low_level = MagicMock()
+        low_level.getresponse.return_value = fake_response
+        driver.connection.connection = low_level
+
+        cookie = driver.ex_authenticate()
+        self.assertEqual(cookie, "NTNX_IAM_SESSION=derived")
+
+        # Calling again is a cached no-op (no second login request).
+        self.assertEqual(driver.ex_authenticate(), "NTNX_IAM_SESSION=derived")
+        low_level.request.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import {
   MOCK_USERS,
   MOCK_AWS_RESOURCES,
   MOCK_NUTANIX_RESOURCES,
+  MOCK_NUTANIX_HOSTS,
   MOCK_PROVISION_RESULT,
   MOCK_PROVISION_PRIVATE_RESULT,
   MOCK_DEPROVISION_RESULT,
@@ -377,6 +378,16 @@ export const mockApi = {
     if (cloud === "aws") return this.awsResources();
     if (cloud === "nutanix") return this.nutanixResources();
     throw new Error(`404 unknown cloud ${cloud}`);
+  },
+
+  // Physical host details (Nutanix only). Mirrors GET /api/hosts/{cloud} ->
+  // /v1/compute/hosts -> driver ex_list_hosts. AWS has no equivalent list.
+  async hosts(cloud) {
+    await delay();
+    if (cloud === "nutanix") {
+      return { cluster: "nutanix", hosts: MOCK_NUTANIX_HOSTS.map((h) => ({ ...h })) };
+    }
+    throw new Error(`400 host details are only available for Nutanix (got ${cloud})`);
   },
 
   async provisionAws(payload) {

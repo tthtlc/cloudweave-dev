@@ -623,6 +623,40 @@ sync_libcloud_rest_vault
 echo "Recreating portal container ..."
 docker compose -f "${REPO_ROOT}/server/docker-compose.yml" up -d --force-recreate portal
 
+# ---------------------------------------------------------------------------
+# 10. Host-side Python venv for libcloud.rest (best-effort, non-fatal).
+#     test_script/test_all_rest_api_authenticated.py imports the FastAPI app
+#     in-process, so the auth-gate audit needs the app's deps + httpx
+#     (fastapi.testclient) + the vendored libcloud on the HOST — not just
+#     inside the libcloud-rest-api container. The venv is normally PREBUILT on
+#     the source and shipped by backup/restore as libcloud-rest-venv.tgz; this
+#     step only (re)builds libcloud.rest/.venv as a best-effort fallback (e.g.
+#     when the tarball was absent or its Python version mismatched this host).
+#     On an air-gapped host with no network / pip mirror the step warns and
+#     continues — system_validate.sh's authz section then skips the audit.
+# ---------------------------------------------------------------------------
+bootstrap_rest_venv() {
+  local venv="${REST_DIR}/.venv"
+  local vpython="${venv}/bin/python"
+  if [[ -x "${vpython}" ]] && "${vpython}" -c 'import fastapi, httpx, libcloud' >/dev/null 2>&1; then
+    echo "libcloud.rest host venv already present."
+    return 0
+  fi
+  echo "Creating libcloud.rest host venv (for auth-gate audit) ..."
+  if ! python3 -m venv "${venv}"; then
+    echo "WARN: could not create ${venv} (is python3-venv installed?) — authz audit will be skipped." >&2
+    return 0
+  fi
+  if ! "${vpython}" -m pip install -r "${REST_DIR}/requirements.txt" "httpx" "${LIBCLOUD_DIR}"; then
+    echo "WARN: pip install into ${venv} failed (no network / pip mirror?) — authz audit will be skipped." >&2
+    return 0
+  fi
+  echo "libcloud.rest host venv ready."
+}
+
+echo "Preparing libcloud.rest host venv ..."
+bootstrap_rest_venv
+
 echo
 echo "Setup complete."
 echo "  OpenFGA env  : ${FGA_ENV}"

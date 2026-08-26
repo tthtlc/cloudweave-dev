@@ -1,7 +1,0 @@
-GET /v1/compute/subnets HTTP/1.1
-Host: libcloud-rest-api:8765
-Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjExMjIzMzQ0NTU2Njc3ODg5OSJ9.eyJpc3MiOiJodHRwOi8vbG9naW4ucXVlc3Q0c2NpZW5jZS54eXo6NTU1Ni9kZXgiLCJzdWIiOiJDaVFnVDFKVVJWOVVWVkZPSUZKQlRrVlYiLCJhdWQiOiJsaWJjbG91ZC1yZXN0IiwiZXhwIjoxNzUzNDkwNTMxLCJpYXQiOjE3NTM0ODY5MzEsImVtYWlsIjoiYXdzLWFkbWluQGxpYmNsb3VkLmxvY2FsIiwibmFtZSI6IkFXUyBBZG1pbiJ9.PROVISIONER_SIGNATURE
-X-Provider-Connection: {"provider":"aws","config":{"region":"ap-southeast-1","secure":true},"auth_binding":"aws"}
-Accept: application/json
-
-(empty body — GET request)

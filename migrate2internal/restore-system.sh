@@ -164,6 +164,26 @@ if [[ "$FAIL" == "1" ]]; then
     warn "Check that the backup tarball was complete (see backup MANIFEST.txt)."
 fi
 
+# ------------------------------------------------------------------
+# 2a. Restore the libcloud.rest host venv (prebuilt on the source)
+# ------------------------------------------------------------------
+# backup-system.sh ships libcloud.rest/.venv as a tarball so setup.sh can run
+# the auth-gate audit in-process without any pip install on this offline host.
+REST_VENV_TARBALL="$BACKUP_DIR/libcloud-rest-venv.tgz"
+if [[ -f "$REST_VENV_TARBALL" ]]; then
+    log "Extracting prebuilt libcloud.rest host venv..."
+    mkdir -p "$ORIG_PROJECT_ROOT/libcloud.rest"
+    run tar -xzf "$REST_VENV_TARBALL" -C "$ORIG_PROJECT_ROOT/libcloud.rest"
+    if [[ -x "$ORIG_PROJECT_ROOT/libcloud.rest/.venv/bin/python" ]] \
+       && "$ORIG_PROJECT_ROOT/libcloud.rest/.venv/bin/python" -c 'import fastapi, httpx, libcloud' >/dev/null 2>&1; then
+        log "  libcloud.rest host venv ready (prebuilt)."
+    else
+        warn "  Shipped venv unusable here (Python path/version mismatch?) — setup.sh will rebuild or skip the authz audit."
+    fi
+else
+    info "No prebuilt venv tarball in backup — setup.sh will build/skip the host venv."
+fi
+
 # Fix ownership
 log "Setting ownership on project files..."
 run chown -R "$USER:$USER" "$ORIG_PROJECT_ROOT" 2>/dev/null || true

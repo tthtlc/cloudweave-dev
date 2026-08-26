@@ -19,6 +19,7 @@ Nutanix Prism Central v4 AHV compute driver.
 
 from __future__ import annotations
 
+import base64
 import json
 
 from libcloud.common.nutanix import (
@@ -46,6 +47,7 @@ from libcloud.common.nutanix import (
     extract_vm_disk_ext_id,
     gib_to_bytes,
     networking_path,
+    microseg_path,
     prism_path,
     volumes_path,
     vmm_path,
@@ -77,6 +79,15 @@ class NutanixNodeDriver(NodeDriver):
     :keyword secure: Use HTTPS (default ``True``).
     :keyword api_version: Nutanix v4 API version (default ``v4.0``).
     :keyword verify_ssl_cert: Verify TLS certificates (default ``True``).
+    :keyword login_path: Optional path to the Prism Central session endpoint.
+        When set, the driver performs a one-time HTTP Basic-auth login and
+        reuses the returned session cookie on subsequent requests (mirrors
+        ``VCloudConnection``). When ``None`` (default), per-request Basic auth
+        is used.
+    :keyword session_cookie: Optional pre-existing session cookie. When
+        provided, the driver skips the Basic-auth login and attaches this cookie
+        to every request — letting callers reuse a session (and avoid
+        re-fetching the Nutanix credential from Vault on every call).
     """
 
     type = Provider.NUTANIX
@@ -121,6 +132,8 @@ class NutanixNodeDriver(NodeDriver):
         port=None,
         api_version=DEFAULT_API_VERSION,
         verify_ssl_cert=True,
+        login_path=None,
+        session_cookie=None,
         **kwargs,
     ):
         self._api_version = api_version
@@ -135,8 +148,32 @@ class NutanixNodeDriver(NodeDriver):
             verify_ssl_cert=verify_ssl_cert,
             **kwargs,
         )
+        # BaseDriver.__init__ stores api_version on the driver but does not
+        # forward it to the connection, so the connection keeps its own default
+        # (v4.0). Sync it here: the connection's _wait_for_task builds the task
+        # polling URL from self.api_version, and it must match the version every
+        # other request uses (self._api_version), otherwise task polling targets
+        # the wrong /api/prism/{version}/config/tasks/... route.
+        self.connection.api_version = api_version
+        # Optional session-cookie authentication (see NutanixConnection).
+        if login_path is not None:
+            self.connection.login_path = login_path
+        if session_cookie is not None:
+            self.connection.session_cookie = session_cookie
         if not self.verify_ssl_cert:
             self.connection.connection.ca_cert = False
+
+    def ex_authenticate(self):
+        """Derive the Prism Central session cookie via Basic auth.
+
+        Performs the login (if ``login_path`` is configured and no cookie has
+        been cached yet) and returns the session cookie. Returns ``None`` when
+        the driver is using per-request Basic auth (no ``login_path``). Callers
+        can persist the returned cookie and reuse it on later instances via the
+        ``session_cookie`` keyword, avoiding a fresh Vault lookup per request.
+        """
+        self.connection._get_auth_token()
+        return self.connection.session_cookie
 
     def list_nodes(self, **kwargs):
         path = vmm_path(self._api_version, "ahv/config/vms")
@@ -286,9 +323,11 @@ class NutanixNodeDriver(NodeDriver):
         guest_customization = kwargs.get("ex_guest_customization")
         if auth is not None and hasattr(auth, "pubkey"):
             guest_customization = guest_customization or {}
-            guest_customization.setdefault("cloudInit", {})["userData"] = (
-                "#cloud-config\nssh_authorized_keys:\n  - %s\n" % auth.pubkey
-            )
+            user_data = "#cloud-config\nssh_authorized_keys:\n  - %s\n" % auth.pubkey
+            guest_customization.setdefault("config", {}).setdefault("cloudInitScript", {})[
+                "value"
+            ] = base64.b64encode(user_data.encode("utf-8")).decode("ascii")
+            guest_customization["config"].setdefault("datasourceType", "CONFIG_DRIVE_V2")
 
         payload = build_vm_create_payload(
             name=name,
@@ -311,6 +350,7 @@ class NutanixNodeDriver(NodeDriver):
             ip_address=kwargs.get("ex_ip_address"),
             ip_prefix_length=kwargs.get("ex_ip_prefix_length"),
             data_disks=kwargs.get("ex_data_disks"),
+            api_version=self._api_version,
         )
 
         path = vmm_path(self._api_version, "ahv/config/vms")
@@ -419,6 +459,79 @@ class NutanixNodeDriver(NodeDriver):
             params=params,
         )
         return [self._to_location(cluster) for cluster in clusters]
+
+    def ex_list_hosts(self, cluster_ext_id=None, **kwargs):
+        """List physical hosts (nodes) managed by Prism Central.
+
+        Mirrors the Prism Element ``get_host_details`` sample against the v4
+        clustermgmt host API (CPU, memory, hypervisor, serial, model, ...).
+
+        :param cluster_ext_id: Optional cluster extId to scope the listing to a
+            single cluster (``/config/clusters/{extId}/hosts``). When omitted,
+            the cluster-wide ``/config/hosts`` endpoint is used.
+        :return: list of host detail dicts (see :meth:`_to_host`).
+        """
+        if cluster_ext_id:
+            path = clustermgmt_path(
+                self._api_version, "config/clusters/%s/hosts" % cluster_ext_id
+            )
+        else:
+            path = clustermgmt_path(self._api_version, "config/hosts")
+        params = self._build_list_params(kwargs)
+        hosts = self.connection._paged_request(
+            path,
+            limit=kwargs.get("ex_page_size", DEFAULT_PAGE_SIZE),
+            page=kwargs.get("ex_page", 0),
+            params=params,
+        )
+        return [self._to_host(host) for host in hosts]
+
+    def ex_get_host(self, host_ext_id, cluster_ext_id=None):
+        """Get the details of a single physical host.
+
+        :param host_ext_id: Host UUID.
+        :param cluster_ext_id: Optional cluster extId; required only for the
+            cluster-scoped host endpoint. When omitted the cluster-wide
+            ``/config/hosts/{extId}`` endpoint is used.
+        :return: host detail dict (see :meth:`_to_host`).
+        """
+        if cluster_ext_id:
+            path = clustermgmt_path(
+                self._api_version,
+                "config/clusters/%s/hosts/%s" % (cluster_ext_id, host_ext_id),
+            )
+        else:
+            path = clustermgmt_path(self._api_version, "config/hosts/%s" % host_ext_id)
+        response = self.connection._request("GET", path)
+        data = response.object.get("data")
+        if not data:
+            raise LibcloudError("Host %s not found" % host_ext_id, driver=self)
+        return self._to_host(data)
+
+    def ex_get_host_bmc_info(self, host_ext_id, cluster_ext_id=None):
+        """Get BMC details (IP + credential status) for a host.
+
+        The v4 clustermgmt API does not expose BIOS/BMC firmware *versions* on
+        the Host entity (those were Prism Element v2 fields); the closest
+        clustermgmt equivalent is this ``bmc-info`` endpoint, which returns the
+        BMC IP address and credential status.
+
+        :param host_ext_id: Host UUID.
+        :param cluster_ext_id: Cluster extId. Required — the bmc-info endpoint
+            is only served cluster-scoped in v4.
+        :return: dict with ``bmc_ip`` and ``bmc_status`` keys.
+        """
+        if not cluster_ext_id:
+            raise LibcloudError(
+                "ex_get_host_bmc_info requires cluster_ext_id", driver=self
+            )
+        path = clustermgmt_path(
+            self._api_version,
+            "config/clusters/%s/hosts/%s/bmc-info" % (cluster_ext_id, host_ext_id),
+        )
+        response = self.connection._request("GET", path)
+        data = response.object.get("data") or {}
+        return self._to_bmc_info(data)
 
     def ex_list_subnets(self, **kwargs):
         path = networking_path(self._api_version, "config/subnets")
@@ -571,7 +684,7 @@ class NutanixNodeDriver(NodeDriver):
         return True
 
     def ex_list_storage_containers(self, **kwargs):
-        path = vmm_path(self._api_version, "config/storage-containers")
+        path = clustermgmt_path(self._api_version, "config/storage-containers")
         params = self._build_list_params(kwargs)
         return self.connection._paged_request(
             path,
@@ -581,7 +694,7 @@ class NutanixNodeDriver(NodeDriver):
         )
 
     def ex_get_storage_container(self, container_id):
-        path = vmm_path(
+        path = clustermgmt_path(
             self._api_version,
             "config/storage-containers/%s" % container_id,
         )
@@ -595,11 +708,11 @@ class NutanixNodeDriver(NodeDriver):
         return data
 
     def ex_list_storage_containers_vmm(self, **kwargs):
-        """Alias for :meth:`ex_list_storage_containers` (vmm namespace)."""
+        """Back-compat alias; storage containers live in the clustermgmt namespace."""
         return self.ex_list_storage_containers(**kwargs)
 
     def ex_get_storage_container_vmm(self, container_id):
-        """Alias for :meth:`ex_get_storage_container` (vmm namespace)."""
+        """Back-compat alias; storage containers live in the clustermgmt namespace."""
         return self.ex_get_storage_container(container_id)
 
     def ex_list_templates(self, **kwargs):
@@ -613,7 +726,7 @@ class NutanixNodeDriver(NodeDriver):
         )
 
     def ex_list_security_groups(self, **kwargs):
-        path = networking_path(self._api_version, "config/network-security-policies")
+        path = microseg_path(self._api_version, "config/policies")
         params = self._build_list_params(kwargs)
         return self.connection._paged_request(
             path,
@@ -623,9 +736,9 @@ class NutanixNodeDriver(NodeDriver):
         )
 
     def ex_get_security_group(self, policy_id):
-        path = networking_path(
+        path = microseg_path(
             self._api_version,
-            "config/network-security-policies/%s" % policy_id,
+            "config/policies/%s" % policy_id,
         )
         response = self.connection._request("GET", path)
         data = response.object.get("data")
@@ -651,11 +764,11 @@ class NutanixNodeDriver(NodeDriver):
         if description:
             payload["description"] = description
         if kwargs.get("vpc_ext_id"):
-            payload["vpcReference"] = kwargs["vpc_ext_id"]
+            payload["vpcReferences"] = [kwargs["vpc_ext_id"]]
         if kwargs.get("rules"):
             payload["rules"] = kwargs["rules"]
 
-        path = networking_path(self._api_version, "config/network-security-policies")
+        path = microseg_path(self._api_version, "config/policies")
         entity_ext_id = self._execute_async_mutation(
             "POST",
             path,
@@ -667,9 +780,9 @@ class NutanixNodeDriver(NodeDriver):
         return payload
 
     def ex_delete_security_group(self, policy_id, **kwargs):
-        path = networking_path(
+        path = microseg_path(
             self._api_version,
-            "config/network-security-policies/%s" % policy_id,
+            "config/policies/%s" % policy_id,
         )
         self._execute_async_mutation("DELETE", path, **kwargs)
         return True
@@ -711,7 +824,7 @@ class NutanixNodeDriver(NodeDriver):
             "vpcReference": vpc_ext_id,
         }
         if external_ip:
-            payload["externalIp"] = {"value": external_ip}
+            payload["floatingIp"] = {"ipv4": {"value": external_ip}}
 
         path = networking_path(self._api_version, "config/floating-ips")
         response = self.connection._request("POST", path, data=json.dumps(payload))
@@ -1187,6 +1300,63 @@ class NutanixNodeDriver(NodeDriver):
             driver=self,
             extra=extra,
         )
+
+    def _to_host(self, host_json):
+        """Normalize a clustermgmt v4 ``Host`` entity into a flat dict.
+
+        Field names mirror the v4 clustermgmt Host schema (camelCase) but are
+        normalized to snake_case for stable consumption by the REST layer and
+        portal, matching the ``get_host_details`` sample fields (CPU threads,
+        memory, hypervisor, serial) plus the v4 additions (block model, GPU,
+        node status).
+        """
+        ext_id = host_json.get("extId") or ""
+        name = host_json.get("hostName") or ext_id
+        hypervisor = host_json.get("hypervisor") or {}
+        cluster = host_json.get("cluster") or {}
+        memory_bytes = host_json.get("memorySizeBytes")
+        return {
+            "id": ext_id,
+            "name": name,
+            "host_type": host_json.get("hostType"),
+            "hypervisor": hypervisor.get("fullName") or hypervisor.get("type"),
+            "hypervisor_type": hypervisor.get("type"),
+            "number_of_vms": hypervisor.get("numberOfVms"),
+            "cluster_name": cluster.get("name"),
+            "cluster_ext_id": cluster.get("uuid") or cluster.get("extId"),
+            "num_cpu_cores": host_json.get("numberOfCpuCores"),
+            "num_cpu_threads": host_json.get("numberOfCpuThreads"),
+            "num_cpu_sockets": host_json.get("numberOfCpuSockets"),
+            "cpu_capacity_hz": host_json.get("cpuCapacityHz"),
+            "cpu_frequency_hz": host_json.get("cpuFrequencyHz"),
+            "cpu_model": host_json.get("cpuModel"),
+            "memory_size_bytes": memory_bytes,
+            "memory_gib": bytes_to_gib(memory_bytes) if memory_bytes else None,
+            "block_serial": host_json.get("blockSerial"),
+            "block_model": host_json.get("blockModel"),
+            "gpu_driver_version": host_json.get("gpuDriverVersion"),
+            "gpu_list": host_json.get("gpuList"),
+            "node_status": host_json.get("nodeStatus"),
+            "maintenance_state": host_json.get("maintenanceState"),
+            "is_degraded": host_json.get("isDegraded"),
+            "is_secure_booted": host_json.get("isSecureBooted"),
+            "boot_time_usecs": host_json.get("bootTimeUsecs"),
+            "rackable_unit_uuid": host_json.get("rackableUnitUuid"),
+        }
+
+    def _to_bmc_info(self, bmc_json):
+        """Normalize a clustermgmt v4 ``BmcInfo`` entity into a flat dict.
+
+        Returns the BMC IP and credential status; the BMC username/password
+        (``credential``) is intentionally not exposed.
+        """
+        ip_address = bmc_json.get("ipAddress") or {}
+        ipv4 = (ip_address.get("ipv4") or {}).get("value")
+        ipv6 = (ip_address.get("ipv6") or {}).get("value")
+        return {
+            "bmc_ip": ipv4 or ipv6,
+            "bmc_status": bmc_json.get("status"),
+        }
 
     def _to_volume(self, volume_group_json, disks=None, vm_attachments=None):
         ext_id = volume_group_json.get("extId") or ""

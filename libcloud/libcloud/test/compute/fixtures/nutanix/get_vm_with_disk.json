@@ -13,10 +13,9 @@
       {
         "extId": "disk-11111111-1111-1111-1111-111111111111",
         "backingInfo": {
-          "vmDisk": {
-            "diskExtId": "disk-11111111-1111-1111-1111-111111111111",
-            "diskSizeBytes": 10737418240
-          }
+          "$objectType": "vmm.v4.ahv.config.VmDisk",
+          "diskExtId": "disk-11111111-1111-1111-1111-111111111111",
+          "diskSizeBytes": 10737418240
         }
       }
     ],

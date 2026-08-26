@@ -230,11 +230,34 @@ def test_category_failure_isolated() -> None:
            "other categories unaffected", str(by_key["volumes"]["rows"]))
 
 
+def test_category_unsupported_shows_not_supported() -> None:
+    # A 501 (provider capability unsupported, e.g. Nutanix Prism has no S3
+    # buckets) must read as "Not supported", not a scary "REST ... failed".
+    proxy, _ = _make_proxy()
+    canned = _canned()
+
+    def fake_call_501(client, path, headers, steps, **kwargs):
+        if path == "/v1/storage/buckets":
+            raise APIError("rest_error", f"libcloud REST GET {path} failed", 502,
+                           {"status": 501, "body": '{"error": "provider_capability_unsupported"}'})
+        return {"data": canned.get(path, [])}
+
+    proxy._call = fake_call_501
+    out = proxy.list_nodes("nutanix")
+    by_key = {c["key"]: c for c in out.get("categories", [])}
+    buckets = by_key.get("buckets", {})
+    report(buckets.get("rows") == [] and buckets.get("error") == "Not supported by this provider",
+           "501 capability-unsupported category shows 'Not supported'", str(buckets))
+    report(by_key["volumes"]["rows"][0]["id"] == "vol-1",
+           "other categories unaffected (501 case)", str(by_key["volumes"]["rows"]))
+
+
 def main() -> int:
     test_aws_categories()
     test_nutanix_categories()
     test_rows_capped_with_total()
     test_category_failure_isolated()
+    test_category_unsupported_shows_not_supported()
     print(f"\n=== Summary: {PASS} passed, {FAIL} failed ===")
     return 1 if FAIL else 0
 

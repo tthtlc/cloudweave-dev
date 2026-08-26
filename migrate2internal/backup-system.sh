@@ -331,6 +331,38 @@ for f in ".env" "dex/docker-compose.yml" "lldap/docker-compose.yml" \
 done
 
 # ------------------------------------------------------------------
+# 5b. Back up the libcloud.rest host venv (prebuilt for the offline host)
+# ------------------------------------------------------------------
+# setup.sh runs the auth-gate audit in-process on the HOST, which needs
+# libcloud.rest/.venv (fastapi + httpx + vendored libcloud). The offline
+# destination has no pip mirror, so build the venv HERE (source has network)
+# and ship it as a tarball. Best-effort: if it can't be built, setup.sh on the
+# destination falls back to skipping the audit.
+log "=== Step 5b: Back up libcloud.rest host venv ==="
+
+REST_VENV="$PROJECT_ROOT/libcloud.rest/.venv"
+VENV_TARBALL="$BACKUP_DIR/libcloud-rest-venv.tgz"
+
+# Build on the source if not already usable (the one place the deps are
+# fetchable). Output is NOT quiet so progress is visible in the backup log.
+if [[ ! -x "$REST_VENV/bin/python" ]] || ! "$REST_VENV/bin/python" -c 'import fastapi, httpx, libcloud' >/dev/null 2>&1; then
+    log "libcloud.rest host venv not usable — building it now..."
+    python3 -m venv "$REST_VENV" || warn "could not create $REST_VENV — venv backup skipped"
+    if [[ -x "$REST_VENV/bin/python" ]]; then
+        "$REST_VENV/bin/python" -m pip install -r "$PROJECT_ROOT/libcloud.rest/requirements.txt" "httpx" "$PROJECT_ROOT/libcloud" \
+            || warn "pip install into $REST_VENV failed — venv backup skipped"
+    fi
+fi
+
+if [[ -x "$REST_VENV/bin/python" ]] && "$REST_VENV/bin/python" -c 'import fastapi, httpx, libcloud' >/dev/null 2>&1; then
+    log "Archiving prebuilt venv -> $VENV_TARBALL"
+    tar -czf "$VENV_TARBALL" -C "$PROJECT_ROOT/libcloud.rest" .venv
+    log "Venv tarball: $(du -h "$VENV_TARBALL" | cut -f1)"
+else
+    warn "libcloud.rest host venv unavailable — not shipping (destination will skip the authz audit)."
+fi
+
+# ------------------------------------------------------------------
 # 6. Back up Docker named volumes
 # ------------------------------------------------------------------
 log "=== Step 6: Back up Docker named volumes ==="
@@ -491,6 +523,9 @@ echo "Contents:"
 du -sh "$OFFLINE_DIR"/*/ 2>/dev/null || true
 echo ""
 echo "Images tarball: $IMAGES_DIR/stack-images.tar ($SAVE_SIZE)"
+if [[ -f "$VENV_TARBALL" ]]; then
+    echo "Venv tarball:   $VENV_TARBALL ($(du -h "$VENV_TARBALL" | cut -f1))"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Transfer ~/offline/ to the destination machine (scp/rsync)"

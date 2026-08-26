@@ -46,7 +46,15 @@ def build_storage_driver(connection: ProviderConnection):
         port = connection.config.port
         # Only proceed if a non-Prism Objects endpoint is explicitly supplied.
         # Prism uses port 9440 with TLS; treat that combination as "not Objects".
-        is_prism = host and (port in (None, 9440, 9443))
+        # Port alone is an unreliable discriminator — the v4.2 emulator binds
+        # Prism to port 9442, etc. A connection that carries a Prism v4
+        # ``api_version`` (the identity service always sets one for the compute
+        # tenant) is a Prism management endpoint, not a Nutanix Objects (S3)
+        # endpoint, so report object storage unsupported rather than point the
+        # S3 driver at Prism (where ListBuckets would fail).
+        is_prism = bool(connection.config.api_version) or (
+            host and (port in (None, 9440, 9443))
+        )
         if is_prism:
             raise APIError(
                 code="provider_capability_unsupported",

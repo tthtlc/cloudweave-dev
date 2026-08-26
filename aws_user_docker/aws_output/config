@@ -1,4 +1,0 @@
-# Written by create_ec2_user.sh (Docker) on 2026-07-23T03:22:43Z
-[profile combined-aws]
-region = ap-southeast-1
-output = json

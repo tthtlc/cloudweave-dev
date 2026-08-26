@@ -39,6 +39,7 @@ __all__ = [
     "vmm_path",
     "clustermgmt_path",
     "networking_path",
+    "microseg_path",
     "prism_path",
     "volumes_path",
     "dataprotection_path",
@@ -65,6 +66,7 @@ __all__ = [
 NS_VMM = "vmm"
 NS_CLUSTERMGMT = "clustermgmt"
 NS_NETWORKING = "networking"
+NS_MICROSEG = "microseg"
 NS_PRISM = "prism"
 NS_VOLUMES = "volumes"
 NS_DATAPROTECTION = "dataprotection"
@@ -136,14 +138,30 @@ class NutanixResponse(JsonResponse):
 
 class NutanixConnection(ConnectionUserAndKey):
     """
-    HTTPS connection to Nutanix Prism Central using HTTP Basic authentication.
+    HTTPS connection to Nutanix Prism Central.
 
-    Libcloud passes ``key`` as the username and ``secret`` as the password.
+    By default (``login_path`` is ``None``) the connection authenticates with
+    per-request HTTP Basic auth: libcloud passes ``key`` as the username and
+    ``secret`` as the password, and the ``Authorization`` header is recomputed
+    on every request.
+
+    When ``login_path`` is set, the connection instead establishes a Prism
+    Central API-gateway session once (HTTP Basic auth against ``login_path``)
+    and reuses the returned session cookie (``Set-Cookie`` -> ``Cookie``) on
+    every subsequent request. This mirrors ``VCloudConnection`` and lets the
+    caller avoid re-fetching the Nutanix username/password (e.g. from Vault)
+    for each call — the cookie becomes the credential carrier after the first
+    login.
     """
 
     host = "localhost"
     port = 9440
     responseCls = NutanixResponse
+
+    # Optional path used to establish the Prism Central session. When ``None``
+    # (default) the cookie flow is disabled and per-request Basic auth is used.
+    # Override per-deployment, e.g. ``login_path="/api/nutanix/v1/session"``.
+    login_path = None
 
     def __init__(
         self,
@@ -159,6 +177,8 @@ class NutanixConnection(ConnectionUserAndKey):
         retry_delay=None,
         api_version=DEFAULT_API_VERSION,
         verify_ssl_cert=True,
+        login_path=None,
+        session_cookie=None,
     ):
         if port is None:
             port = self.port
@@ -176,16 +196,85 @@ class NutanixConnection(ConnectionUserAndKey):
         )
         self.api_version = api_version
         self.verify_ssl_cert = verify_ssl_cert
+        if login_path is not None:
+            self.login_path = login_path
+        self.session_cookie = session_cookie
+
+    def _basic_auth_header(self):
+        credentials = base64.b64encode(
+            ("%s:%s" % (self.user_id, self.key)).encode("utf-8")
+        ).decode("ascii")
+        return "Basic %s" % credentials
+
+    def _get_auth_headers(self):
+        """HTTP Basic auth headers used to establish a Prism Central session."""
+        return {
+            "Authorization": self._basic_auth_header(),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "NTNX-Request-Id": new_request_id(),
+        }
+
+    def _get_auth_token(self):
+        """Authenticate with Basic auth and capture the session cookie.
+
+        Mirrors :meth:`VCloudConnection._get_auth_token`: POST to ``login_path``
+        with the Basic auth headers, then read the ``Set-Cookie`` response
+        header. The cookie is cached on the connection so every later request
+        reuses the session instead of re-authenticating.
+        """
+        if self.session_cookie or not self.login_path:
+            return
+
+        if self.connection is None:
+            self.connect()
+
+        self.connection.request(
+            method="POST",
+            url=self.login_path,
+            headers=self._get_auth_headers(),
+            body="",
+        )
+        resp = self.connection.getresponse()
+
+        cookie = resp.headers.get("set-cookie")
+        if cookie:
+            self.session_cookie = cookie
+            return
+
+        status = getattr(resp, "status_code", None)
+        if status in (401, 403):
+            raise InvalidCredsError(
+                "Authentication failed: Prism Central rejected the credentials "
+                "(HTTP %s)" % status,
+                driver=self.driver,
+            )
+
+        # The login endpoint did not issue a session cookie (e.g. real Prism
+        # Central v4, which authenticates per-request with Basic auth and has
+        # no REST session endpoint). Disable the cookie flow and fall back to
+        # per-request Basic auth rather than failing every request.
+        self.login_path = None
 
     def add_default_headers(self, headers):
-        credentials = base64.b64encode(("%s:%s" % (self.user_id, self.key)).encode("utf-8")).decode(
-            "ascii"
-        )
-        headers["Authorization"] = "Basic %s" % credentials
         headers["Accept"] = "application/json"
         headers["Content-Type"] = "application/json"
         headers.setdefault("NTNX-Request-Id", new_request_id())
+
+        if self.session_cookie:
+            # Reuse the session cookie established at login so the caller no
+            # longer needs the Nutanix username/password on every request.
+            headers["Cookie"] = self.session_cookie
+        else:
+            # Fall back to per-request HTTP Basic auth (the v4 default).
+            headers["Authorization"] = self._basic_auth_header()
         return headers
+
+    def request(self, *args, **kwargs):
+        # Ensure a session cookie exists before the first (and every) request;
+        # a cheap no-op once the cookie has been cached. Mirrors VCloudConnection.
+        self._get_auth_token()
+        return super().request(*args, **kwargs)
 
     def _request(self, method, path, params=None, data=None, headers=None):
         extra_headers = headers or {}
@@ -290,6 +379,10 @@ def networking_path(api_version, resource_path):
     return api_path(NS_NETWORKING, api_version, resource_path)
 
 
+def microseg_path(api_version, resource_path):
+    return api_path(NS_MICROSEG, api_version, resource_path)
+
+
 def prism_path(api_version, resource_path):
     return api_path(NS_PRISM, api_version, resource_path)
 
@@ -366,6 +459,7 @@ def build_vm_create_payload(
     ip_address=None,
     ip_prefix_length=None,
     data_disks=None,
+    api_version=DEFAULT_API_VERSION,
 ):
     payload = {
         "name": name,
@@ -394,12 +488,12 @@ def build_vm_create_payload(
         }
         if storage_container_ext_id:
             vm_disk["storageContainer"] = {"extId": storage_container_ext_id}
-        disks.append({"backingInfo": {"vmDisk": vm_disk}})
+        disks.append({"backingInfo": vm_disk})
     elif disk_size_mib:
         vm_disk = {"diskSizeBytes": mib_to_bytes(disk_size_mib)}
         if storage_container_ext_id:
             vm_disk["storageContainer"] = {"extId": storage_container_ext_id}
-        disks.append({"backingInfo": {"vmDisk": vm_disk}})
+        disks.append({"backingInfo": vm_disk})
 
     for data_disk in data_disks or []:
         data_disk_size_mib = data_disk.get("size_mib")
@@ -414,7 +508,7 @@ def build_vm_create_payload(
         )
         if data_disk_container:
             vm_disk["storageContainer"] = {"extId": data_disk_container}
-        disk = {"backingInfo": {"vmDisk": vm_disk}}
+        disk = {"backingInfo": vm_disk}
         bus = data_disk.get("bus")
         if bus:
             disk_address = {"busType": str(bus).upper()}
@@ -429,11 +523,14 @@ def build_vm_create_payload(
     if nics is not None:
         payload["nics"] = nics
     elif subnet_ext_id:
-        nic = {
-            "networkInfo": {
-                "subnet": {"extId": subnet_ext_id},
-            }
-        }
+        # v4.3 deprecates Nic.networkInfo in favour of the polymorphic
+        # Nic.nicNetworkInfo (a oneOf), which additionally requires the
+        # $objectType discriminator to select the virtual-Ethernet variant.
+        nic_info_field = "nicNetworkInfo" if api_version == "v4.3" else "networkInfo"
+        network_info = {"subnet": {"extId": subnet_ext_id}}
+        if api_version == "v4.3":
+            network_info["$objectType"] = "vmm.v4.ahv.config.VirtualEthernetNicNetworkInfo"
+        nic = {nic_info_field: network_info}
         ipv4_config = {}
         if ip_address:
             ipv4_config["ipAddress"] = {"value": ip_address}
@@ -444,14 +541,18 @@ def build_vm_create_payload(
         elif ip_address:
             ipv4_config["shouldAssignIp"] = True
         if ipv4_config:
-            nic["networkInfo"]["ipv4Config"] = ipv4_config
+            network_info["ipv4Config"] = ipv4_config
         payload["nics"] = [nic]
 
     customization = guest_customization or {}
-    if cloud_init:
-        customization.setdefault("cloudInit", {})["userData"] = cloud_init
-    if user_data:
-        customization.setdefault("cloudInit", {})["userData"] = user_data
+    user_data_value = user_data or cloud_init
+    if user_data_value:
+        # CloudInit expects config.cloudInitScript.value (base64) plus an
+        # optional datasourceType; the old cloudInit.userData shape is invalid.
+        customization.setdefault("config", {}).setdefault("cloudInitScript", {})[
+            "value"
+        ] = base64.b64encode(user_data_value.encode("utf-8")).decode("ascii")
+        customization["config"].setdefault("datasourceType", "CONFIG_DRIVE_V2")
     if customization:
         payload["guestCustomization"] = customization
 
@@ -639,10 +740,14 @@ def extract_vm_disk_ext_id(vm_json, disk_index=0):
     index = disk_index if disk_index < len(disks) else 0
     disk = disks[index]
     backing = disk.get("backingInfo") or disk.get("backing_info") or {}
+    # v4 disk backing is flat (VmDisk fields sit directly on backingInfo);
+    # keep the legacy vmDisk wrapper as a fallback for older payloads.
     vm_disk = backing.get("vmDisk") or backing.get("vm_disk") or {}
 
     return (
-        vm_disk.get("diskExtId")
+        backing.get("diskExtId")
+        or backing.get("disk_ext_id")
+        or vm_disk.get("diskExtId")
         or vm_disk.get("disk_ext_id")
         or disk.get("extId")
         or disk.get("ext_id")

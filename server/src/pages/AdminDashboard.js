@@ -95,6 +95,42 @@ function CategoryTables({ categories }) {
   ));
 }
 
+// Fields shown when a host row is expanded (clicked) — full detail, in display
+// order. null/"" values are hidden; booleans render Yes/No; arrays are joined.
+const HOST_DETAIL_FIELDS = [
+  ["host_type", "Type"],
+  ["hypervisor", "Hypervisor"],
+  ["hypervisor_type", "Hypervisor Type"],
+  ["number_of_vms", "VMs"],
+  ["cluster_name", "Cluster"],
+  ["num_cpu_cores", "CPU Cores"],
+  ["num_cpu_threads", "CPU Threads"],
+  ["num_cpu_sockets", "CPU Sockets"],
+  ["cpu_model", "CPU Model"],
+  ["cpu_capacity_hz", "CPU Capacity (Hz)"],
+  ["cpu_frequency_hz", "CPU Frequency (Hz)"],
+  ["memory_gib", "Memory (GiB)"],
+  ["memory_size_bytes", "Memory (bytes)"],
+  ["block_serial", "Serial"],
+  ["block_model", "Block Model"],
+  ["gpu_driver_version", "GPU Driver"],
+  ["gpu_list", "GPUs"],
+  ["node_status", "Node Status"],
+  ["maintenance_state", "Maintenance State"],
+  ["is_degraded", "Degraded"],
+  ["is_secure_booted", "Secure Booted"],
+  ["boot_time_usecs", "Boot Time (usecs)"],
+  ["rackable_unit_uuid", "Rackable Unit UUID"],
+  ["bmc_ip", "BMC IP"],
+  ["bmc_status", "BMC Status"],
+];
+
+function formatHostValue(v) {
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  return v;
+}
+
 const CLOUD_META = {
   aws: {
     label: "AWS",
@@ -113,6 +149,10 @@ const CLOUD_META = {
     deprovision: (payload) => api.deprovision("nutanix", payload),
     update: (payload) => api.update("nutanix", payload),
     columns: actionColumns,
+    // Nutanix-only: the cluster's physical hosts (CPU/memory/hypervisor/serial)
+    // are listed inline after "View <cloud> Resources"; clicking a row expands
+    // that host's full details in the same page.
+    hostDetails: true,
   },
 };
 
@@ -143,6 +183,13 @@ export function CloudDashboard({ role, readOnly = false }) {
   const [editing, setEditing] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Physical host details (Nutanix only), keyed by cloud id:
+  // { nutanix: { cluster, hosts: [...] } }. Fetched together with the resource
+  // list on "View <cloud> Resources" (no separate button).
+  const [hosts, setHosts] = useState({});
+  // Selected host extId per cloud — clicking a host row expands its full
+  // details inline (same page); clicking again collapses it.
+  const [selectedHost, setSelectedHost] = useState({});
 
   async function provision(cloud) {
     const meta = CLOUD_META[cloud];
@@ -188,11 +235,24 @@ export function CloudDashboard({ role, readOnly = false }) {
     try {
       const r = await meta.resources();
       setResources((prev) => ({ ...prev, [cloud]: r }));
+      // Nutanix only: fetch the cluster's physical hosts alongside the VM list
+      // so the hosts table renders inline (no separate "Host Details" button).
+      if (meta.hostDetails) {
+        const h = await api.hosts(cloud);
+        setHosts((prev) => ({ ...prev, [cloud]: h }));
+      }
     } catch (e) {
       setErr(e.message || String(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  function toggleHost(cloud, hostId) {
+    setSelectedHost((prev) => ({
+      ...prev,
+      [cloud]: prev[cloud] === hostId ? null : hostId,
+    }));
   }
 
   async function deprovision(cloud, node) {
@@ -372,6 +432,12 @@ export function CloudDashboard({ role, readOnly = false }) {
             onEdit: startEdit,
           };
           const cols = meta.columns(ctx);
+          const hostList =
+            meta.hostDetails && hosts[c.cloud] && Array.isArray(hosts[c.cloud].hosts)
+              ? hosts[c.cloud].hosts
+              : [];
+          const selectedHostDetail =
+            hostList.find((h) => h.id === selectedHost[c.cloud]) || null;
           return (
             <div className="card" key={c.cloud}>
               <h2>{meta.label} resources ({list[meta.regionKey]})</h2>
@@ -408,6 +474,59 @@ export function CloudDashboard({ role, readOnly = false }) {
                   ))}
                 </tbody>
               </table>
+              {/* Nutanix-only: the cluster's physical hosts (key columns) shown
+                  inline after "View <cloud> Resources". Click a row to expand
+                  that host's full details in the same page. */}
+              {meta.hostDetails && hostList.length > 0 && (
+                <div className="host-details">
+                  <h3>Hosts ({hostList.length})</h3>
+                  <table className="host-table">
+                    <thead>
+                      <tr>
+                        <th>Hostname</th>
+                        <th>Type</th>
+                        <th>CPU Model</th>
+                        <th>Memory (GiB)</th>
+                        <th>Hypervisor</th>
+                        <th>Node Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hostList.map((h, i) => (
+                        <tr
+                          key={h.id || h.name || i}
+                          className={selectedHost[c.cloud] === h.id ? "selected" : ""}
+                          onClick={() => toggleHost(c.cloud, h.id)}
+                        >
+                          <td>{h.name || "—"}</td>
+                          <td>{h.host_type || "—"}</td>
+                          <td>{h.cpu_model || "—"}</td>
+                          <td>{h.memory_gib != null ? h.memory_gib : "—"}</td>
+                          <td>{h.hypervisor || "—"}</td>
+                          <td>{h.node_status || h.maintenance_state || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {selectedHostDetail && (
+                    <div className="host-detail-panel">
+                      <h4>{selectedHostDetail.name || selectedHostDetail.id}</h4>
+                      <dl className="host-detail-grid">
+                        {HOST_DETAIL_FIELDS.map(([key, label]) => {
+                          const v = selectedHostDetail[key];
+                          if (v == null || v === "") return null;
+                          return (
+                            <div key={key} className="host-detail-item">
+                              <dt>{label}</dt>
+                              <dd>{formatHostValue(v)}</dd>
+                            </div>
+                          );
+                        })}
+                      </dl>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Extra AWS resource categories (VPCs, subnets, SGs, ENIs, route
                   tables, IGWs, EIPs, AMIs, volumes, snapshots, buckets, key
                   pairs) from the identity service fan-out. Empty for Nutanix. */}

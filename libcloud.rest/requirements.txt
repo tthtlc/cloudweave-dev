@@ -1,3 +1,6 @@
+# Runtime deps consumed by the Docker image (`pip install -r requirements.txt`).
+# Keep floors in sync with `[project].dependencies` in pyproject.toml (canonical
+# declaration). Dev/test deps (pytest, httpx) live in requirements-dev.txt.
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-dotenv>=1.0.0

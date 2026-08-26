@@ -1,0 +1,53 @@
+# Canonical declaration of libcloud.rest dependencies and test config.
+#
+# Runtime dependency floors here mirror `requirements.txt` (which the Docker
+# image consumes via `pip install -r requirements.txt`). Keep the two in sync:
+# when you bump a floor, edit both files. Dev/test deps live only here (in
+# `[project.optional-dependencies].dev`) and in `requirements-dev.txt`.
+#
+# Tested versions as of 2026-08-20 (from .venv) — use these if you want to pin
+# instead of using `>=` floors:
+#   fastapi==0.137.2        uvicorn[standard]==0.49.0   python-dotenv==1.2.2
+#   pydantic-settings==2.14.1  PyJWT[crypto]==2.13.0     passlib[argon2]==1.7.4
+#   python-multipart==0.0.32   pytest==9.1.1             httpx==0.28.1
+#
+# NOTE: libcloud is intentionally NOT declared here. It is vendored at
+# ../libcloud (own pyproject.toml), pinned to v3.9.1, and installed separately
+# (`pip install /libcloud` in the Dockerfile; editable in the local .venv).
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libcloud-rest"
+version = "0.1.0"
+description = "REST API wrapper for Apache Libcloud compute drivers"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-dotenv>=1.0.0",
+    "pydantic-settings>=2.6.0",
+    "pyjwt[crypto]>=2.9.0",
+    "passlib[argon2]>=1.7.4",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "httpx==0.28.1",
+]
+
+# Several app subpackages (auth, common, compute, connections, jobs, providers)
+# rely on PEP 420 namespace packages (no __init__.py). namespaces = true makes
+# `pip install .` / `pip install -e .` include them.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

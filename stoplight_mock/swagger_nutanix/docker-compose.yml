@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Nutanix IAM API mock stack — one Stoplight Prism mock per IAM spec version.
+#
+#   Service        Host port (configurable)   Spec file
+#   ─────────────  ─────────────────────────  ────────────────────────────────
+#   iam-v4.0       127.0.0.1:9550             swagger-iam-v4.0-all.yaml
+#   iam-v4.1-b2    127.0.0.1:9551             swagger-iam-v4.1.b2-all.yaml
+#   iam-v4.1-b3    127.0.0.1:9552             swagger-iam-v4.1.b3-all.yaml
+#
+# Host ports are overridable through the environment (or a .env file in this
+# directory — see .env.example):
+#   IAM_V40_PORT    (default 9550)
+#   IAM_V41_B2_PORT (default 9551)
+#   IAM_V41_B3_PORT (default 9552)
+#
+# Notes:
+#   * Prism strips the `/api` server base declared in each spec, so the mock
+#     serves paths directly under `/` (e.g. GET /iam/v4.0/authz/roles).
+#   * Each spec declares HTTP Basic + X-ntnx-api-key security schemes; requests
+#     must carry one of them or Prism answers 401.
+#   * PUT/DELETE (and some `$actions` POSTs) require an `If-Match` header.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── v4.0 ──────────────────────────────────────────────────────────────────
+  iam-v4.0:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/swagger-iam-v4.0-all.yaml"
+    volumes:
+      - ./:/spec:ro
+    ports:
+      - "${IAM_V40_PORT:-9550}:4010"
+    restart: unless-stopped
+
+  # ── v4.1.b2 ───────────────────────────────────────────────────────────────
+  iam-v4.1-b2:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/swagger-iam-v4.1.b2-all.yaml"
+    volumes:
+      - ./:/spec:ro
+    ports:
+      - "${IAM_V41_B2_PORT:-9551}:4010"
+    restart: unless-stopped
+
+  # ── v4.1.b3 ───────────────────────────────────────────────────────────────
+  iam-v4.1-b3:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/swagger-iam-v4.1.b3-all.yaml"
+    volumes:
+      - ./:/spec:ro
+    ports:
+      - "${IAM_V41_B3_PORT:-9552}:4010"
+    restart: unless-stopped

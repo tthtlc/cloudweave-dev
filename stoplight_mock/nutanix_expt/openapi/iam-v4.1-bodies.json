@@ -1,0 +1,229 @@
+{
+  "POST /iam/v4.1.b3/authz/authorization-policies": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "displayName": "Policy1",
+      "entities": [
+        {}
+      ],
+      "role": "684d5154-e369-44c7-87e6-0f23f28d48fb",
+      "identities": [
+        {}
+      ]
+    }
+  },
+  "PUT /iam/v4.1.b3/authz/authorization-policies/{extId}": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "displayName": "Policy1",
+      "entities": [
+        {}
+      ],
+      "role": "684d5154-e369-44c7-87e6-0f23f28d48fb",
+      "identities": [
+        {}
+      ]
+    }
+  },
+  "POST /iam/v4.1.b3/authn/cert-auth-providers": {
+    "contentType": "multipart/form-data",
+    "required": true,
+    "example": {
+      "name": "CAC",
+      "clientCaChain": "string",
+      "isCertAuthEnabled": false,
+      "isCacEnabled": false,
+      "caCertFileName": "test_cert.pem"
+    }
+  },
+  "PUT /iam/v4.1.b3/authn/cert-auth-providers/{extId}": {
+    "contentType": "multipart/form-data",
+    "required": false,
+    "example": {
+      "name": "CAC",
+      "clientCaChain": "string",
+      "isCertAuthEnabled": false,
+      "isCacEnabled": false,
+      "caCertFileName": "test_cert.pem"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/directory-services": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "name": "AD1",
+      "url": "ldap://{{host_name}}",
+      "domainName": "domain1.com",
+      "directoryType": "ACTIVE_DIRECTORY",
+      "serviceAccount": {
+        "username": "Administrator@domain1.com",
+        "password": "Pa*******rd"
+      }
+    }
+  },
+  "PUT /iam/v4.1.b3/authn/directory-services/{extId}": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "name": "AD1",
+      "url": "ldap://{{host_name}}",
+      "domainName": "domain1.com",
+      "directoryType": "ACTIVE_DIRECTORY",
+      "serviceAccount": {
+        "username": "Administrator@domain1.com",
+        "password": "Pa*******rd"
+      }
+    }
+  },
+  "POST /iam/v4.1.b3/authn/directory-services/{extId}/$actions/search": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "query": "user"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/directory-services/{extId}/$actions/verify-connection-status": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "username": "string",
+      "password": "string"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/config/directory-service/{extId}/$actions/share": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "projectExtId": "390b7801-7a80-5c94-8a07-8de63651b27b"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/config/directory-service/{extId}/$actions/unshare": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "projectExtId": "390b7801-7a80-5c94-8a07-8de63651b27b"
+    }
+  },
+  "POST /iam/v4.1.b3/authz/role-memberships": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "roleExtId": "e6d046ee-7dec-4806-8d5c-264ddd06efc8",
+      "scopeTemplateName": "string",
+      "identityType": "USER",
+      "identityExtId": "3e8e8dc6-c82c-4be9-a6ff-7e0a68a5628b",
+      "idpExtId": "34cc2176-4dae-4272-b89e-aaac23c826d8"
+    }
+  },
+  "POST /iam/v4.1.b3/authz/roles": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "displayName": "custom_role1",
+      "operations": [
+        "b8ff0f84-87bb-43b4-9332-40639c5881e8"
+      ]
+    }
+  },
+  "PUT /iam/v4.1.b3/authz/roles/{extId}": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "displayName": "custom_role1",
+      "operations": [
+        "b8ff0f84-87bb-43b4-9332-40639c5881e8"
+      ]
+    }
+  },
+  "POST /iam/v4.1.b3/authn/saml-identity-providers": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "name": "saml1"
+    }
+  },
+  "PUT /iam/v4.1.b3/authn/saml-identity-providers/{extId}": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "name": "saml1"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/config/saml-identity-provider/{extId}/$actions/share": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "projectExtId": "390b7801-7a80-5c94-8a07-8de63651b27b"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/config/saml-identity-provider/{extId}/$actions/unshare": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "projectExtId": "390b7801-7a80-5c94-8a07-8de63651b27b"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/user-groups": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "groupType": "SAML",
+      "idpId": "a28b4233-580c-4220-bac7-28c6ce62e22e",
+      "distinguishedName": "cn=Grp123,cn=users,dc=domain1,dc=com"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/users/{userExtId}/keys": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "name": "ApiKey1",
+      "keyType": "API_KEY"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/users": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "username": "john_doe",
+      "userType": "LOCAL"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/users/$actions/change-password": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "username": "john_doe",
+      "oldPassword": "string",
+      "newPassword": "string"
+    }
+  },
+  "PUT /iam/v4.1.b3/authn/users/{extId}": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "username": "john_doe",
+      "userType": "LOCAL"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/users/{extId}/$actions/reset-password": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "newPassword": "string"
+    }
+  },
+  "POST /iam/v4.1.b3/authn/users/{extId}/$actions/change-state": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {
+      "status": "ACTIVE"
+    }
+  },
+  "PUT /iam/v4.1.b3/authn/welcome-banner": {
+    "contentType": "application/json",
+    "required": true,
+    "example": {}
+  }
+}

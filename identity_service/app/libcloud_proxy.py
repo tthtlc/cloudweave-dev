@@ -325,6 +325,21 @@ class LibcloudProxy:
         shaped["categories"] = categories
         return shaped
 
+    # --- public: list physical hosts (Nutanix only) -------------------------
+    def list_hosts(self, cloud: str) -> dict[str, Any]:
+        # Fans out to the libcloud REST /v1/compute/hosts endpoint, which in
+        # turn calls the driver's ex_list_hosts (clustermgmt v4 Host API). The
+        # result is the full hardware detail (CPU, memory, hypervisor, serial,
+        # model) of every host in the cluster, mirroring the get_host_details
+        # sample. No creds leave the server (same token/auth_binding pattern).
+        token = self._auth.get_token(cloud)
+        conn = self._connection(cloud)
+        headers = self._headers(token, conn)
+        with httpx.Client(timeout=30) as client:
+            data = self._call(client, "/v1/compute/hosts", headers, [])
+        hosts = data.get("data", []) if isinstance(data, dict) else data
+        return {"cluster": self._settings().ntnx_auth_binding, "hosts": hosts}
+
     def _list_categories(
         self, client: httpx.Client, headers: dict[str, str], specs: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -351,6 +366,15 @@ class LibcloudProxy:
                 cat["rows"] = rows[:max_rows]
             except Exception as exc:
                 msg = exc.message if isinstance(exc, APIError) else str(exc)
+                # A 501 from the libcloud REST API means the provider does not
+                # implement this capability (e.g. Nutanix Prism has no
+                # S3-compatible bucket API). Surface that as "not supported"
+                # instead of a generic "REST ... failed" note.
+                upstream_status = None
+                if isinstance(exc, APIError) and isinstance(exc.details, dict):
+                    upstream_status = exc.details.get("status")
+                if upstream_status == 501:
+                    msg = "Not supported by this provider"
                 log.warning("resource category %s failed: %s", spec["key"], msg)
                 cat["total"] = 0
                 cat["rows"] = []

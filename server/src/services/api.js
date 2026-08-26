@@ -68,6 +68,10 @@ export const api = config.mockMode
       // of "aws" | "nutanix"; the backend route is /api/<verb>/<cloud>. The
       // legacy per-cloud aliases below keep older callers working.
       resources: (cloud) => http(`/api/resources/${encodeURIComponent(cloud)}`),
+      // Physical host details (Nutanix only) for the cluster's hosts. Same
+      // can_view-gated read scope as /api/resources/<cloud>; the backend fans
+      // out to /v1/compute/hosts -> driver ex_list_hosts (clustermgmt v4).
+      hosts: (cloud) => http(`/api/hosts/${encodeURIComponent(cloud)}`),
       provision: (cloud, payload) => http(`/api/provision/${encodeURIComponent(cloud)}`, body("POST", payload)),
       // Bastion + internal private VM pair (gated on can_provision, i.e. the
       // tenant owner/admin only — see /api/provision-private/{cloud}). AWS and

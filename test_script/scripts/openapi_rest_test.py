@@ -226,7 +226,11 @@ def request(
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode(errors="replace")
         status = exc.code
-    except urllib.error.URLError as exc:
+    except OSError as exc:
+        # URLError (DNS / connection refused) and socket.timeout — the backend is
+        # unreachable or the call timed out. Return status 0 (recorded as a
+        # FAIL rather than crashing the whole run) so the remaining endpoints
+        # still get exercised.
         return 0, {"_error": str(exc)}
     try:
         parsed = json.loads(raw) if raw else None

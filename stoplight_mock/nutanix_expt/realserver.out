@@ -1,0 +1,1757 @@
+╔══════════════════════════════════════════════════════════╗
+║   Nutanix IAM read sweep        v4.0                      ║
+║   Target:   166.6.100.1:9440                             ║
+║   User:     cy-user01                                    ║
+╚══════════════════════════════════════════════════════════╝
+
+[1;36m── IAM credential — convert cy-user01 password → API key ──[0m
+[2m  → GET https://166.6.100.1:9440/api/iam/v4.0/authn/users[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/iam/v4.0/authn/users
+    headers:
+      Accept: application/json
+      Authorization: Basic ******** (user cy-user01)
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-api-ratelimit-remaining: 9
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      content-length: 249
+      server: envoy
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 10
+      content-type: application/json
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=ChlmcGxudnRqajdqeGJ6NnV1cWl2bGRramVjEhl0emVrZnpyNmVjaDZ0bm40aGJkNHFwaWtp;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      expires: 0
+      x-xss-protection: 1; mode=block
+      cache-control: no-cache, no-store
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "$dataItemDiscriminator": "List<iam.v4.authn.User>",
+        "$objectType": "iam.v4.authn.ListUsersApiResponse",
+        "$reserved": {
+          "$fv": "v4.r1.b2"
+        },
+        "data": [],
+        "metadata": {
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "$reserved": {
+            "$fv": "v1.r0"
+          }
+        }
+      }
+────────────────────────────────────────────────────────────
+WARNING: user 'cy-user01' not found in IAM user list; skipping key generation.
+
+[1;36m── IAM session login — capture NTNX_IGW_SESSION cookie ──[0m
+==> Basic auth as cy-user01 @ https://166.6.100.1:9440
+[2m  → GET https://166.6.100.1:9440/api/iam/v4.0/authn/users?$limit=1[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/iam/v4.0/authn/users?$limit=1
+    headers:
+      Accept: application/json
+      Authorization: Basic ******** (user cy-user01)
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-api-ratelimit-remaining: 9
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      content-length: 927
+      server: envoy
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 10
+      content-type: application/json
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      expires: 0
+      x-xss-protection: 1; mode=block
+      cache-control: no-cache, no-store
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      <empty>
+────────────────────────────────────────────────────────────
+[2m  → GET https://166.6.100.1:9440/api/iam/v4.0/authn/users?$limit=1[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/iam/v4.0/authn/users?$limit=1
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-api-ratelimit-remaining: 9
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      content-length: 927
+      server: envoy
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 10
+      content-type: application/json
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      expires: 0
+      x-xss-protection: 1; mode=block
+      cache-control: no-cache, no-store
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      <empty>
+────────────────────────────────────────────────────────────
+    OK - session cookie accepted (jar /tmp/tmp.t39X4Ls611/cookie.txt)
+
+[1;36m── List VMs (primary) ──[0m
+[2m  → GET https://166.6.100.1:9440/api/vmm/v4.0/ahv/config/vms[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/vmm/v4.0/ahv/config/vms
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 519
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 7
+      x-api-ratelimit-remaining: 6
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "$reserved": {
+          "$fv": "v4.r2"
+        },
+        "$objectType": "vmm.v4.ahv.config.ListVmsApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[32m✓ List VMs (HTTP 200, totalAvailableResults=0)[0m
+
+[1;36m── Read-only enumeration (as in ../scripts/test_read.sh real-host mode) ──[0m
+[2m  → GET https://166.6.100.1:9440/api/clustermgmt/v4.0/config/clusters[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/clustermgmt/v4.0/config/clusters
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 15323
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 10
+      x-api-ratelimit-remaining: 9
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "data": [
+          {
+            "$reserved": {
+              "$fv": "v4.r2"
+            },
+            "$objectType": "clustermgmt.v4.config.Cluster",
+            "extId": "00065404-fed6-a565-39e3-303ea713f16a",
+            "vmCount": 23,
+            "backupEligibilityScore": 3,
+            "name": "dragonquest",
+            "nodes": {
+              "numberOfNodes": 3,
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.NodeReference",
+              "nodeList": [
+                {
+                  "nodeUuid": "85bd3b5f-207d-4ef2-9c3d-fa6664db0a5b",
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.NodeListItemReference",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.2",
+                      "prefixLength": 32
+                    }
+                  },
+                  "hostIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.1",
+                      "prefixLength": 32
+                    }
+                  }
+                },
+                {
+                  "nodeUuid": "67c7d878-6f19-4171-8b6b-a704572df0e7",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.4",
+                      "prefixLength": 32
+                    }
+                  },
+                  "hostIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.3",
+                      "prefixLength": 32
+                    }
+                  }
+                },
+                {
+                  "nodeUuid": "1bf378ab-8859-4b6b-910d-b25e2ecfe7de",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.6",
+                      "prefixLength": 32
+                    }
+                  },
+                  "hostIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.61.5",
+                      "prefixLength": 32
+                    }
+                  }
+                }
+              ]
+            },
+            "config": {
+              "incarnationId": 1781230292346213,
+              "hypervisorTypes": [
+                "AHV"
+              ],
+              "timezone": "UTC",
+              "clusterSoftwareMap": [
+                {
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.SoftwareMapReference",
+                  "softwareType": "NCC",
+                  "version": "ncc-5.2.1"
+                },
+                {
+                  "softwareType": "NOS",
+                  "version": "el8.5-release-ganges-7.3.1.10-stable-a70819042186b1125a8ad3550ca48b5a36c3acfa"
+                }
+              ],
+              "isRemoteSupportEnabled": false,
+              "isLts": false,
+              "isPasswordRemoteLoginEnabled": true,
+              "isAvailable": true,
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.ClusterConfigReference",
+              "buildInfo": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.BuildReference",
+                "buildType": "release",
+                "version": "7.3",
+                "fullVersion": "el8.5-release-ganges-7.3.1.10-stable-a70819042186b1125a8ad3550ca48b5a36c3acfa",
+                "commitId": "a70819042186b1125a8ad3550ca48b5a36c3acfa",
+                "shortCommitId": "a70819"
+              },
+              "clusterFunction": [
+                "AOS"
+              ],
+              "authorizedPublicKeyList": [
+                {
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.PublicKey",
+                  "name": "67c7d878-6f19-4171-8b6b-a704572df0e7",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCoXUAzG4Grv8wCZ8iASXPsR/puIguAyF7037QlTXayPh5drFP0ZFB2Wr5ULV/JLN8/sjRLYYGsETLk+rAQemb1qeKyNVYOomCSEIK1GRHGywPhw4BPn85BFxUk9pNNHkYnup5s5bouazzPmKporQMk4gnFBYBQu8N/EILGO4dScHz2Eh60kpHwdtJlS+9G1D+irAI3cE5tUD+yVbwOQu6EGn8UEb6EuV9LzT7RBqivZ7xpkr8YICMxWxtki6/a1HcKldh1yvT8GNwnKNCoYBpdV1dS777LbYJCAZtIEnNDSLFxjXiSM/zwLyLaW5OdXb9Xmdmp2E6X7sZD3xnhq+BXY+hvjbY6tUcuvkZd2otbAFwRLNxCS6jM583duiUpSXFIWmt+V8gmhZrN+dgft55MwyU55Pf4/g8Kfj2j1jUa5hxRRIgIj9g5O/VloAgwYog9d25AVk7FkeDWa531SxP2m2JIbmipoeLx7b9D2mSeE/jWWJ9qJzjAttPJ70nvBW0= nutanix@ntnx-wzp291297ps-a-cvm"
+                },
+                {
+                  "name": "166.6.61.3",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDeMlQ4jl9SDWb5Lhcm5+u09ZBR3IL41k3yJuhKIVTrXWrbio7bZLyuwWKaHoDO6Tw/4v1sKQjYY/maE2hQMP3ZvmVEmyFg9EGc6OAKPY8iEbiO6+N5izC9oAN/w1GJE5Gnm19hFJYFfXG/pzcrZ16xaDqGyin+eVtVxqG67310H8wefTsCSeJPxpHOnGSRX4wplWgRKHxYXo6MbHVasRLE6UW1MMDdiem7ZC5XZrqYk+HpBJ7N/G6CuoVwAAGrv/i67taTzTvTx83w9ebdTH5XJZwiDDIXJi1r1Z5QznO3j7z/HI+7GQhDTtuAo9h9q78VE5SZdOvB5BCIWiZNVM1g4Wh62xLXlfiUXMtWEKDGBkkU7jOkulDy7UxJs8i6OMGICi1uWTeKLXLBVRu3qT1VtFTkZrpqx4ZomSe/61hKIagBJide5mfPuwnnYEThrEkVB0qiae2toxBjO/+HWjLjE0L7WmgnoaCFQvZRxpNz8SIaar0BWsh6b6YZX8CJ56c= root@phoenix"
+                },
+                {
+                  "name": "1bf378ab-8859-4b6b-910d-b25e2ecfe7de",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC/bgs/wAqNJ78OpdU8IHGf8/gW8lkN6rGBFHydi02PuOKldk+ZLjnB6I/Tzlgr6c8LlMJ+sw8CGEfidjiMDV7kyyW0WgOuRtepT9q3BNfo4Svusqm5p4A5eawvp8YH1CJx0uI6TNYKfRCQ3gj74QbBzwA4HbIhNt/SlP3B/zRDbvjAlAAgBSHBiBOylz9N3IiLwF+qCKZMeK2XgzEhA4pflJe9093AMR+M+rBYuhBchRAgVgoI2uH3NZs/pb2Aal4QgtYRpAYG1cJCoC0z2bQkFkVzZR6zWbxhHgG/YnNUmmqJIwMZvqfQSFEfPYkEyng7bCNB39ktFBai3tIouofFKOR1NlAiNwN8ZHpB/wjZfti+cz6piK9sadzqAO8fRfhsOlQMUjmatwKAEGFSjs+WcCSolCEfV+EtG5NJshB802yqhzsJbBheT7IH4vM8Q2YxQDBRWqhtsgbD+Uo28bm/fjcFHV+BggIJpANN5cbyQh3ghIHxfh289c+l1/5Uxgk= nutanix@ntnx-wzp291297pk-a-cvm"
+                },
+                {
+                  "name": "166.6.61.5",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDQh+KNSXIRXm9c2wCZ4GoVTtJc4s0vCx/BbYNTVaO/0q9rTD7ScQV9w3s8WJj3/OjoZRfld4P+zVr5NTFfCdIG3UM4QRAhABfHdm+Mce/B1Z3les4h+JaVcKC5z2DZ5t38QL/+hxtK+yHHseugWobd/0Ct0nPMesj4OQ5xHLA21atgQ4hgnsyzjgTRD3ZrwUGaZkphIISciD0Jtj6EHTEZxTXKPTxzlS6NamddjNGoxO9AVCfSM6eQkiIM6JTkNB5MfyTGwlxBqGlwR5/FSA1E7wprdptUfkMRiHrrRoBJO7t4bARW4dxAVe20xpsY02PC5Ne68I07Y1KhgYovbkLKnHDWGlsMam5e515iS3V+i87tUg7iShNs1VOs06s+5Ah16Xb+BYP2kXBegT3mGNY1fl747+7ZsW/QYJ2DLhEQ1ixSBt3hcck4ACjHQxxjCw4j7utbja7DiZSHFmQY6CTL7uGiFd1hPftqeSOE+jCP5nXmkOG3yt9vlBY2aA67UM= root@phoenix"
+                },
+                {
+                  "name": "85bd3b5f-207d-4ef2-9c3d-fa6664db0a5b",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDAoKujMLovDQvJLD0G8H2ZK9jbeu5e+Vv0lJIeG86o4y320w4NFVJ/+EHFmHjYDcjEC2xhyZRdGYe++SEmtVdtAQeM6GMepFAEHBr8kDjgfn+zt6t0yV8y8O1vEfV9jQ7HmjRd7DQjsx6KmBCnZ1Fxd5COOcSLvV0+O1RuvcytTruu7QlVNFOuHHpsFQwS10lh3jcnVDlCKqFBH/0YRFr8G/kMEibp+X2bxt4xmdiLNNpROXvl+IzyxIug+6yKrKK+JIvFIopSQBMqjZ08HO0hRoEy71iMIDs7e2BuJU1VMYBblTyc0xDovH6LEkOCUpC0zJZ9mSdkSe50BRX7BL+cA1bbcoshIXrWf2mVbAXKudvKkMIPCrq+BAtY9At+IG55L87OLsXsXvvv7dgCdkPl+EFTkG46PIPkHsopHZ9t45afJ+JnfWb9JnBJQtulUBZw9JqxkiMcKnpThNoF6JzWFQutJtRrAOHz5nkFSjTasf+03shikc70MFVRNvYZCYU= nutanix@ntnx-wzp291297pr-a-cvm"
+                },
+                {
+                  "name": "166.6.61.1",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDG0x5DBtt9fsZI2gGc5E8r/ijpKPvxASfMyWZkPc54L6Dutode8JewtpsiHkqGsoR9/5knCZgw8jNRViE6YmX4d259rz+Oo3OjMIonx43yiS8cc5CNNdo61Vr0MZbuVqN1aiJX80aYzeqOk8oG1XMcV3sAh6X0/8HLLA+ZFvO8r44rtpmvYXaUsc+Skhwy4nX4jfOCY2mIlArZOzwo5gY0yRiEmsbSPkq2pIQH2sLMfpOuwF5y+sSCPkSrKdK24Aty18JUzzYPgPo6Te1NMMLmXh/hW11c3riBu/5rA6gcsY+0Wh/R+a3n8EB3V1uuwhAz1SAZXRfsOAeJYL9wMtzZx77oP66CWca1iPLLNBNs/Uzf6DBfbz5xp9xhPn+nQKFdx92hOze69b2UlPLMTCacpRgoG8gPyKi1isDRF+tqrr6BErOeL/G+sYNsFLabf527kulwAQDvuPbRDYoKhFopUy3LvINYgLg5OUgmQjq7JVlVjIeVXJDAhdKTKdPTHhc= root@phoenix"
+                }
+              ],
+              "redundancyFactor": 2,
+              "clusterArch": "X86_64",
+              "faultToleranceState": {
+                "currentMaxFaultTolerance": 1,
+                "desiredMaxFaultTolerance": 1,
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.FaultToleranceState",
+                "domainAwarenessLevel": "NODE",
+                "currentClusterFaultTolerance": "CFT_1N_OR_1D",
+                "desiredClusterFaultTolerance": "CFT_1N_OR_1D"
+              },
+              "operationMode": "NORMAL",
+              "pulseStatus": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.PulseStatus",
+                "isEnabled": false
+              }
+            },
+            "network": {
+              "externalSubnet": "166.6.61.0/255.255.255.0",
+              "internalSubnet": "192.168.5.0/255.255.255.128",
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.ClusterNetworkReference",
+              "externalAddress": {
+                "$reserved": {
+                  "$fv": "v1.r0"
+                },
+                "$objectType": "common.v1.config.IPAddress",
+                "ipv4": {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPv4Address",
+                  "value": "166.6.61.15",
+                  "prefixLength": 32
+                }
+              },
+              "externalDataServiceIp": {
+                "$reserved": {
+                  "$fv": "v1.r0"
+                },
+                "$objectType": "common.v1.config.IPAddress",
+                "ipv4": {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPv4Address",
+                  "value": "166.6.61.17",
+                  "prefixLength": 32
+                }
+              },
+              "nameServerIpList": [
+                {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPAddressOrFQDN",
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.100.5",
+                    "prefixLength": 32
+                  }
+                },
+                {
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.61.201",
+                    "prefixLength": 32
+                  }
+                }
+              ],
+              "ntpServerIpList": [
+                {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPAddressOrFQDN",
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.60.3",
+                    "prefixLength": 32
+                  }
+                },
+                {
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.60.4",
+                    "prefixLength": 32
+                  }
+                }
+              ],
+              "backplane": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.BackplaneNetworkParams",
+                "isSegmentationEnabled": false
+              }
+            },
+            "upgradeStatus": "SUCCEEDED"
+          },
+          {
+            "$reserved": {
+              "$fv": "v4.r2"
+            },
+            "$objectType": "clustermgmt.v4.config.Cluster",
+            "extId": "b7fc9f70-46f0-44da-a599-e5a4901762c5",
+            "name": "kingslime",
+            "nodes": {
+              "numberOfNodes": 3,
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.NodeReference",
+              "nodeList": [
+                {
+                  "nodeUuid": "1e92dd37-4242-46e7-999e-f82e564c62b2",
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.NodeListItemReference",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.100.4",
+                      "prefixLength": 32
+                    }
+                  }
+                },
+                {
+                  "nodeUuid": "7bcb4ea8-83be-4c14-a470-c71987907be8",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.100.2",
+                      "prefixLength": 32
+                    }
+                  }
+                },
+                {
+                  "nodeUuid": "c26fac2d-8459-4eb0-af43-a49c4f84ef18",
+                  "controllerVmIp": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPAddress",
+                    "ipv4": {
+                      "$reserved": {
+                        "$fv": "v1.r0"
+                      },
+                      "$objectType": "common.v1.config.IPv4Address",
+                      "value": "166.6.100.3",
+                      "prefixLength": 32
+                    }
+                  }
+                }
+              ]
+            },
+            "config": {
+              "incarnationId": 4034274670792426714,
+              "hypervisorTypes": [
+                "$UNKNOWN"
+              ],
+              "timezone": "Atlantic/Reykjavik",
+              "clusterSoftwareMap": [
+                {
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.SoftwareMapReference",
+                  "softwareType": "NCC",
+                  "version": "ncc-5.3.1"
+                },
+                {
+                  "softwareType": "PRISM_CENTRAL",
+                  "version": "el8.5-release-ganges-7.5.1.6-stable-d972539867e9c7676cfbd21d93acaff42d5dfe12"
+                }
+              ],
+              "isRemoteSupportEnabled": false,
+              "isPasswordRemoteLoginEnabled": true,
+              "isAvailable": true,
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.ClusterConfigReference",
+              "buildInfo": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.BuildReference",
+                "buildType": "release",
+                "version": "7.5",
+                "fullVersion": "el8.5-release-ganges-7.5.1.6-stable-d972539867e9c7676cfbd21d93acaff42d5dfe12",
+                "commitId": "d972539867e9c7676cfbd21d93acaff42d5dfe12",
+                "shortCommitId": "d97253"
+              },
+              "clusterFunction": [
+                "PRISM_CENTRAL"
+              ],
+              "authorizedPublicKeyList": [
+                {
+                  "$reserved": {
+                    "$fv": "v4.r2"
+                  },
+                  "$objectType": "clustermgmt.v4.config.PublicKey",
+                  "name": "c26fac2d-8459-4eb0-af43-a49c4f84ef18",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDVTifbWBP0L5MTvgFFoGMAhJT9DX0PriLeKGJjdiDfzxY9/qal5buQ27cCI0JI/0wEph/fxX1pBOY2lmL3gtdxFN3BuWXyEJJsAGzC+TLqrsW66uIxnLKRfpy18kpspsK/E2Ddzxa0WcIWP4dV21Rmu+TF8yEekjCVlMiKWCmUix4ZqBgWS8xKoICpdbDkT+kQ85mOLyynixxa43zaQbk4vuFR8oa+MGCPn5Pf30et7y1dM2HAEEiSCTxyupU1loqAacJQrwJyyamaVGbPauhwLzxSSaVX1qKcSnbZGiSoP3uZvhdBO0Pv5dx7wLJvx6P82gQh0fnEw+HEV+kOl/qbFtBTrdrf+mtkC30wlsZAfxtKPJTmfuQqx4sxauXf3oauxJWH9e0VcYVHJnjrjbdsWX2Mxg0qOa307on59rfvFyrtfnC29VGCkLz4e4n7qTWRAo5eocQ4i5jk1NSfGz6Cbnx7WK4404njUT4IvoiAUUa0cwQMpqXhZeb4eEDz/XM= nutanix@ntnx-166-6-100-3-a-pcvm"
+                },
+                {
+                  "name": "7bcb4ea8-83be-4c14-a470-c71987907be8",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDRFMwSuhbL87fy68ZoXTO/XKEQ2Hp3EYocBGV4z4wQ3DZUPyfBCjmkj0rF2aYWT5JCp7fp8J2zIPyb08heUgxkqzRaactWLJ4glnAhvOe2ZZXDQsixlFLbCBZZ/aUKoxQvbWwQtUl9geiQrIK7zkzpoFhlLNIY5XbXn9fQNBBP3MfDqUuqfrQ8RVRxZPWZVDE/wpafq2NRTRQPA4AhZ7eY9KqQy0AvR04FKUR1KpLyaHTAWe4g9HZe8OTl544KJLWmWV4WYxVxHNf8u8tE6xyNxF1sTQ9kL/7ycBNuN8Af5nHPD4jv9x6P1SVzk26edMobNPgA0x1WDUzDudW7b2q7sPXCfulbjxKVjMpcklA9Dq0MflZ+CMewlPK8xtuISXIuXntJ7ah8YbF3mkcL5jmTDaeDlBqMVJGEwZxune4dn0xOdUL+mBbQ+OLADrf2/BHTb7hYKO8ke1S4A/vsW4sH0IcvjvezhmxFSPiMUx6jxIO5WSo9Mdmfl1MYKP5+8Cc= nutanix@ntnx-166-6-100-2-a-pcvm"
+                },
+                {
+                  "name": "1e92dd37-4242-46e7-999e-f82e564c62b2",
+                  "key": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCf3p3zE3NcSkWJSOVqN17bcMwk18YP6mVx5TvEeGyj5pVJEddgciG0UAcSA8U7jnT2OWS0s3W5YAw4f1NrcmIc+4Ey6oqun/9Gj6ugjVM7o4LnjbpZNnNtti9wo4CXXKrY9WhXLk13ZYxcM83R/ytIv6wkAjsKBhs4vOalfaOgWa38yoVBScDKOcPZiMFIf2y9YnSwdr2zRZdMDcCZ0oHOyW+HmKsq9Gd1shO+7jLU4xaTO9mHKGr5ENUYp8anKBlOzTgV1Uh3d8TXNKEb9IcVQ1u9IEA9TMf2fPt9yKqEAVsW8cl6S2rBNQn4AdOLH/Xc4cADwGG/ytUP3wHJvKryoFgszysN93rff9QfmciY3mB7JW5f/LNFeRw688Ai83YXOV0unXRGKWke4f8DJR/1wk0zOaMwOhXut+OmMl9AZZ5LbM6zc3lTg3I5eNh+hLZTVie1e1o4CbGI0IAVo4cHJQ3LqRSwi83l49Vtn/ZZglUpVPuhvKqF/uDTMrX3Aw8= nutanix@ntnx-166-6-100-4-a-pcvm"
+                }
+              ],
+              "redundancyFactor": 2,
+              "clusterArch": "X86_64",
+              "faultToleranceState": {
+                "currentMaxFaultTolerance": 1,
+                "desiredMaxFaultTolerance": 1,
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.FaultToleranceState",
+                "domainAwarenessLevel": "NODE",
+                "currentClusterFaultTolerance": "CFT_1N_OR_1D",
+                "desiredClusterFaultTolerance": "CFT_1N_OR_1D"
+              },
+              "pulseStatus": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.PulseStatus",
+                "isEnabled": false
+              }
+            },
+            "network": {
+              "externalSubnet": "166.6.100.0/255.255.255.0",
+              "internalSubnet": "166.6.100.0/255.255.255.0",
+              "$reserved": {
+                "$fv": "v4.r2"
+              },
+              "$objectType": "clustermgmt.v4.config.ClusterNetworkReference",
+              "externalAddress": {
+                "$reserved": {
+                  "$fv": "v1.r0"
+                },
+                "$objectType": "common.v1.config.IPAddress",
+                "ipv4": {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPv4Address",
+                  "value": "166.6.100.1",
+                  "prefixLength": 32
+                }
+              },
+              "externalDataServiceIp": {
+                "$reserved": {
+                  "$fv": "v1.r0"
+                },
+                "$objectType": "common.v1.config.IPAddress"
+              },
+              "nameServerIpList": [
+                {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPAddressOrFQDN",
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "127.0.0.1",
+                    "prefixLength": 32
+                  }
+                },
+                {
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.100.5",
+                    "prefixLength": 32
+                  }
+                },
+                {
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.61.201",
+                    "prefixLength": 32
+                  }
+                }
+              ],
+              "ntpServerIpList": [
+                {
+                  "$reserved": {
+                    "$fv": "v1.r0"
+                  },
+                  "$objectType": "common.v1.config.IPAddressOrFQDN",
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.60.3",
+                    "prefixLength": 32
+                  }
+                },
+                {
+                  "ipv4": {
+                    "$reserved": {
+                      "$fv": "v1.r0"
+                    },
+                    "$objectType": "common.v1.config.IPv4Address",
+                    "value": "166.6.60.4",
+                    "prefixLength": 32
+                  }
+                }
+              ],
+              "backplane": {
+                "$reserved": {
+                  "$fv": "v4.r2"
+                },
+                "$objectType": "clustermgmt.v4.config.BackplaneNetworkParams",
+                "isSegmentationEnabled": false
+              }
+            }
+          }
+        ],
+        "$reserved": {
+          "$fv": "v4.r2"
+        },
+        "$objectType": "clustermgmt.v4.config.ListClustersApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "links": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.response.ApiLink",
+              "href": "https://166.6.100.1:9440/api/clustermgmt/v4.0/config/clusters?$limit=50&$page=0",
+              "rel": "first"
+            },
+            {
+              "href": "https://166.6.100.1:9440/api/clustermgmt/v4.0/config/clusters?$limit=50&$page=0",
+              "rel": "self"
+            },
+            {
+              "href": "https://166.6.100.1:9440/api/clustermgmt/v4.0/config/clusters?$limit=50&$page=0",
+              "rel": "last"
+            }
+          ],
+          "totalAvailableResults": 2
+        }
+      }
+────────────────────────────────────────────────────────────
+[32m✓ List clusters (HTTP 200, totalAvailableResults=2)[0m
+[2m  → GET https://166.6.100.1:9440/api/networking/v4.0/config/subnets[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/networking/v4.0/config/subnets
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  403
+    headers:
+      HTTP/2 403 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 1066
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 5
+      x-api-ratelimit-remaining: 4
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:21 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "data": {
+          "error": [
+            {
+              "$reserved": {
+                "$fv": "v4.r3"
+              },
+              "$objectType": "networking.v4.error.AppMessage",
+              "message": "Failed to list subnets as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource",
+              "severity": "ERROR",
+              "code": "NETWORKING-10071",
+              "locale": "en_US"
+            }
+          ],
+          "$reserved": {
+            "$fv": "v4.r3"
+          },
+          "$objectType": "networking.v4.error.ErrorResponse"
+        },
+        "$reserved": {
+          "$fv": "v4.r3"
+        },
+        "$objectType": "networking.v4.config.GetSubnetApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "links": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.response.ApiLink",
+              "href": "https://166.6.100.1:9440/api/networking/v4.0/config/subnets",
+              "rel": "self"
+            }
+          ],
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[31m✗ List subnets — expected 200, got 403[0m
+[2m    body: {"data":{"error":[{"$reserved":{"$fv":"v4.r3"},"$objectType":"networking.v4.error.AppMessage","message":"Failed to list subnets as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource","severity":"ERROR","code":"NETWORKING-10071","locale":"en_US"}],"[0m
+[2m  → GET https://166.6.100.1:9440/api/networking/v4.0/config/vpcs[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/networking/v4.0/config/vpcs
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  403
+    headers:
+      HTTP/2 403 
+      x-ratelimit-remaining: 78
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 1057
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 5
+      x-api-ratelimit-remaining: 4
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "data": {
+          "error": [
+            {
+              "$reserved": {
+                "$fv": "v4.r3"
+              },
+              "$objectType": "networking.v4.error.AppMessage",
+              "message": "Failed to list VPCs as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource",
+              "severity": "ERROR",
+              "code": "NETWORKING-10071",
+              "locale": "en_US"
+            }
+          ],
+          "$reserved": {
+            "$fv": "v4.r3"
+          },
+          "$objectType": "networking.v4.error.ErrorResponse"
+        },
+        "$reserved": {
+          "$fv": "v4.r3"
+        },
+        "$objectType": "networking.v4.config.GetVpcApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "links": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.response.ApiLink",
+              "href": "https://166.6.100.1:9440/api/networking/v4.0/config/vpcs",
+              "rel": "self"
+            }
+          ],
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[31m✗ List VPCs — expected 200, got 403[0m
+[2m    body: {"data":{"error":[{"$reserved":{"$fv":"v4.r3"},"$objectType":"networking.v4.error.AppMessage","message":"Failed to list VPCs as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource","severity":"ERROR","code":"NETWORKING-10071","locale":"en_US"}],"$re[0m
+[2m  → GET https://166.6.100.1:9440/api/vmm/v4.0/content/images[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/vmm/v4.0/content/images
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 519
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 15
+      x-api-ratelimit-remaining: 14
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "$reserved": {
+          "$fv": "v4.r2"
+        },
+        "$objectType": "vmm.v4.content.ListImagesApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[32m✓ List images (HTTP 200, totalAvailableResults=0)[0m
+[2m  → GET https://166.6.100.1:9440/api/networking/v4.0/config/floating-ips[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/networking/v4.0/config/floating-ips
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  403
+    headers:
+      HTTP/2 403 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 1080
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 5
+      x-api-ratelimit-remaining: 4
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "data": {
+          "error": [
+            {
+              "$reserved": {
+                "$fv": "v4.r3"
+              },
+              "$objectType": "networking.v4.error.AppMessage",
+              "message": "Failed to list floating IPs as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource",
+              "severity": "ERROR",
+              "code": "NETWORKING-10071",
+              "locale": "en_US"
+            }
+          ],
+          "$reserved": {
+            "$fv": "v4.r3"
+          },
+          "$objectType": "networking.v4.error.ErrorResponse"
+        },
+        "$reserved": {
+          "$fv": "v4.r3"
+        },
+        "$objectType": "networking.v4.config.GetFloatingIpApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "links": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.response.ApiLink",
+              "href": "https://166.6.100.1:9440/api/networking/v4.0/config/floating-ips",
+              "rel": "self"
+            }
+          ],
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[31m✗ List floating IPs — expected 200, got 403[0m
+[2m    body: {"data":{"error":[{"$reserved":{"$fv":"v4.r3"},"$objectType":"networking.v4.error.AppMessage","message":"Failed to list floating IPs as the access is denied - Application error kAccessDeniedError raised: User denied access to get resource","severity":"ERROR","code":"NETWORKING-10071","locale":"en_US[0m
+[2m  → GET https://166.6.100.1:9440/api/clustermgmt/v4.0/config/storage-containers[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/clustermgmt/v4.0/config/storage-containers
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  403
+    headers:
+      HTTP/2 403 
+      x-ratelimit-remaining: 78
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 536
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 10
+      x-api-ratelimit-remaining: 9
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "data": {
+          "error": [
+            {
+              "message": "Failed to authorize the request due to Access Denied because no or incorrect permissions were set in the request http://166.6.100.4/api/clustermgmt/v4.0/config/storage-containers",
+              "code": "PLAT-10007",
+              "locale": "en_US",
+              "errorGroup": "RBAC_AUTHORIZATION_ERROR",
+              "severity": "ERROR",
+              "$objectType": "clustermgmt.v4.error.AppMessage"
+            }
+          ],
+          "$errorItemDiscriminator": "List<clustermgmt.v4.error.AppMessage>",
+          "$objectType": "clustermgmt.v4.error.ErrorResponse"
+        },
+        "$dataItemDiscriminator": "clustermgmt.v4.error.ErrorResponse"
+      }
+────────────────────────────────────────────────────────────
+[31m✗ List storage containers — expected 200, got 403[0m
+[2m    body: {"data":{"error":[{"message":"Failed to authorize the request due to Access Denied because no or incorrect permissions were set in the request http://166.6.100.4/api/clustermgmt/v4.0/config/storage-containers","code":"PLAT-10007","locale":"en_US","errorGroup":"RBAC_AUTHORIZATION_ERROR","severity":"E[0m
+[2m  → GET https://166.6.100.1:9440/api/prism/v4.0/config/tasks[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/prism/v4.0/config/tasks
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-ratelimit-remaining: 79
+      content-type: application/json
+      x-ratelimit-reset: 0
+      cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+      x-xss-protection: 1; mode=block
+      expires: 0,0
+      content-length: 519
+      x-content-type-options: nosniff
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 6
+      x-api-ratelimit-remaining: 5
+      x-ratelimit-limit: 80
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      pragma: no-cache
+      x-frame-options: DENY
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      x-xss-protection: 1; mode=block
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "$reserved": {
+          "$fv": "v4.r3"
+        },
+        "$objectType": "prism.v4.config.ListTasksApiResponse",
+        "metadata": {
+          "flags": [
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "hasError",
+              "value": false
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isPaginated",
+              "value": true
+            },
+            {
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "$objectType": "common.v1.config.Flag",
+              "name": "isTruncated",
+              "value": false
+            }
+          ],
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "totalAvailableResults": 0
+        }
+      }
+────────────────────────────────────────────────────────────
+[32m✓ List tasks (HTTP 200, totalAvailableResults=0)[0m
+[2m  → GET https://166.6.100.1:9440/api/iam/v4.0/authz/roles[0m
+────────────────────────────────────────────────────────────
+  REQUEST
+    method:  GET
+    url:     https://166.6.100.1:9440/api/iam/v4.0/authz/roles
+    headers:
+      Accept: application/json
+      Cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8= NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=
+  RESPONSE
+    status:  200
+    headers:
+      HTTP/2 200 
+      x-api-ratelimit-remaining: 19
+      date: Mon, 24 Aug 2026 10:03:22 GMT
+      server: envoy
+      x-api-ratelimit-refresh-period-seconds: 1
+      x-api-ratelimit-reset: 0
+      x-api-ratelimit-limit: 20
+      content-type: application/json
+      set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQ2LSw1AYaB01lcmN1cnkgACooZmU1MWVkNTI4MjI3MzMyNzcxYzE0OTQwN2MwZDczZDNkN2IyYjNiMw==|wwfH9Lfuae2zkuL/uunNgm1beNYMDbvzz2CoR1JHZj8=;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=Chl4emZhN2JhamVkdGV1enhlZXVsY2p3NDdxEhluZDZxM2YzZGhtYnZ1dHRyYmJxN3JlanBt;Expires=Mon, 24-Aug-2026 10:18:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+      x-content-type-options: nosniff
+      strict-transport-security: max-age=63072000; includeSubdomains; preload
+      x-permitted-cross-domain-policies: master-only
+      x-dns-prefetch-control: off
+      x-ntnx-env: pc
+      x-ntnx-product: pc.7.5.1.6
+      x-frame-options: SAMEORIGIN
+      vary: Origin, Accept-Encoding
+      pragma: no-cache
+      expires: 0
+      x-xss-protection: 1; mode=block
+      cache-control: no-cache, no-store
+      content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+      
+    body:
+      {
+        "$dataItemDiscriminator": "List<iam.v4.authz.Role>",
+        "$objectType": "iam.v4.authz.ListRolesApiResponse",
+        "$reserved": {
+          "$fv": "v4.r1.b2"
+        },
+        "data": [
+          {
+            "$objectType": "iam.v4.authz.Role",
+            "$reserved": {
+              "$fv": "v4.r1.b2"
+            },
+            "accessibleClients": [
+              "DevOps"
+            ],
+            "accessibleClientsCount": 1,
+            "accessibleEntityTypes": [
+              "Action Trigger Type",
+              "Action Type"
+            ],
+            "accessibleEntityTypesCount": 2,
+            "assignedUserGroupsCount": 0,
+            "assignedUsersCount": 0,
+            "clientName": "DevOps",
+            "createdBy": "",
+            "createdTime": "2026-07-02T09:09:22.147263Z",
+            "description": "Basic Playbook access for all users",
+            "displayName": "Action Service User",
+            "extId": "9dcd0076-6d40-44fb-5a10-7cd2109be6f0",
+            "isSystemDefined": true,
+            "lastUpdatedTime": "2026-07-02T09:09:22.147263Z",
+            "operations": [
+              "e5aef1c5-53dc-4f49-66d3-c776af53848d",
+              "f236a083-ed6c-4ee8-4cda-1ce13f89b146"
+            ]
+          },
+          {
+            "$objectType": "iam.v4.authz.Role",
+            "$reserved": {
+              "$fv": "v4.r1.b2"
+            },
+            "accessibleClients": [
+              "Cluster Management",
+              "Prism",
+              "License Manager",
+              "Multidomain",
+              "Virtual Machine Management",
+              "Lifecycle"
+            ],
+            "accessibleClientsCount": 6,
+            "accessibleEntityTypes": [
+              "External Repository config",
+              "AHV VM",
+              "License Configuration",
+              "Cluster",
+              "Disk",
+              "Cluster Management Task",
+              "SSL Certificate Info",
+              "PCIe Device",
+              "Host",
+              "Host Nic",
+              "Cluster Profile",
+              "Entity (LCM)",
+              "Image (LCM)",
+              "History (LCM)",
+              "Summary (LCM)",
+              "Config (LCM)",
+              "Component (LCM)",
+              "Bundle (LCM)",
+              "Status Info (LCM)",
+              "Upgrade Selection (LCM)",
+              "Vcenter Extension",
+              "Registration",
+              "Domain Manager(Prism Central)"
+            ],
+            "accessibleEntityTypesCount": 23,
+            "assignedUserGroupsCount": 0,
+            "assignedUsersCount": 1,
+            "clientName": "Clustermgmt",
+            "createdBy": "",
+            "createdTime": "2026-07-02T09:09:23.182274Z",
+            "description": "Full access to Cluster operations.",
+            "displayName": "Cluster Admin",
+            "extId": "3d45bdf2-e5fd-4d66-6bbc-85c28c239fa0",
+            "isSystemDefined": true,
+            "lastUpdatedTime": "2026-07-02T09:09:23.182274Z",
+            "operations": [
+              "f0797957-b1f1-46f1-7433-88281900e8cc",
+              "623de361-33d2-4c08-5fa9-daf7fbeec635",
+              "0bb06482-ace2-4c2e-7115-49a4825ed6c5",
+              "576989f9-ad72-4c73-6cb8-1489bf5a44cf",
+              "d889097d-bdd7-4d3c-4a75-92cf5243da2d",
+              "66c61bf8-05a0-4e62-5a4c-ab0dc0791ae7",
+              "d753cde4-acc1-48e0-7639-092513251d30",
+              "a468d0b2-eb3e-4d39-70ec-db20f4aa3fb3",
+              "6bcb3b84-b176-4023-7d47-5e7a23cde79a",
+              "0be0051a-7b40-4369-6bf4-c34ef2e74fdc",
+              "b05b4bcf-9311-45e4-50ad-0a35b6e04558",
+              "6c5daca6-012c-4a8e-6769-fe28fb45a49c",
+              "6289b9b4-431e-4f6f-7d4e-96bc6b2ed8cb",
+              "fa84f697-ce29-4f78-4eab-a51577079f2d",
+              "38eae898-ff10-4894-6c28-c11c46f94d03",
+              "f830b6d9-e451-4412-783a-3f3e418fb444",
+              "048d7c91-5843-44fe-6a55-0432a6978331",
+              "a631d91d-83b1-4dfc-761b-959e9d6dcfad",
+              "01abf342-90c7-4c88-76c4-1a4c4a2fc2f2",
+              "4db1d533-cfd3-4b7d-792c-0241e6871d2a",
+              "4884380d-a0dc-4e35-6a14-badb0678a294",
+              "0e7e116a-d2a6-4bcd-4342-885a28e4e0c0",
+              "536c2ff6-ab60-47b4-42f7-1a0424b517d4",
+              "e96e095f-55f2-4287-6d0f-d96ffb3d6e89",
+              "138f0432-b86f-4a6c-7748-506cb4d2ce70",
+              "777c9e32-1ef3-46bc-49ad-409d6137025a",
+              "251ad02a-f770-4cfd-6412-a0dc32a6b279",
+              "61651315-215e-45e7-53aa-192b1a1a5cfe",
+              "0cc98152-5885-427c-4cfe-34de8863667a",
+              "f495239d-e69c-461f-44c0-5c9a5b16c925",
+              "cfa31c15-d60f-435e-455d-b38e65c90fa4",
+              "8521622c-f5db-477b-6db2-2d58f1b2dd10",
+              "b2ca8c2d-2e09-4c71-7a97-ff6f6c2626b9",
+              "b80f6f80-c5b7-4a8b-5d13-c4605b495ab0",
+              "57e898af-c547-43d6-6b4e-71eeb134b53e",
+              "cc948a98-1251-493b-6cdd-a21f4854fa3e",
+              "18f6af28-7605-4015-603c-dec295355d0b",
+              "70ca6c20-bd58-4c8b-7fe8-efbde5dd3a38",
+              "9b40ba7d-273d-489d-451b-1044d1ba14b3",
+              "2b88b282-5a9d-4c59-7c80-7a37a171a8d0",
+              "711cb066-9d88-407f-4a47-054de89e473b",
+              "9e7e53ec-ba1d-4f20-472a-74d39e057b1c",
+              "2deb5ded-6af4-42b5-77e0-f318f491c1a6",
+              "437b493a-4dd3-4cdd-5c05-13d6824bdcaf",
+              "cb246377-47e1-4583-4196-a20a8fb4253a",
+              "ae59c6c7-66e9-41eb-7ebf-72972b281b4f",
+              "b5797144-919f-4fbf-512b-6c29de4d3d12",
+              "a9fa8a42-14d0-4d09-7e29-2469da1b7898",
+              "90a877b2-ad6f-48fc-6927-d8ca5e80f164",
+              "1004312c-4922-4b97-4f1a-fc2dc87872f4",
+              "1459b741-e67c-4207-6fbb-d764dbd29b76",
+              "6d8f0315-1445-4072-4d31-ab5e6bc69a84",
+              "2e9d58be-ec5f-437d-7472-d1b1f1562882",
+              "5ffab12e-2fb1-432d-6ad5-821ccb95a45b",
+              "266178fb-4d7b-45ce-6ba3-875f53a73b6a",
+              "46d3ded0-1e3d-40cd-6940-9c89377e96e1",
+              "06105018-5340-4e1a-6abc-e6a6a63b8e57",
+              "d53e9e5b-14d8-475b-4d17-8ad45784c6d6",
+              "2b44d6be-96f6-419d-70b9-959ca701efe8",
+              "651526be-7a3a-414d-6d11-67ad3564fae0",
+              "5b6998a2-11b4-4a89-4a08-549e1841cd11",
+              "5d219302-9485-4b42-7858-443da446c997",
+              "f5ed65cd-a283-4e00-7f4d-601826f039a5",
+              "4bde2c14-9462-4acb-4abd-fe27628eb0f3",
+              "2e61cafe-a43c-4e46-66f7-07c5667c1fd5",
+              "d50b9da6-96bb-49de-5f93-d27b2e90aa0c",
+              "1d09647f-d87a-43e5-4d04-b782895d5fde",
+              "f94c442b-cf6f-4b21-7e07-ea407b0c7104",
+              "ddc1932f-9cfa-4428-7758-a72a7ebc77b9",
+              "6608d8e3-6013-40a0-66ce-540481681470",
+              "2e6f1f72-c6a4-4bdd-641b-9a84af95e764",
+              "be10afb8-f815-43b3-490e-c3840c54906f",
+              "77e96e2c-d2b9-421a-46f8-2d3d9b8e5973",
+              "8463138d-7455-4853-5b9e-d7a397999f5a",
+              "37b3b165-5135-4096-70cd-12ebd57b8e0f",
+              "59af5433-c03a-493a-68ae-7a1225f26de3",
+              "093c1e2d-7bbf-42ab-42d1-06394712d5f6",
+              "80cf9e85-7ff1-4696-651e-b6bb73b88f77",
+              "fc47cf6b-98bc-40b2-552b-215a866ce347",
+              "346d9b71-f1e0-40cc-4449-e1eea8409b0c",
+              "4b1c2b6c-6c42-4d60-57d0-8a4e50acd6b5",
+              "b84d6e98-e1f1-4cb1-74f1-b81a5acd8eb3",
+              "6c9419a1-5c43-4401-5b06-f599acf402cb",
+              "957e5c97-5f55-450b-6679-7f04a1577adb",
+              "60b80833-87a9-4a8e-7ef5-e463fb5334ac",
+              "15aaea55-3cb5-40c0-74fe-e0a219e9954d",
+              "54cc7cc2-301a-41ed-629f-d4a9b20128f4",
+              "4cce2a64-2606-449d-5eb5-fdbd845325fd",
+              "7516a394-8ba0-4310-5f72-20c463275b62",
+              "aaf437a3-aea8-403c-7528-47721146eda5",
+              "b81b24b4-5665-4f3d-666a-40606554177b",
+              "6705aaea-c1fe-4c69-5060-02914aa29a01",
+              "a0953482-92c4-4d36-4619-86bcfdd8213b",
+              "6574e66e-6406-4671-6caf-f8441b19922f",
+              "fd9b524e-5aff-485a-757c-08e56a7fc201",
+              "cf96d8ac-fc0d-4127-7fc3-436f3f288373",
+              "82895401-d067-4f0b-65be-d3fa5d18975c",
+              "5f886ff6-20fd-436b-4527-0cf3027dc322",
+              "aba68871-220e-47f1-4500-ba6b5e87ec66",
+              "54bdb805-a15d-4ac2-40fb-4e4a463d5827",
+              "298680c1-36e3-4651-6382-5de9daa38a3f",
+              "3b0349d2-982e-4670-702e-0288d0b80523",
+              "3a5a2727-667e-4064-4ad1-d8fe1cfba6f9"
+            ]
+          }
+        ],
+        "metadata": {
+          "$objectType": "common.v1.response.ApiResponseMetadata",
+          "$reserved": {
+            "$fv": "v1.r0"
+          },
+          "flags": [
+            {
+              "$objectType": "common.v1.config.Flag",
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "name": "hasError",
+              "value": false
+            },
+            {
+              "$objectType": "common.v1.config.Flag",
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "name": "isPaginated",
+              "value": true
+            }
+          ],
+          "links": [
+            {
+              "$objectType": "common.v1.response.ApiLink",
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "href": "/api/iam/v4.0/authz/roles?$limit=50&$page=0",
+              "rel": "first"
+            },
+            {
+              "$objectType": "common.v1.response.ApiLink",
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "href": "/api/iam/v4.0/authz/roles?$limit=50&$page=0",
+              "rel": "self"
+            },
+            {
+              "$objectType": "common.v1.response.ApiLink",
+              "$reserved": {
+                "$fv": "v1.r0"
+              },
+              "href": "/api/iam/v4.0/authz/roles?$limit=50&$page=0",
+              "rel": "last"
+            }
+          ],
+          "totalAvailableResults": 2
+        }
+      }
+────────────────────────────────────────────────────────────
+[32m✓ List IAM roles (v4.0) (HTTP 200, totalAvailableResults=2)[0m
+
+════════════════════════════════════════════════════════
+  Results: [32m5 passed[0m, [31m4 failed[0m
+════════════════════════════════════════════════════════

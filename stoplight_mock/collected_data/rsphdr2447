@@ -1,0 +1,32 @@
+HTTP/2 403 
+x-ratelimit-remaining: 77
+content-type: application/json
+x-ratelimit-reset: 0
+cache-control: no-cache, no-store, max-age=0, must-revalidate,no-cache, no-store
+x-xss-protection: 1; mode=block
+expires: 0,0
+content-length: 548
+x-content-type-options: nosniff
+x-api-ratelimit-refresh-period-seconds: 1
+x-api-ratelimit-reset: 0
+x-api-ratelimit-limit: 10
+x-api-ratelimit-remaining: 9
+x-ratelimit-limit: 80
+date: Tue, 25 Aug 2026 06:44:45 GMT
+pragma: no-cache
+x-frame-options: DENY
+set-cookie: NTNX_IAM_SESSION=CgljeS11c2VyMDEQtPq01AYaB01lcmN1cnkgACooZjFlNDg5N2U2MWE4NDZjYmZhNzYwZmVkZmRlZTBkNjY3Njc3ZWE1YQ==|TUYNMCbCfG4iEmrI/FdOlKOOyWK8T+o2bd9aYNMLviU=;Expires=Tue, 25-Aug-2026 06:59:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+set-cookie: NTNX_MERCURY_IAM_SESSION=CgljeS11c2VyMDEQtPq01AYaB01lcmN1cnkgACooZjFlNDg5N2U2MWE4NDZjYmZhNzYwZmVkZmRlZTBkNjY3Njc3ZWE1YQ==|TUYNMCbCfG4iEmrI/FdOlKOOyWK8T+o2bd9aYNMLviU=;Expires=Tue, 25-Aug-2026 06:59:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+set-cookie: NTNX_MERCURY_IAM_REFRESH_TOKEN=ChlxeXpjajc0aWsyZ252dGIybnB4cWFxeXl4Ehl6YnRyNm1kcmV4ZXFleHFzNmoyZnM0NjVw;Expires=Tue, 25-Aug-2026 06:59:00 GMT;Path=/;Secure;HttpOnly;SameSite=Lax
+x-permitted-cross-domain-policies: master-only
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+pragma: no-cache
+content-security-policy: connect-src 'self' wss: https://downloads.frame.nutanix.com https://downloads.frame.nutanix.us; default-src 'self' https://*.nutanix.com; frame-ancestors 'self' https://*.nutanix.com; frame-src 'self' https://*.nutanix.com blob: data:; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'
+strict-transport-security: max-age=63072000; includeSubdomains; preload
+x-xss-protection: 1; mode=block
+x-dns-prefetch-control: off
+x-ntnx-env: pc
+x-ntnx-product: pc.7.5.1.6
+vary: Origin, Accept-Encoding
+

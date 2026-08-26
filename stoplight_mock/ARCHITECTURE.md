@@ -51,14 +51,31 @@ Source of wiring: `docker-compose.yml`.
 
 File: `docker-compose.yml`
 
-| Service   | Image / build       | Port   | Role |
-|-----------|---------------------|--------|------|
-| `prism`   | `stoplight/prism:5` | `4010` | OpenAPI mock server. Command: `mock -h 0.0.0.0 -p 4010 -m false /spec/openapi.json`. Mounts `./spec:/spec:ro`. `-m false` disables dynamic request mocking so it serves static examples. |
-| `emulator`| build `./mock`      | `9440` | Stateful Node.js shim. `PRISM_URL=http://prism:4010` env var points at Prism. `depends_on: prism`. Restart policy `unless-stopped`. |
+The stack now mocks **four** Nutanix v4 minor versions side-by-side — one
+Prism (schema-only) mock plus one stateful emulator per version, each on its
+own host port:
+
+| Version | Prism service | Prism host port | Emulator service | Emulator host port |
+|---------|---------------|-----------------|------------------|--------------------|
+| v4.0    | `prism`       | `127.0.0.1:4010`| `emulator`       | `0.0.0.0:9440`     |
+| v4.1    | `prism-41`    | `127.0.0.1:4011`| `emulator-41`    | `0.0.0.0:9441`     |
+| v4.2    | `prism-42`    | `127.0.0.1:4012`| `emulator-42`    | `0.0.0.0:9442`     |
+| v4.3    | `prism-43`    | `127.0.0.1:4013`| `emulator-43`    | `0.0.0.0:9443`     |
+
+Each `prism*` service runs `stoplight/prism:5` with
+`mock -h 0.0.0.0 -p 4010 -m false /spec/openapi{,-v4.1,-v4.2,-v4.3}.json`
+(mounts `./spec:/spec:ro`; `-m false` serves static examples, not dynamic
+request mocking). Each `emulator*` service builds `./mock`, exposes internal
+port `9440`, and sets two env vars:
+
+* `PRISM_URL` — points at its matching Prism (e.g. `http://prism-41:4010`).
+* `API_VERSION` — the minor version (`v4.0` … `v4.3`) used to build the
+  `/api/{ns}/{version}/...` paths and to select the AHV VM path shape
+  (`/api/vmm/v4.x/ahv/config/vms` for v4.1+).
 
 Note: the older `tmp/README.md` also describes a `terraform` service, but the
-current `docker-compose.yml` only defines `prism` and `emulator`. Terraform is
-now invoked from the host or via the helper scripts in `tmp/`.
+current `docker-compose.yml` only defines the Prism + emulator pairs. Terraform
+is now invoked from the host or via the helper scripts in `tmp/`.
 
 ---
 
@@ -133,13 +150,13 @@ envelope; the task transitions `QUEUED → RUNNING → SUCCEEDED` over
 | **vmm** (`/api/vmm/v4.0*/config`) | VMs (`vms`) | `POST` (create), `GET` (list + `$filter=name eq '...'`), `GET /:extId`, `PUT /:extId` (update), `DELETE /:extId`, `POST /:extId/power-state/:action`, `POST /:extId/$actions/:action` (power-on, power-off, guest-shutdown, reset, guest-reboot) |
 | **vmm** (`/api/vmm/v4.0*/config`) | Images (`images`) | `GET` (list), `GET /:extId` |
 | **vmm** (content) (`/api/vmm/v4.0/content/images`) | Images (v4 content path) | `POST` (create from URL or VM-disk `ext_id`), `DELETE /:extId` |
-| **vmm** + **cluster-mgmt** (`/api/vmm|cluster-mgmt/v4.0*/config`) | Storage containers (`storage-containers`) | `GET` (list), `GET /:extId` |
+| **clustermgmt** (`/api/clustermgmt|vmm|cluster-mgmt/v4.0*/config`) | Storage containers (`storage-containers`) | `GET` (list), `GET /:extId` |
 | **prism** (`/api/prism/v4.0*/config`) | Tasks (`tasks`) | `GET /:extId` — returns `prism.v4.config.Task` envelope (`$fv: v4.r2`) so both AHV and networking Go clients can poll |
 | **clustermgmt** (`/api/cluster-mgmt|clustermgmt/v4.0*/config`) | Clusters (`clusters`) | `GET` (list), `GET /:extId` |
 | **networking** (`/api/networking/v4.0*/config`) | Subnets (`subnets`) | `GET` (list + filter), `GET /:extId`, `POST` (create), `PUT /:extId`, `DELETE /:extId` |
 | **networking** (`/api/networking/v4.0*/config`) | VPCs (`vpcs`) | `GET` (list + filter), `GET /:extId`, `POST`, `PUT /:extId`, `DELETE /:extId` |
 | **networking** (`/api/networking/v4.0*/config`) | Floating IPs (`floating-ips`) | `GET` (list + filter), `GET /:extId`, `POST` (auto-assigns `192.168.0.x`), `DELETE /:extId` |
-| **networking** (`/api/networking/v4.0*/config`) | Network Security Policies (`network-security-policies`) | `GET` (list + filter), `GET /:extId`, `POST`, `DELETE /:extId` |
+| **microseg** (`/api/microseg/v4.0*/config`) | Network Security Policies (`policies`) | `GET` (list + filter), `GET /:extId`, `POST`, `DELETE /:extId` |
 | **volumes** (`/api/volumes/v4.0/config`) | Volume Groups (`volume-groups`) | `POST`, `GET` (list + filter), `GET /:extId`, `DELETE /:extId`, `GET /:volumeGroupExtId/disks`, `GET /:volumeGroupExtId/vm-attachments`, `POST /:extId/$actions/attach-vm`, `POST /:extId/$actions/detach-vm` |
 | **dataprotection** (`/api/dataprotection/v4.0/config`) | Recovery Points (`recovery-points`) | `POST`, `GET` (list + `$filter=volumeGroupExtId eq '...'`), `GET /:extId`, `DELETE /:extId` |
 | (emulator-local) | Health (`/health`) | `GET` — returns counts of every in-memory store |
@@ -195,15 +212,17 @@ endpoint the shim does not handle explicitly.
 
 | Path | Purpose |
 |------|---------|
-| `docker-compose.yml`        | Defines `prism` + `emulator` services |
-| `spec/openapi.json`         | Merged OpenAPI 3.0.1 spec consumed by Prism (487 paths, 2206 schemas) |
+| `docker-compose.yml`        | Defines 4 Prism + 4 emulator services (§2), one pair per v4 minor version |
+| `spec/openapi.json`         | Merged v4.0 spec consumed by `prism` (487 paths, 2206 schemas) |
+| `spec/openapi-v4.{1,2,3}.json` | Merged v4.1/v4.2/v4.3 specs consumed by `prism-41/42/43` |
 | `scripts/merge-specs.js`    | Builds `spec/openapi.json` from the per-namespace YAML in `mock/v40/` |
+| `scripts/merge_specs.py`    | Builds `spec/openapi-v4.{1,2,3}.json` from `nutanix_swagger/` |
 | `myrun.sh`                  | Helper that runs `merge-specs.js` in a `node:20-alpine` container and restarts Prism |
 | `mock/Dockerfile`           | `node:20-alpine` + curl + openssl; copies `server.js`, exposes 9440, healthcheck |
-| `mock/entrypoint.sh`        | Waits for Prism readiness, generates self-signed TLS cert, execs `node server.js` |
-| `mock/server.js`            | The stateful shim (all routes in §4) + Prism catch-all proxy |
+| `mock/entrypoint.sh`        | Waits for Prism readiness (version-aware probe), generates self-signed TLS cert, execs `node server.js` |
+| `mock/server.js`            | The stateful shim (all routes in §4) + Prism catch-all proxy; `API_VERSION` env selects the version |
 | `mock/package.json`         | Dependencies: `express`, `uuid`, `http-proxy-middleware` |
-| `scripts/smoke-test.sh`     | Curl-based integration test: health, seed data, VM CRUD lifecycle, path variants |
+| `scripts/test.sh`           | Consolidated test runner (§7) — replaces `prism-test.sh`, `smoke-test.sh`, `test-emulator.sh` |
 
 ---
 
@@ -225,3 +244,37 @@ endpoint the shim does not handle explicitly.
 - **`./terraform`** configuration referenced by `tmp/README.md` lives under
   `tmp/terraform/` and `tmp/terraform-network/`, not in the top-level
   `docker-compose.yml`.
+
+---
+
+## 7. Test suite (read/write split)
+
+The test suite is split by whether it mutates backend state:
+
+| Script | Scope |
+|--------|-------|
+| `scripts/test_read.sh`  | **Read-only** — enumeration + GET operations only (Prism list/get + path validation, emulator health & seed data, unknown-resource 404s, Prism proxy). Issues no POST/PUT/DELETE. |
+| `scripts/test_write.sh` | **Write** — create / update / delete (Prism mutation validation, VM lifecycle, networking, volume groups, recovery points) plus the GETs that verify the mutations. |
+| `scripts/lib.sh`        | Shared harness (sourced by both): arg parsing, per-version URLs/paths, `req`/`check`/`check_body`/`poll_task`, banner/summary. |
+| `scripts/test.sh`       | Thin wrapper that runs `test_read.sh` then `test_write.sh`. |
+
+These replace `prism-test.sh`, `smoke-test.sh` and `test-emulator.sh`.
+
+Two output modes (both scripts):
+
+* **quiet** (default) — one `✓`/`✗` line per check plus a summary.
+* **`--verbose` / `-v`** — additionally prints every HTTP request in detail:
+  method, full URL, headers, body, response status and response body.
+
+Version selection via `--version` (default `v4.0`; also accepts `4.1`,
+`v4.1.0`, …), which maps to the matching Prism/emulator host ports in §2:
+
+```
+./scripts/test_read.sh                        # v4.0 read-only, quiet
+./scripts/test_write.sh --version v4.3 --verbose
+./scripts/test.sh -V 4.1                      # both read + write
+```
+
+Exit code = number of failed checks. The v4.0 run also exercises the legacy
+`v4.0.a1` / bare `/v4.0/` path variants; v4.1+ use the canonical
+`/api/vmm/v4.x/ahv/config/vms` AHV path.

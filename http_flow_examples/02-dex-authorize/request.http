@@ -1,6 +1,0 @@
-GET /dex/auth?client_id=libcloud-portal&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fauth%2Fcallback&response_type=code&scope=openid+profile+email&state=aB3kXp9qR7sW2vY6uN1mF4dG8jL0oQ5t&code_challenge=KzP9wLm2xR7vQ4nJ8sA1dF6gH0kT3yB5&code_challenge_method=S256&connector_id=lldap HTTP/1.1
-Host: login.cloudweave.xyz:5556
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36
-
-(empty body — browser navigation, GET request)

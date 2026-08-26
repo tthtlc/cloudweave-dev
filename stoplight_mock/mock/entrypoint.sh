@@ -1,12 +1,16 @@
 #!/bin/sh
 set -e
 
+# A well-known GET path in the served spec, used only as a readiness probe.
+# v4.0 and v4.1+ all expose the AHV VM list at /api/vmm/v{ver}/ahv/config/vms.
+READY_PATH="${PRISM_READY_PATH:-/api/vmm/${API_VERSION:-v4.0}/ahv/config/vms}"
+
 echo "Waiting for Prism on ${PRISM_URL:-http://prism:4010} ..."
 for i in $(seq 1 30); do
-  # Prism mock returns 404 on / and non-existent paths, so check the spec root
-  # or any well-known API path that exists in the served OpenAPI document
-  if curl -s -o /dev/null "${PRISM_URL:-http://prism:4010}/api/iam/v4.0/authz/roles" 2>/dev/null; then
-    echo "Prism is ready (API path ok)!"
+  # -f fails the request on 4xx/5xx, so this only passes once Prism is actually
+  # serving the right spec (not merely listening on the TCP port).
+  if curl -sf -o /dev/null "${PRISM_URL:-http://prism:4010}${READY_PATH}" 2>/dev/null; then
+    echo "Prism is ready (${READY_PATH} -> 200)!"
     break
   fi
   echo "  attempt ${i}/30 - waiting..."

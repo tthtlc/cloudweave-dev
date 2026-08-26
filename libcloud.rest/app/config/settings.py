@@ -84,6 +84,15 @@ class Settings(BaseSettings):
     nutanix_port: int = 9440
     nutanix_api_version: str = "v4.0"
     nutanix_verify_ssl: bool = False
+    # Path to the Prism Central session endpoint used to derive a session cookie
+    # via HTTP Basic auth. Set to "" (or NUTANIX_LOGIN_PATH="") to disable the
+    # cookie flow and fall back to per-request Basic auth (e.g. against real
+    # Prism Central, which has no REST session endpoint). The libcloud driver
+    # degrades gracefully if the endpoint returns no session cookie.
+    nutanix_login_path: str = Field(
+        default="/api/nutanix/v1/session",
+        validation_alias=AliasChoices("NUTANIX_LOGIN_PATH", "LIBCLOUD_REST_NUTANIX_LOGIN_PATH"),
+    )
 
     # Vault secret broker (preferred source for backend cloud credentials).
     # When vault_addr + vault_token are configured, credentials are read from

@@ -50,6 +50,38 @@ def list_locations(request: Request):
     return success_response(data, request)
 
 
+@router.get("/hosts")
+def list_hosts(
+    request: Request,
+    cluster_ext_id: str | None = Query(None, alias="clusterExtId"),
+):
+    connection = request.state.connection
+    data = compute_service.list_hosts(connection, cluster_ext_id=cluster_ext_id)
+    return success_response(data, request)
+
+
+@router.get("/hosts/{host_id}")
+def get_host(
+    host_id: str,
+    request: Request,
+    cluster_ext_id: str | None = Query(None, alias="clusterExtId"),
+):
+    connection = request.state.connection
+    data = compute_service.get_host(connection, host_id, cluster_ext_id=cluster_ext_id)
+    return success_response(data, request)
+
+
+@router.get("/hosts/{host_id}/bmc-info")
+def get_host_bmc_info(
+    host_id: str,
+    request: Request,
+    cluster_ext_id: str | None = Query(None, alias="clusterExtId"),
+):
+    connection = request.state.connection
+    data = compute_service.get_host_bmc_info(connection, host_id, cluster_ext_id=cluster_ext_id)
+    return success_response(data, request)
+
+
 @router.get("/images")
 def list_images(
     request: Request,

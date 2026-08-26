@@ -6,6 +6,7 @@ libcloud/.dockerignore
 libcloud/.editorconfig
 libcloud/.flake8
 libcloud/.git_orig/FETCH_HEA
+libcloud/.git/
 
 .git_orig/
 tmp/

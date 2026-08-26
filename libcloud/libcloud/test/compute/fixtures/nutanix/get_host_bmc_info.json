@@ -1,0 +1,9 @@
+{
+  "data": {
+    "ipAddress": {
+      "ipv4": {"value": "192.168.1.101", "prefixLength": 24}
+    },
+    "credential": {"username": "ADMIN", "password": "secret"},
+    "status": "VALID"
+  }
+}

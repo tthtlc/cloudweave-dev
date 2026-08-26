@@ -1,5 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Nutanix v4 API mock stack — one Prism mock + one stateful emulator per API
+# version (v4.0, v4.1, v4.2, v4.3).
+#
+#   Service                Host port      Spec file (mounted from ./spec)
+#   ────────────────────   ─────────      ────────────────────────────────
+#   prism        (v4.0)    127.0.0.1:4010  openapi.json
+#   prism-41     (v4.1)    127.0.0.1:4011  openapi-v4.1.json
+#   prism-42     (v4.2)    127.0.0.1:4012  openapi-v4.2.json
+#   prism-43     (v4.3)    127.0.0.1:4013  openapi-v4.3.json
+#
+#   emulator     (v4.0)    0.0.0.0:9440   → prism        (API_VERSION=v4.0)
+#   emulator-41  (v4.1)    0.0.0.0:9441   → prism-41     (API_VERSION=v4.1)
+#   emulator-42  (v4.2)    0.0.0.0:9442   → prism-42     (API_VERSION=v4.2)
+#   emulator-43  (v4.3)    0.0.0.0:9443   → prism-43     (API_VERSION=v4.3)
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  # Stoplight Prism: OpenAPI schema-valid mock server
+  # ── v4.0 ──────────────────────────────────────────────────────────────────
   prism:
     image: stoplight/prism:5
     command: "mock -h 0.0.0.0 -p 4010 -m false /spec/openapi.json"
@@ -9,13 +26,76 @@ services:
       - "127.0.0.1:4010:4010"
     restart: unless-stopped
 
-  # Stateful Node.js shim: VM CRUD + task polling
   emulator:
     build: ./mock
     ports:
       - "0.0.0.0:9440:9440"
     environment:
       - PRISM_URL=http://prism:4010
+      - API_VERSION=v4.0
     depends_on:
       - prism
+    restart: unless-stopped
+
+  # ── v4.1 ──────────────────────────────────────────────────────────────────
+  prism-41:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/openapi-v4.1.json"
+    volumes:
+      - ./spec:/spec:ro
+    ports:
+      - "127.0.0.1:4011:4010"
+    restart: unless-stopped
+
+  emulator-41:
+    build: ./mock
+    ports:
+      - "0.0.0.0:9441:9440"
+    environment:
+      - PRISM_URL=http://prism-41:4010
+      - API_VERSION=v4.1
+    depends_on:
+      - prism-41
+    restart: unless-stopped
+
+  # ── v4.2 ──────────────────────────────────────────────────────────────────
+  prism-42:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/openapi-v4.2.json"
+    volumes:
+      - ./spec:/spec:ro
+    ports:
+      - "127.0.0.1:4012:4010"
+    restart: unless-stopped
+
+  emulator-42:
+    build: ./mock
+    ports:
+      - "0.0.0.0:9442:9440"
+    environment:
+      - PRISM_URL=http://prism-42:4010
+      - API_VERSION=v4.2
+    depends_on:
+      - prism-42
+    restart: unless-stopped
+
+  # ── v4.3 ──────────────────────────────────────────────────────────────────
+  prism-43:
+    image: stoplight/prism:5
+    command: "mock -h 0.0.0.0 -p 4010 -m false /spec/openapi-v4.3.json"
+    volumes:
+      - ./spec:/spec:ro
+    ports:
+      - "127.0.0.1:4013:4010"
+    restart: unless-stopped
+
+  emulator-43:
+    build: ./mock
+    ports:
+      - "0.0.0.0:9443:9440"
+    environment:
+      - PRISM_URL=http://prism-43:4010
+      - API_VERSION=v4.3
+    depends_on:
+      - prism-43
     restart: unless-stopped

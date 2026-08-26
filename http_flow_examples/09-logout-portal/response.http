@@ -1,9 +1,0 @@
-HTTP/1.1 200 OK
-Content-Type: application/json
-Set-Cookie: libcloud_portal_sid=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/
-Content-Length: 22
-Date: Wed, 23 Jul 2026 14:45:00 GMT
-
-{
-  "logged_out": true
-}

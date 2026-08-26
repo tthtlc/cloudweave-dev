@@ -1,0 +1,1378 @@
+{
+  "title": "Nutanix IAM Versioned APIs",
+  "version": "4.0",
+  "servers": [
+    {
+      "url": "https://{pc-ip}:9440/api"
+    }
+  ],
+  "security": [
+    {
+      "basicAuthScheme": []
+    },
+    {
+      "apiKeyAuthScheme": []
+    }
+  ],
+  "endpoints": [
+    {
+      "path": "/iam/v4.0/authn/cert-auth-providers",
+      "method": "GET",
+      "operationId": "listCertAuthProviders",
+      "summary": "Lists all configured certificate-based authentication providers",
+      "tags": [
+        "CertificateAuthenticationProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/cert-auth-providers",
+      "method": "POST",
+      "operationId": "createCertAuthProvider",
+      "summary": "Create certificate-based authentication provider",
+      "tags": [
+        "CertificateAuthenticationProviders"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/cert-auth-providers/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteCertAuthProviderById",
+      "summary": "Delete certificate-based authentication provider",
+      "tags": [
+        "CertificateAuthenticationProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/cert-auth-providers/{extId}",
+      "method": "GET",
+      "operationId": "getCertAuthProviderById",
+      "summary": "Get certificate-based authentication provider",
+      "tags": [
+        "CertificateAuthenticationProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/cert-auth-providers/{extId}",
+      "method": "PUT",
+      "operationId": "updateCertAuthProviderById",
+      "summary": "Update certificate-based authentication provider",
+      "tags": [
+        "CertificateAuthenticationProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services",
+      "method": "GET",
+      "operationId": "listDirectoryServices",
+      "summary": "List directory services",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services",
+      "method": "POST",
+      "operationId": "createDirectoryService",
+      "summary": "Create directory service",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteDirectoryServiceById",
+      "summary": "Delete directory service",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services/{extId}",
+      "method": "GET",
+      "operationId": "getDirectoryServiceById",
+      "summary": "Get directory service",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services/{extId}",
+      "method": "PUT",
+      "operationId": "updateDirectoryServiceById",
+      "summary": "Update directory service",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services/{extId}/$actions/search",
+      "method": "POST",
+      "operationId": "searchDirectoryService",
+      "summary": "Search user/group in directory service",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/directory-services/{extId}/$actions/verify-connection-status",
+      "method": "POST",
+      "operationId": "connectionStatusDirectoryService",
+      "summary": "Check directory service connection",
+      "tags": [
+        "DirectoryServices"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-identity-providers",
+      "method": "GET",
+      "operationId": "listSamlIdentityProviders",
+      "summary": "List SAML identity providers",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-identity-providers",
+      "method": "POST",
+      "operationId": "createSamlIdentityProvider",
+      "summary": "Create SAML identity provider",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-identity-providers/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteSamlIdentityProviderById",
+      "summary": "Delete SAML identity provider",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-identity-providers/{extId}",
+      "method": "GET",
+      "operationId": "getSamlIdentityProviderById",
+      "summary": "Get SAML identity provider",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-identity-providers/{extId}",
+      "method": "PUT",
+      "operationId": "updateSamlIdentityProviderById",
+      "summary": "Update SAML identity provider",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/saml-sp-metadata",
+      "method": "GET",
+      "operationId": "getSamlSpMetadata",
+      "summary": "Get SP-Metadata for SAML identity provider",
+      "tags": [
+        "SAMLIdentityProviders"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/user-groups",
+      "method": "GET",
+      "operationId": "listUserGroups",
+      "summary": "List user groups",
+      "tags": [
+        "UserGroups"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/user-groups",
+      "method": "POST",
+      "operationId": "createUserGroup",
+      "summary": "Create user group",
+      "tags": [
+        "UserGroups"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/user-groups/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteUserGroupById",
+      "summary": "Delete user group",
+      "tags": [
+        "UserGroups"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/user-groups/{extId}",
+      "method": "GET",
+      "operationId": "getUserGroupById",
+      "summary": "Get user group",
+      "tags": [
+        "UserGroups"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users",
+      "method": "GET",
+      "operationId": "listUsers",
+      "summary": "List user(s)",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users",
+      "method": "POST",
+      "operationId": "createUser",
+      "summary": "Create user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/$actions/change-password",
+      "method": "POST",
+      "operationId": "changeUserPassword",
+      "summary": "Change password of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{extId}",
+      "method": "GET",
+      "operationId": "getUserById",
+      "summary": "Get user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{extId}",
+      "method": "PUT",
+      "operationId": "updateUserById",
+      "summary": "Update user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{extId}/$actions/change-state",
+      "method": "POST",
+      "operationId": "updateUserState",
+      "summary": "Update active state of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{extId}/$actions/reset-password",
+      "method": "POST",
+      "operationId": "resetUserPassword",
+      "summary": "Reset user password",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/buckets-access-keys",
+      "method": "GET",
+      "operationId": "listUserBucketKeys",
+      "summary": "List bucket access keys of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/buckets-access-keys",
+      "method": "POST",
+      "operationId": "createBucketAccessKey",
+      "summary": "Create bucket access key for user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/buckets-access-keys/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteUserBucketKeyById",
+      "summary": "Delete buckets access key of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/buckets-access-keys/{extId}",
+      "method": "GET",
+      "operationId": "getUserBucketKeyById",
+      "summary": "Get bucket access key of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/buckets-access-keys/{extId}/$actions/revoke",
+      "method": "POST",
+      "operationId": "revokeUserBucketAccessKey",
+      "summary": "Revoke bucket access key of user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/keys",
+      "method": "GET",
+      "operationId": "listUserKeys",
+      "summary": "List keys for the user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/keys",
+      "method": "POST",
+      "operationId": "createUserKey",
+      "summary": "Create a key of the requested key type for a user",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/keys/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteUserKeyById",
+      "summary": "Delete the requested key",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/keys/{extId}",
+      "method": "GET",
+      "operationId": "getUserKeyById",
+      "summary": "Get the requested key",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authn/users/{userExtId}/keys/{extId}/$actions/revoke",
+      "method": "POST",
+      "operationId": "revokeUserKey",
+      "summary": "Revoke the requested key",
+      "tags": [
+        "Users"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "userExtId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/authorization-policies",
+      "method": "GET",
+      "operationId": "listAuthorizationPolicies",
+      "summary": "Lists all the authorization policies",
+      "tags": [
+        "AuthorizationPolicies"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$expand",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/authorization-policies",
+      "method": "POST",
+      "operationId": "createAuthorizationPolicy",
+      "summary": "Create authorization policy",
+      "tags": [
+        "AuthorizationPolicies"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authz/authorization-policies/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteAuthorizationPolicyById",
+      "summary": "Delete authorization policy",
+      "tags": [
+        "AuthorizationPolicies"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/authorization-policies/{extId}",
+      "method": "GET",
+      "operationId": "getAuthorizationPolicyById",
+      "summary": "Get authorization policy",
+      "tags": [
+        "AuthorizationPolicies"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/authorization-policies/{extId}",
+      "method": "PUT",
+      "operationId": "updateAuthorizationPolicyById",
+      "summary": "Update authorization policy",
+      "tags": [
+        "AuthorizationPolicies"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authz/clients/{extId}",
+      "method": "GET",
+      "operationId": "getRegisteredClientById",
+      "summary": "Get client",
+      "tags": [
+        "Clients"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/entities",
+      "method": "GET",
+      "operationId": "listEntities",
+      "summary": "List entities",
+      "tags": [
+        "Entities"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/entities/{extId}",
+      "method": "GET",
+      "operationId": "getEntityById",
+      "summary": "Get entity",
+      "tags": [
+        "Entities"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/operations",
+      "method": "GET",
+      "operationId": "listOperations",
+      "summary": "List operation(s)",
+      "tags": [
+        "Operations"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/operations/{extId}",
+      "method": "GET",
+      "operationId": "getOperationById",
+      "summary": "Get operation",
+      "tags": [
+        "Operations"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/roles",
+      "method": "GET",
+      "operationId": "listRoles",
+      "summary": "List role(s)",
+      "tags": [
+        "Roles"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "$page",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$limit",
+          "in": "query",
+          "required": false,
+          "type": "integer"
+        },
+        {
+          "name": "$filter",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$orderby",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "name": "$select",
+          "in": "query",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/roles",
+      "method": "POST",
+      "operationId": "createRole",
+      "summary": "Create role",
+      "tags": [
+        "Roles"
+      ],
+      "security": null,
+      "parameters": [],
+      "requestBody": true
+    },
+    {
+      "path": "/iam/v4.0/authz/roles/{extId}",
+      "method": "DELETE",
+      "operationId": "deleteRoleById",
+      "summary": "Delete role",
+      "tags": [
+        "Roles"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/roles/{extId}",
+      "method": "GET",
+      "operationId": "getRoleById",
+      "summary": "Get role",
+      "tags": [
+        "Roles"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": false
+    },
+    {
+      "path": "/iam/v4.0/authz/roles/{extId}",
+      "method": "PUT",
+      "operationId": "updateRoleById",
+      "summary": "Update role",
+      "tags": [
+        "Roles"
+      ],
+      "security": null,
+      "parameters": [
+        {
+          "name": "extId",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "name": "If-Match",
+          "in": "header",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "requestBody": true
+    }
+  ]
+}

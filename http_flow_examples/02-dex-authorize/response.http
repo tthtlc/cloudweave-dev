@@ -1,6 +1,0 @@
-HTTP/1.1 302 Found
-Location: /dex/auth/local?req=cnm6k4qj2p7w9b5d&state=aB3kXp9qR7sW2vY6uN1mF4dG8jL0oQ5t
-Set-Cookie: dex_session=eyJhbGciOiJIUzI1NiJ9...; Path=/; HttpOnly; SameSite=Lax
-Date: Wed, 23 Jul 2026 14:22:02 GMT
-
-(empty body — 302 redirect to Dex LDAP login form)

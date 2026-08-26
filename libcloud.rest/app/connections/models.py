@@ -27,6 +27,13 @@ class ConnectionConfig(BaseModel):
     secure: bool = True
     api_version: str | None = None
     verify_ssl_cert: bool | None = None
+    # Nutanix session-cookie auth (see libcloud NutanixConnection). When
+    # login_path is set the driver performs a one-time Basic-auth login and
+    # reuses the returned session cookie; session_cookie lets a caller replay
+    # an already-established session instead of the API re-fetching the backend
+    # credential from Vault on every call.
+    login_path: str | None = None
+    session_cookie: str | None = None
 
 
 class ConnectionCredentials(BaseModel):
