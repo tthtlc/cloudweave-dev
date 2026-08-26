@@ -1,0 +1,53 @@
++ curl -s -H 'X-Vault-Token: hvs.CAESIKPYxkpsLYYwcgQ6LCYF1ZNRBsooAWSynApe8KIMHqOcGh4KHGh2cy51QktDZ1luRGFXOW9ZSXA0Rzc3RGllVGs' http://localhost:8200/v1/auth/token/lookup-self
++ python3 -m json.tool
+{
+    "request_id": "3899ba37-8a55-fab0-15df-1e92a5dae93e",
+    "lease_id": "",
+    "renewable": false,
+    "lease_duration": 0,
+    "data": {
+        "accessor": "SmOh8djF1RYsqEZ5V7GSgqZ6",
+        "creation_time": 1785858658,
+        "creation_ttl": 2764800,
+        "display_name": "token",
+        "entity_id": "",
+        "expire_time": "2026-09-05T15:50:58.54719708Z",
+        "explicit_max_ttl": 0,
+        "id": "hvs.CAESIKPYxkpsLYYwcgQ6LCYF1ZNRBsooAWSynApe8KIMHqOcGh4KHGh2cy51QktDZ1luRGFXOW9ZSXA0Rzc3RGllVGs",
+        "issue_time": "2026-08-04T15:50:58.547201318Z",
+        "meta": null,
+        "num_uses": 0,
+        "orphan": false,
+        "path": "auth/token/create",
+        "policies": [
+            "default",
+            "libcloud-rest-read"
+        ],
+        "renewable": true,
+        "ttl": 2764108,
+        "type": "service"
+    },
+    "wrap_info": null,
+    "warnings": null,
+    "auth": null
+}
++ curl -s -w '\nHTTP %{http_code}\n' -H 'X-Vault-Token: hvs.CAESIKPYxkpsLYYwcgQ6LCYF1ZNRBsooAWSynApe8KIMHqOcGh4KHGh2cy51QktDZ1luRGFXOW9ZSXA0Rzc3RGllVGs' http://localhost:8200/v1/secret/data/libcloud/nutanix
+{"request_id":"fa844bd0-3c07-fab5-bf18-3ebaac106183","lease_id":"","renewable":false,"lease_duration":0,"data":{"data":{"key":"admin","secret":"admin"},"metadata":{"created_time":"2026-08-04T15:51:54.22640089Z","custom_metadata":null,"deletion_time":"","destroyed":false,"version":1}},"wrap_info":null,"warnings":null,"auth":null}
+
+HTTP 200
++ curl -s -H 'X-Vault-Token: hvs.CAESIKPYxkpsLYYwcgQ6LCYF1ZNRBsooAWSynApe8KIMHqOcGh4KHGh2cy51QktDZ1luRGFXOW9ZSXA0Rzc3RGllVGs' 'http://localhost:8200/v1/secret/metadata/libcloud?list=true'
++ python3 -m json.tool
+{
+    "request_id": "6841c365-7b7e-b95d-7182-cb800208ef57",
+    "lease_id": "",
+    "renewable": false,
+    "lease_duration": 0,
+    "data": {
+        "keys": [
+            "nutanix"
+        ]
+    },
+    "wrap_info": null,
+    "warnings": null,
+    "auth": null
+}

@@ -1,0 +1,12 @@
+POST /api/auth/exchange HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Content-Length: 221
+
+{
+  "provider": "lldap",
+  "code": "dex-abc123def456ghi789jkl012mno345pqr",
+  "state": "aB3kXp9qR7sW2vY6uN1mF4dG8jL0oQ5t",
+  "redirectUri": "http://localhost:3000/auth/callback"
+}

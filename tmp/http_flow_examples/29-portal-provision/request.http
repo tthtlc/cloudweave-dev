@@ -1,0 +1,10 @@
+POST /api/provision/aws HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpbnRlcm5hbFVzZXJJZCI6ImludC1hd3MtYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwibGlua2VkSWRlbnRpdGllcyI6WyJsbGRhcDpDaVFnVDFKVVJWOVVWVkZPSUZKQlRrVlYiXSwic2lkIjoiYTEyYjM0YzU2ZDdlOGY5MCIsImlhdCI6MTc1MzQ4NjkyMSwiZXhwIjoxNzUzNTE1NzIxLCJqdGkiOiJlMTIzZjQ1Nmc3ODloMDEyIn0.SIGNATURE
+Content-Length: 72
+
+{
+  "vmName": "my-test-vm"
+}

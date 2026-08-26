@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 247
+Date: Wed, 23 Jul 2026 14:27:01 GMT
+
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzUzNDg2OTIxLCJleHAiOjE3NTM0OTA1MjF9.LLDAP_ADMIN_JWT_SIGNATURE"
+}

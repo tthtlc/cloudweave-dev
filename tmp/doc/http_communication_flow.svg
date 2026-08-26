@@ -1,0 +1,272 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1550 1350" font-family="monospace, sans-serif">
+  <defs>
+    <marker id="aR" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker>
+    <marker id="aO" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+    <marker id="aB" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+    <marker id="aP" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker>
+    <marker id="aG" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker>
+    <marker id="aGy" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/></marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1550" height="1350" fill="#f8fafc" rx="6"/>
+
+  <!-- Title -->
+  <text x="775" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#0f172a">HTTP Communication Flow Between All System Components</text>
+  <text x="775" y="48" text-anchor="middle" font-size="11" fill="#64748b">LLDAP · Dex OIDC · OpenFGA ReBAC · HashiCorp Vault · libcloud REST Gateway · AWS / Nutanix</text>
+
+  <!-- ============================================================ -->
+  <!-- LEGEND BAR -->
+  <!-- ============================================================ -->
+  <rect x="20" y="62" width="1510" height="30" rx="4" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="38" y="82" font-size="11" font-weight="bold" fill="#475569">LEGEND:</text>
+  <line x1="120" y1="77" x2="152" y2="77" stroke="#dc2626" stroke-width="2.5" marker-end="url(#aR)"/>
+  <text x="158" y="82" font-size="10" fill="#dc2626">① Login</text>
+  <line x1="230" y1="77" x2="262" y2="77" stroke="#ea580c" stroke-width="2.5" marker-end="url(#aO)"/>
+  <text x="268" y="82" font-size="10" fill="#ea580c">② Refresh</text>
+  <line x1="350" y1="77" x2="382" y2="77" stroke="#2563eb" stroke-width="2.5" marker-end="url(#aB)"/>
+  <text x="388" y="82" font-size="10" fill="#2563eb">③ JWT Validate</text>
+  <line x1="500" y1="77" x2="532" y2="77" stroke="#9333ea" stroke-width="2.5" marker-end="url(#aP)"/>
+  <text x="538" y="82" font-size="10" fill="#9333ea">④ OpenFGA AuthZ</text>
+  <line x1="680" y1="77" x2="712" y2="77" stroke="#16a34a" stroke-width="2.5" marker-end="url(#aG)"/>
+  <text x="718" y="82" font-size="10" fill="#16a34a">⑤ Vault Creds</text>
+  <line x1="830" y1="77" x2="862" y2="77" stroke="#6b7280" stroke-width="2.5" marker-end="url(#aGy)"/>
+  <text x="868" y="82" font-size="10" fill="#6b7280">⑥ Cloud API</text>
+
+  <!-- ============================================================ -->
+  <!-- COMPONENT BOXES (top lifeline headers) -->
+  <!-- ============================================================ -->
+
+  <!-- Positions: Col 1=65, Col 2=255, Col 3=470, Col 4=685, Col 5=900, Col 6=1115, Col 7=1355 -->
+  <!-- Client -->
+  <rect x="25" y="110" width="80" height="52" rx="6" fill="#1e293b"/>
+  <text x="65" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Client</text>
+  <text x="65" y="148" text-anchor="middle" font-size="8" fill="#94a3b8">idp_login.py</text>
+  <text x="65" y="158" text-anchor="middle" font-size="8" fill="#94a3b8">*.sh scripts</text>
+  <line x1="65" y1="165" x2="65" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- Dex -->
+  <rect x="215" y="110" width="80" height="52" rx="6" fill="#2563eb"/>
+  <text x="255" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Dex</text>
+  <text x="255" y="148" text-anchor="middle" font-size="8" fill="#bfdbfe">:5556</text>
+  <text x="255" y="158" text-anchor="middle" font-size="8" fill="#bfdbfe">OIDC Issuer</text>
+  <line x1="255" y1="165" x2="255" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- LLDAP -->
+  <rect x="430" y="110" width="80" height="52" rx="6" fill="#7c3aed"/>
+  <text x="470" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">LLDAP</text>
+  <text x="470" y="148" text-anchor="middle" font-size="8" fill="#d8b4fe">:3890</text>
+  <text x="470" y="158" text-anchor="middle" font-size="8" fill="#d8b4fe">User Dir</text>
+  <line x1="470" y1="165" x2="470" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- libcloud REST -->
+  <rect x="635" y="110" width="100" height="52" rx="6" fill="#059669"/>
+  <text x="685" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">libcloud REST</text>
+  <text x="685" y="148" text-anchor="middle" font-size="8" fill="#a7f3d0">:8765</text>
+  <text x="685" y="158" text-anchor="middle" font-size="8" fill="#a7f3d0">FastAPI Gateway</text>
+  <line x1="685" y1="165" x2="685" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- OpenFGA -->
+  <rect x="860" y="110" width="80" height="52" rx="6" fill="#9333ea"/>
+  <text x="900" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">OpenFGA</text>
+  <text x="900" y="148" text-anchor="middle" font-size="8" fill="#d8b4fe">:8080</text>
+  <text x="900" y="158" text-anchor="middle" font-size="8" fill="#d8b4fe">ReBAC Engine</text>
+  <line x1="900" y1="165" x2="900" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- Vault -->
+  <rect x="1075" y="110" width="80" height="52" rx="6" fill="#f59e0b"/>
+  <text x="1115" y="132" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">Vault</text>
+  <text x="1115" y="148" text-anchor="middle" font-size="8" fill="#fde68a">:8200</text>
+  <text x="1115" y="158" text-anchor="middle" font-size="8" fill="#fde68a">Secrets KV v2</text>
+  <line x1="1115" y1="165" x2="1115" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- Cloud Provider -->
+  <rect x="1300" y="110" width="115" height="52" rx="6" fill="#64748b"/>
+  <text x="1357" y="128" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">Cloud Provider</text>
+  <text x="1357" y="143" text-anchor="middle" font-size="8" fill="#cbd5e1">AWS EC2</text>
+  <text x="1357" y="155" text-anchor="middle" font-size="8" fill="#cbd5e1">Nutanix Prism</text>
+  <line x1="1357" y1="165" x2="1357" y2="1300" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 1: OIDC LOGIN  [y: 180 → 420] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="175" width="1510" height="22" rx="3" fill="#fef2f2"/>
+  <text x="35" y="191" font-size="11" font-weight="bold" fill="#dc2626">PHASE 1 — OIDC Authentication Login (Client → Dex → LLDAP)</text>
+
+  <!-- 1a -->
+  <line x1="65" y1="213" x2="247" y2="213" stroke="#dc2626" stroke-width="2" marker-end="url(#aR)"/>
+  <text x="156" y="208" text-anchor="middle" font-size="9" fill="#dc2626">GET /dex/auth?client_id=libcloud-rest&amp;response_type=code&amp;scope=openid+profile+email+offline_access</text>
+
+  <!-- 1b -->
+  <line x1="255" y1="236" x2="73" y2="236" stroke="#dc2626" stroke-width="1.5" marker-end="url(#aR)"/>
+  <text x="164" y="231" text-anchor="middle" font-size="9" fill="#dc2626">302 → /dex/auth/lldap → /dex/auth/lldap/login (HTML login form)</text>
+
+  <!-- 1c -->
+  <line x1="65" y1="259" x2="247" y2="259" stroke="#dc2626" stroke-width="2" marker-end="url(#aR)"/>
+  <text x="156" y="254" text-anchor="middle" font-size="9" fill="#dc2626">POST /dex/auth/lldap/login  (login=uid&amp;password=********)</text>
+
+  <!-- 1d Dex→LLDAP -->
+  <line x1="255" y1="282" x2="462" y2="282" stroke="#dc2626" stroke-width="2" marker-end="url(#aR)"/>
+  <text x="358" y="277" text-anchor="middle" font-size="9" fill="#dc2626">LDAP simple bind (uid=aws-admin,ou=people,dc=libcloud,dc=local)</text>
+  <text x="358" y="294" text-anchor="middle" font-size="8" fill="#991b1b">+ LDAP search (group memberships, custom attributes)</text>
+
+  <!-- 1e LLDAP→Dex -->
+  <line x1="470" y1="312" x2="263" y2="312" stroke="#dc2626" stroke-width="1.5" marker-end="url(#aR)"/>
+  <text x="366" y="307" text-anchor="middle" font-size="9" fill="#dc2626">bind OK + groups returned</text>
+
+  <!-- 1f -->
+  <line x1="255" y1="335" x2="73" y2="335" stroke="#dc2626" stroke-width="1.5" marker-end="url(#aR)"/>
+  <text x="164" y="330" text-anchor="middle" font-size="9" fill="#dc2626">302 redirect with authorization_code</text>
+
+  <!-- 1g -->
+  <line x1="65" y1="358" x2="247" y2="358" stroke="#dc2626" stroke-width="2" marker-end="url(#aR)"/>
+  <text x="156" y="353" text-anchor="middle" font-size="9" fill="#dc2626">POST /dex/token  (grant_type=authorization_code, code, redirect_uri)</text>
+
+  <!-- 1h JWT returned -->
+  <rect x="220" y="368" width="240" height="14" rx="2" fill="#fef2f2"/>
+  <text x="340" y="379" text-anchor="middle" font-size="7" fill="#dc2626">⚿ Dex signs JWT with RS256 private signing key</text>
+  <line x1="255" y1="393" x2="73" y2="393" stroke="#dc2626" stroke-width="2.5" marker-end="url(#aR)"/>
+  <text x="164" y="388" text-anchor="middle" font-size="9" fill="#dc2626" font-weight="bold">200 — Signed JWT { id_token, access_token, refresh_token }</text>
+  <text x="164" y="405" text-anchor="middle" font-size="8" fill="#991b1b">iss=dex:5556/dex  aud=libcloud-rest  sub=aws-admin  exp=1h  scope=...</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 2: TOKEN REFRESH  [y: 420 → 470] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="420" width="1510" height="22" rx="3" fill="#fff7ed"/>
+  <text x="35" y="436" font-size="11" font-weight="bold" fill="#ea580c">PHASE 2 — Token Refresh (when access_token expires, using refresh_token)</text>
+
+  <line x1="65" y1="458" x2="247" y2="458" stroke="#ea580c" stroke-width="2" marker-end="url(#aO)"/>
+  <text x="156" y="453" text-anchor="middle" font-size="9" fill="#ea580c">POST /dex/token  (grant_type=refresh_token, refresh_token=...)</text>
+
+  <line x1="255" y1="475" x2="73" y2="475" stroke="#ea580c" stroke-width="2" marker-end="url(#aO)"/>
+  <text x="164" y="470" text-anchor="middle" font-size="9" fill="#ea580c">200 — New access_token (signed by current Dex key; refresh_token may also be rotated)</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 3: SIMPLE ROUTES (JWT decode only)  [y: 490 → 590] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="490" width="1510" height="22" rx="3" fill="#eff6ff"/>
+  <text x="35" y="506" font-size="11" font-weight="bold" fill="#2563eb">PHASE 3 — Simple API Routes (JWT decode only — /v1/auth/*, /v1/providers, GET /v1/connections)</text>
+
+  <line x1="65" y1="530" x2="677" y2="530" stroke="#2563eb" stroke-width="2" marker-end="url(#aB)"/>
+  <text x="375" y="525" text-anchor="middle" font-size="9" fill="#2563eb">GET /v1/auth/me  |  GET /v1/providers  |  GET /v1/connections  (Authorization: Bearer &lt;jwt&gt;)</text>
+
+  <!-- Internal: JWT validation against Dex -->
+  <line x1="685" y1="550" x2="263" y2="550" stroke="#2563eb" stroke-width="1.5" marker-end="url(#aB)"/>
+  <text x="474" y="545" text-anchor="middle" font-size="8" fill="#2563eb">GET /dex/keys (JWKS) → verify RS256 signature, iss, aud, exp</text>
+  <line x1="255" y1="565" x2="677" y2="565" stroke="#2563eb" stroke-width="1.5" marker-end="url(#aB)"/>
+  <text x="466" y="560" text-anchor="middle" font-size="8" fill="#2563eb">JWKS public keys returned</text>
+
+  <text x="685" y="583" text-anchor="middle" font-size="8" fill="#64748b">[ resolve_principal(sub, email) → principal_map.json → TokenClaims.sub ]</text>
+  <text x="685" y="595" text-anchor="middle" font-size="8" fill="#64748b">[ identity.py: PRINCIPAL_SCOPES + allowed_providers mapping ]</text>
+
+  <line x1="685" y1="614" x2="73" y2="614" stroke="#2563eb" stroke-width="1.5" marker-end="url(#aB)"/>
+  <text x="379" y="609" text-anchor="middle" font-size="9" fill="#2563eb">200 OK — { sub, scope, allowed_providers, email }  (no OpenFGA, no Vault, no cloud)</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 4: PROVISIONING — FULL GATE CHAIN  [y: 630 → 1050] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="630" width="1510" height="22" rx="3" fill="#faf5ff"/>
+  <text x="35" y="646" font-size="11" font-weight="bold" fill="#9333ea">PHASE 4 — Provisioning Routes (connection_required=true — JWT → OpenFGA → Vault → Cloud)</text>
+
+  <!-- 4a: Client → libcloud REST with JWT + connection -->
+  <line x1="65" y1="672" x2="677" y2="672" stroke="#2563eb" stroke-width="2" marker-end="url(#aB)"/>
+  <text x="375" y="667" text-anchor="middle" font-size="9" fill="#2563eb">POST /v1/compute/nodes (Bearer &lt;jwt&gt; + JSON body: { connection: { provider, config, credentials }, image, size, ... })</text>
+
+  <!-- Internal gate annotations -->
+  <text x="700" y="700" font-size="8" fill="#2563eb">① JWT validated via Dex JWKS (same as Phase 3)</text>
+  <text x="700" y="714" font-size="8" fill="#2563eb">② Principal resolved → TokenClaims.sub + scopes</text>
+  <text x="700" y="728" font-size="8" fill="#2563eb">③ Scope gate: token.scope must include route's required scope</text>
+  <text x="700" y="742" font-size="8" fill="#2563eb">④ Provider gate: connection.provider must be in allowed_providers</text>
+  <text x="700" y="756" font-size="8" fill="#2563eb">⑤ Credential policy: reject client-supplied backend creds (if enforced)</text>
+
+  <!-- 4b: OpenFGA check — forward same JWT -->
+  <line x1="685" y1="775" x2="892" y2="775" stroke="#9333ea" stroke-width="2" marker-end="url(#aP)"/>
+  <text x="790" y="770" text-anchor="middle" font-size="9" fill="#9333ea">POST /stores/{store_id}/check  (Authorization: Bearer &lt;same Dex JWT forwarded&gt;)</text>
+
+  <!-- 4c: OpenFGA validates JWT against Dex -->
+  <line x1="900" y1="798" x2="263" y2="798" stroke="#9333ea" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#aP)"/>
+  <text x="582" y="793" text-anchor="middle" font-size="8" fill="#9333ea">OpenFGA fetches Dex JWKS, independently validates JWT signature/iss/aud</text>
+  <line x1="255" y1="815" x2="892" y2="815" stroke="#9333ea" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#aP)"/>
+  <text x="574" y="810" text-anchor="middle" font-size="8" fill="#9333ea">JWKS public key returned</text>
+
+  <!-- 4d: OpenFGA tuple checks -->
+  <text x="900" y="838" text-anchor="middle" font-size="8" fill="#9333ea">[ 1 ] Check: user:{sub} can_connect libcloud_api:main</text>
+  <text x="900" y="852" text-anchor="middle" font-size="8" fill="#9333ea">[ 2 ] Check: user:{sub} can_use provider:{aws|nutanix}</text>
+  <text x="900" y="866" text-anchor="middle" font-size="8" fill="#9333ea">[ 3 ] Check: user:{sub} can_read / can_provision {backend_object}</text>
+  <text x="900" y="880" text-anchor="middle" font-size="7" fill="#a78bfa">(traverses user→role→tenant→provider→backend_object via ReBAC)</text>
+
+  <!-- 4e: OpenFGA result -->
+  <line x1="900" y1="900" x2="693" y2="900" stroke="#9333ea" stroke-width="2" marker-end="url(#aP)"/>
+  <text x="797" y="895" text-anchor="middle" font-size="9" fill="#9333ea">200 OK — { allowed: true }  (if denied → 403 authz_fga_denied)</text>
+
+  <!-- 4f: Capability check -->
+  <text x="700" y="922" text-anchor="middle" font-size="8" fill="#64748b">⑥ Capability check: build_driver() → probe_capabilities() → verify provider supports operation</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 4 CONTINUED: Vault + Cloud Provider -->
+  <!-- ============================================================ -->
+
+  <!-- 4g: Fetch credentials from Vault -->
+  <line x1="685" y1="950" x2="1107" y2="950" stroke="#16a34a" stroke-width="2" marker-end="url(#aG)"/>
+  <text x="900" y="945" text-anchor="middle" font-size="9" fill="#16a34a">GET /v1/secret/data/libcloud/{binding}  (X-Vault-Token: &lt;service_token&gt;)</text>
+  <text x="900" y="965" text-anchor="middle" font-size="8" fill="#166534">binding = tenant slug: "aws" / "nutanix"  |  Cached for 30s  |  Fails → 503</text>
+
+  <line x1="1115" y1="982" x2="693" y2="982" stroke="#16a34a" stroke-width="2" marker-end="url(#aG)"/>
+  <text x="904" y="977" text-anchor="middle" font-size="9" fill="#16a34a">200 OK — cloud credentials (key + secret, region, host, etc.)</text>
+
+  <!-- 4h: Build libcloud driver + call cloud -->
+  <text x="700" y="1008" text-anchor="middle" font-size="8" fill="#64748b">⑦ build_driver(connection.provider, credentials) → driver</text>
+  <text x="700" y="1022" text-anchor="middle" font-size="8" fill="#64748b">⑧ resolve: sync → compute_service directly  |  async → JobWorker threadpool</text>
+
+  <!-- 4i: Cloud provider call -->
+  <line x1="685" y1="1044" x2="1349" y2="1044" stroke="#6b7280" stroke-width="2" marker-end="url(#aGy)"/>
+  <text x="1022" y="1039" text-anchor="middle" font-size="9" fill="#6b7280">AWS: POST ec2.{region}.amazonaws.com (Action=RunInstances / DescribeInstances / TerminateInstances)</text>
+
+  <line x1="1357" y1="1064" x2="693" y2="1064" stroke="#6b7280" stroke-width="1.5" marker-end="url(#aGy)"/>
+  <text x="1025" y="1059" text-anchor="middle" font-size="8" fill="#6b7280">OR  Nutanix: GET/POST /api/vmm/v4.0/ahv/config/vms  (Prism Central v4 REST)</text>
+  <text x="1025" y="1078" text-anchor="middle" font-size="9" fill="#6b7280">200 OK — cloud resource details / task ID / instance data</text>
+
+  <!-- 4j: Final response to client -->
+  <line x1="685" y1="1102" x2="73" y2="1102" stroke="#2563eb" stroke-width="2" marker-end="url(#aB)"/>
+  <text x="379" y="1097" text-anchor="middle" font-size="9" fill="#2563eb">200 OK — { data: {...}, meta: { request_id, ... } }  (or { job_id, status } for async)</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 5: ASYNC JOB POLLING  [y: 1120 → 1170] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="1120" width="1510" height="22" rx="3" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="35" y="1136" font-size="11" font-weight="bold" fill="#475569">PHASE 5 — Async Job Polling (connection_required=false — scope-only)</text>
+
+  <line x1="65" y1="1160" x2="677" y2="1160" stroke="#2563eb" stroke-width="2" marker-end="url(#aB)"/>
+  <text x="375" y="1155" text-anchor="middle" font-size="9" fill="#2563eb">GET /v1/jobs/{job_id}  (Bearer &lt;jwt&gt; + scope check only — no OpenFGA, no Vault, no cloud)</text>
+
+  <line x1="685" y1="1178" x2="73" y2="1178" stroke="#2563eb" stroke-width="1.5" marker-end="url(#aB)"/>
+  <text x="379" y="1173" text-anchor="middle" font-size="9" fill="#2563eb">200 OK — { job_id, status: pending|running|done|failed, result, error }</text>
+
+  <!-- ============================================================ -->
+  <!-- PHASE 6: ERROR / SHORT-CIRCUIT PATHS  [y: 1195 → 1300] -->
+  <!-- ============================================================ -->
+  <rect x="20" y="1195" width="1510" height="22" rx="3" fill="#fef2f2"/>
+  <text x="35" y="1211" font-size="11" font-weight="bold" fill="#991b1b">PHASE 6 — Terminal Failure Short-Circuits (request stops at first failing gate)</text>
+
+  <text x="40" y="1240" font-size="9" fill="#dc2626">401 auth_invalid_token — JWT signature/iss/aud/exp check fails (Dex key rotated, expired, bad token)</text>
+  <text x="40" y="1256" font-size="9" fill="#dc2626">401 auth_expired_token — JWT exp claim in the past</text>
+  <text x="40" y="1272" font-size="9" fill="#dc2626">403 auth_user_unknown — principal not found in principal_map.json</text>
+  <text x="40" y="1288" font-size="9" fill="#dc2626">403 auth_insufficient_scope — token lacks required scope for the route</text>
+
+  <text x="540" y="1240" font-size="9" fill="#dc2626">403 auth_provider_denied — connection.provider not in allowed_providers</text>
+  <text x="540" y="1256" font-size="9" fill="#dc2626">403 auth_client_credentials_forbidden — client tried to pass backend creds</text>
+  <text x="540" y="1272" font-size="9" fill="#dc2626">403 authz_fga_denied — OpenFGA tuple check returned denied</text>
+  <text x="540" y="1288" font-size="9" fill="#dc2626">400 provider_capability_unsupported — driver lacks operation</text>
+
+  <text x="1040" y="1240" font-size="9" fill="#dc2626">500 policy_unknown_operation — route not in policies.json (fail-closed)</text>
+  <text x="1040" y="1256" font-size="9" fill="#dc2626">503 authz_fga_unavailable — OpenFGA service unreachable</text>
+  <text x="1040" y="1272" font-size="9" fill="#dc2626">503 server_credentials_missing — Vault secret path not found (404)</text>
+  <text x="1040" y="1288" font-size="9" fill="#dc2626">503 server_credentials_unavailable — Vault service unreachable</text>
+
+  <!-- ============================================================ -->
+  <!-- BOTTOM NOTE -->
+  <!-- ============================================================ -->
+  <text x="775" y="1328" text-anchor="middle" font-size="10" fill="#94a3b8" font-style="italic">
+    All HTTP flows color-coded by phase. Solid lines = direct HTTP request/response. Dashed lines = internal side-effects (JWKS fetch). Each JWT is validated twice: once at libcloud REST, once at OpenFGA — both against the same Dex JWKS.
+  </text>
+</svg>

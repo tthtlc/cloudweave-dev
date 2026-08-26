@@ -9,7 +9,6 @@ libcloud/.git_orig/FETCH_HEA
 libcloud/.git/
 
 .git_orig/
-tmp/
 /debugtool/
 
 # Byte-compiled / optimized / DLL files
@@ -193,7 +192,6 @@ _static/
 _static-*/
 
 # Temp / scratch directories
-tmp/
 tmp-*/
 *.tmp
 

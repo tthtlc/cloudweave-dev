@@ -1,0 +1,16 @@
+POST /api/auth/collapse HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Content-Length: 351
+
+{
+  "targetInternalUserId": "int-aws-admin",
+  "pendingIdentity": {
+    "provider": "github",
+    "subject": "github:12345678",
+    "email": "admin@example.com"
+  },
+  "pendingToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwcm92aWRlciI6ImdpdGh1YiIsInN1YmplY3QiOiJnaXRodWI6MTIzNDU2NzgiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwiaWF0IjoxNzUzNDg2OTI0LCJleHAiOjE3NTM0ODcyMjQsImp0aSI6ImFiY2RlZjEyMzQ1Njc4OTAiLCJ0eXBlIjoicGVuZGluZ19pZGVudGl0eSJ9.SIGNATURE",
+  "decision": "link"
+}

@@ -1,0 +1,6 @@
+NTNX_SESSION_META=invalid
+X-Nutanix-Client-Type=ui
+iam-sessionid=cccccc
+NTNX_MERCURY_IAM_REFRESH_TOKEN=ssss
+NTNX_IAM_SESSION=ssss
+NTNX_MERCURY_IAM_SESSION=ssss

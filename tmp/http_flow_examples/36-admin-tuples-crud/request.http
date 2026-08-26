@@ -1,0 +1,43 @@
+# --- Example A: List all tuples ---
+GET /api/tuples HTTP/1.1
+Host: localhost:8766
+Accept: application/json
+Cookie: libcloud_portal_sid=...superadmin_session...
+
+(empty body — GET request)
+
+
+# --- Example B: Write tuples ---
+POST /api/tuples HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...superadmin_session...
+
+{
+  "writes": [
+    {
+      "user": "user:int-pending-a1b2c3d4",
+      "relation": "viewer",
+      "object": "tenant:aws"
+    }
+  ]
+}
+
+
+# --- Example C: Delete tuples ---
+DELETE /api/tuples HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...superadmin_session...
+
+{
+  "deletes": [
+    {
+      "user": "user:int-pending-a1b2c3d4",
+      "relation": "viewer",
+      "object": "tenant:aws"
+    }
+  ]
+}

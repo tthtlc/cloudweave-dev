@@ -1,0 +1,45 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 823
+Date: Wed, 23 Jul 2026 14:22:13 GMT
+
+{
+  "data": [
+    {
+      "id": "t2.micro",
+      "name": "t2.micro",
+      "ram": 1024,
+      "disk": 0,
+      "bandwidth": 0,
+      "price": "0.0116",
+      "extra": {
+        "vcpu": 1,
+        "architecture": "x86_64"
+      }
+    },
+    {
+      "id": "t2.small",
+      "name": "t2.small",
+      "ram": 2048,
+      "disk": 0,
+      "bandwidth": 0,
+      "price": "0.023",
+      "extra": {
+        "vcpu": 1,
+        "architecture": "x86_64"
+      }
+    },
+    {
+      "id": "t3.medium",
+      "name": "t3.medium",
+      "ram": 4096,
+      "disk": 0,
+      "bandwidth": 0,
+      "price": "0.0416",
+      "extra": {
+        "vcpu": 2,
+        "architecture": "x86_64"
+      }
+    }
+  ]
+}

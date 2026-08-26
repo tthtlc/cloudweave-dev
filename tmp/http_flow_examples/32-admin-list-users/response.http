@@ -1,0 +1,41 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 923
+Date: Wed, 23 Jul 2026 14:26:00 GMT
+
+{
+  "users": [
+    {
+      "internalUserId": "int-superadmin",
+      "email": "superadmin@libcloud.local",
+      "displayName": "Super Admin",
+      "role": "superadmin",
+      "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+      "createdAt": "2026-07-01T00:00:00Z"
+    },
+    {
+      "internalUserId": "int-aws-admin",
+      "email": "aws-admin@libcloud.local",
+      "displayName": "AWS Admin",
+      "role": "admin",
+      "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+      "createdAt": "2026-07-01T00:00:00Z"
+    },
+    {
+      "internalUserId": "int-ntnx-owner",
+      "email": "ntnx-owner@libcloud.local",
+      "displayName": "Nutanix Owner",
+      "role": "owner",
+      "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+      "createdAt": "2026-07-01T00:00:00Z"
+    },
+    {
+      "internalUserId": "int-pending-a1b2c3d4",
+      "email": "github-user@example.com",
+      "displayName": "github user",
+      "role": "pending",
+      "linkedIdentities": ["github:12345678"],
+      "createdAt": "2026-07-23T14:22:04Z"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+
+vault-bootstrap exited with code 0
+Seeding tenant cloud credentials into Vault ...
+  Seeding tenant:aws (cloud=aws, owner=aws-owner) ...
+    WARNING: LIBCLOUD_AWS_KEY is empty in .env
+    WARNING: LIBCLOUD_AWS_SECRET is empty in .env
+    Skipping tenant:aws — one or more credential values are empty.
+    Run manually: TENANT=aws CLOUD=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=... python3 test_script/scripts/set_tenant_credentials.py
+  Seeding tenant:nutanix (cloud=nutanix, owner=ntnx-owner) ...
+    WARNING: LIBCLOUD_NTNX_USER is empty in .env
+    WARNING: LIBCLOUD_NTNX_PASSWORD is empty in .env
+    Skipping tenant:nutanix — one or more credential values are empty.
+    Run manually: TENANT=nutanix CLOUD=nutanix LIBCLOUD_USER=ntnx-owner LIBCLOUD_PASSWORD=... python3 test_script/scripts/set_tenant_credentials.py
+Tenant credential seeding complete.
+Restarting REST API for fresh OpenFGA state ...
+  OpenFGA store/model IDs are auto-discovered by the services — no .env sync needed
+  Recreating libcloud-rest-api container to pick up fresh OpenFGA state
+[+] up 1/1
+ ✔ Container libcloud-rest-api Started                                                                                                                      1.3s
+Restarting visualizer for fresh OpenFGA state ...
+  Visualizer auto-discovers store/model IDs — recreating container
+  Force-recreating openfga-visualizer for fresh OpenFGA state
+[+] up 1/1
+ ✔ Container openfga-visualizer Started                                                                                                                    11.1s
+Syncing Vault credentials -> libcloud.rest ...
+  Updated libcloud.rest VAULT_ADDR / VAULT_TOKEN
+  Recreating libcloud-rest-api container to apply Vault env
+[+] up 1/1
+ ✔ Container libcloud-rest-api Started                                                                                                                      1.7s
+Recreating portal container ...
+[+] up 1/1
+ ✔ Container portal Started                                                                                                                                 3.1s
+Preparing libcloud.rest host venv ...
+libcloud.rest host venv already present.
+
+Setup complete.
+  OpenFGA env  : /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/fga.env
+  Postgres env : /home/ubuntu/libcloud_nutanix/openfga_postgres/generated/postgres.env  (datastore: postgres://openfga@postgres:5432/openfga)
+  Dex OIDC     : /home/ubuntu/libcloud_nutanix/dex/generated/dex.env
+  Vault        : /home/ubuntu/libcloud_nutanix/vault/generated/vault.env
+
+Identity model:
+  superadmin   / SA-BMxXDQTOHg5ys4eKX-5L5ypk   (bootstrap: Vault/OpenFGA/LLDAP admin)
+  aws-owner    / SA-c9PgdUq_DxHPSb5X-62-C_Rp    (owner  of tenant:aws)
+  aws-admin    / SA-65aHab9N5FWf5ucBo-pWL9gh    (admin  of tenant:aws -> provision AWS)
+  aws-viewer   / SA-1ccFjOrVa632Vu_kbLrTZGLX   (viewer of tenant:aws -> enumerate only)
+  ntnx-owner   / SA-Z_E2w5MNW50QferJKy2Okikw   (owner  of tenant:nutanix)
+  ntnx-admin   / SA-KGX1VaiQ5Qyl36y4qcjtDHKI   (admin  of tenant:nutanix -> provision Nutanix)
+  ntnx-viewer  / SA-4PxGNqFCf0eZunsBPn8k4jJE  (viewer of tenant:nutanix -> enumerate only)
+  cloud-denied / CloudDenied123! (authenticated but denied)
+
+Datastore: PostgreSQL (container openfga-postgres, volume openfga_postgres-pg-data / openfga-pg-data).
+Inspect tuples via SQL:
+  docker exec -it openfga-postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c 'select count(*) from tuple;'
+
+OpenFGA image: openfga-local:latest, built from /home/ubuntu/libcloud_nutanix/openfga_postgres/Dockerfile (openfga v1.16.0).
+
+Cloud backend credentials are seeded into Vault from the root .env
+(LIBCLOUD_AWS_KEY/SECRET, LIBCLOUD_NTNX_USER/PASSWORD). If a value is
+empty, that tenant is skipped — the owner can seed it later manually:
+  TENANT=aws LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_AWS_OWNER \
+    LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \
+    python3 test_script/scripts/set_tenant_credentials.py
+  TENANT=nutanix LIBCLOUD_USER=ntnx-owner LIBCLOUD_PASSWORD=$LIBCLOUD_PASSWORD_NTNX_OWNER \
+    LIBCLOUD_NTNX_USER=admin LIBCLOUD_NTNX_PASSWORD=... \
+    python3 test_script/scripts/set_tenant_credentials.py
+superadmin (owner on both tenants) can set them too.
+
+Then run:
+  LIBCLOUD_USER=aws-admin   ./test_script/scripts/provision_aws.sh
+  LIBCLOUD_USER=aws-viewer  ./test_script/scripts/provision_aws.sh
+  LIBCLOUD_USER=ntnx-admin  ./test_script/scripts/provision_nutanix.sh
+  LIBCLOUD_USER=ntnx-viewer ./test_script/scripts/provision_nutanix.sh
