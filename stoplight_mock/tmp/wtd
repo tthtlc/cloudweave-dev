@@ -1,0 +1,11 @@
+
+scripts/  mock/  README.md  myrun.sh  terraform-provider-nutanix-2.2.1  terraform-network/  terraform/
+DO3/home/ubuntu/nutanix_vm>
+DO3/home/ubuntu/nutanix_vm>vi myrun2.sh
+DO3/home/ubuntu/nutanix_vm>vi myrun2.sh:q
+DO3/home/ubuntu/nutanix_vm>claude --resume 7924b2f2-edf7-4252-8ff0-66fe526016c5
+
+Resume this session with:
+claude --resume 7924b2f2-edf7-4252-8ff0-66fe526016c5
+DO3/home/ubuntu/nutanix_vm>
+

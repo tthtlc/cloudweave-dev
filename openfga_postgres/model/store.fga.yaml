@@ -1,0 +1,705 @@
+# GENERATED from openfga_postgres/generated/enumeration_report.json
+# Every assertion below is a decision the live OpenFGA server returned.
+# store: 01KXFQ6JWFD2MZKFDFSHYNNNXE
+# model: 01KXWWZY8424AMK2B443FH7TQ0
+# recorded: 2026-07-25T05:05:19+00:00
+
+name: libcloud-rest-store
+model_file: ./libcloud.fga
+
+# --- the 66 tuples present in the live store ---
+tuples:
+  - user: user:superadmin
+    relation: superadmin
+    object: platform:main
+  - user: user:aws-owner
+    relation: owner
+    object: tenant:aws
+  - user: user:ntnx-owner
+    relation: owner
+    object: tenant:nutanix
+  - user: user:ntnx-admin
+    relation: admin
+    object: tenant:nutanix
+  - user: user:ntnx-viewer
+    relation: viewer
+    object: tenant:nutanix
+  - user: tenant:aws
+    relation: parent
+    object: libcloud_api:main
+  - user: tenant:nutanix
+    relation: parent
+    object: libcloud_api:main
+  - user: tenant:aws
+    relation: parent
+    object: provider:aws
+  - user: tenant:nutanix
+    relation: parent
+    object: provider:nutanix
+  - user: provider:aws
+    relation: provider
+    object: aws_region:aws
+  - user: tenant:aws
+    relation: tenant
+    object: aws_region:aws
+  - user: provider:nutanix
+    relation: provider
+    object: nutanix_cluster:nutanix
+  - user: tenant:nutanix
+    relation: tenant
+    object: nutanix_cluster:nutanix
+  - user: user:int-viewer-test456
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-test456
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-viewer-bd6f8c24
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-bd6f8c24
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-viewer-8208f415
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-8208f415
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-viewer-360504b9
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-360504b9
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-viewer-978eeb7d
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-978eeb7d
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-admin
+    relation: owner
+    object: tenant:aws
+  - user: user:int-admin
+    relation: owner
+    object: tenant:nutanix
+  - user: user:int-admin
+    relation: admin
+    object: tenant:aws
+  - user: user:int-admin
+    relation: admin
+    object: tenant:nutanix
+  - user: user:aws-admin
+    relation: admin
+    object: tenant:aws
+  - user: user:aws-viewer
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-5a81989e
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-5a81989e
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:int-viewer-4216db29
+    relation: viewer
+    object: tenant:aws
+  - user: user:int-viewer-4216db29
+    relation: viewer
+    object: tenant:nutanix
+  - user: platform:main
+    relation: platform
+    object: tenant:aws
+  - user: platform:main
+    relation: platform
+    object: tenant:nutanix
+  - user: platform:main
+    relation: platform
+    object: libcloud_api:main
+  - user: platform:main
+    relation: platform
+    object: provider:aws
+  - user: platform:main
+    relation: platform
+    object: provider:nutanix
+  - user: platform:main
+    relation: platform
+    object: aws_region:aws
+  - user: platform:main
+    relation: platform
+    object: nutanix_cluster:nutanix
+  - user: tenant:aws
+    relation: tenant
+    object: resource_class:aws-compute
+  - user: platform:main
+    relation: platform
+    object: resource_class:aws-compute
+  - user: tenant:aws
+    relation: tenant
+    object: resource_class:aws-network
+  - user: platform:main
+    relation: platform
+    object: resource_class:aws-network
+  - user: tenant:aws
+    relation: tenant
+    object: resource_class:aws-data
+  - user: platform:main
+    relation: platform
+    object: resource_class:aws-data
+  - user: tenant:aws
+    relation: tenant
+    object: resource_class:aws-platform
+  - user: platform:main
+    relation: platform
+    object: resource_class:aws-platform
+  - user: tenant:nutanix
+    relation: tenant
+    object: resource_class:nutanix-compute
+  - user: platform:main
+    relation: platform
+    object: resource_class:nutanix-compute
+  - user: tenant:nutanix
+    relation: tenant
+    object: resource_class:nutanix-network
+  - user: platform:main
+    relation: platform
+    object: resource_class:nutanix-network
+  - user: tenant:nutanix
+    relation: tenant
+    object: resource_class:nutanix-data
+  - user: platform:main
+    relation: platform
+    object: resource_class:nutanix-data
+  - user: tenant:nutanix
+    relation: tenant
+    object: resource_class:nutanix-platform
+  - user: platform:main
+    relation: platform
+    object: resource_class:nutanix-platform
+  - user: resource_class:aws-compute
+    relation: resource_class
+    object: aws_region:aws
+  - user: resource_class:aws-network
+    relation: resource_class
+    object: aws_region:aws
+  - user: resource_class:aws-data
+    relation: resource_class
+    object: aws_region:aws
+  - user: resource_class:aws-platform
+    relation: resource_class
+    object: aws_region:aws
+  - user: resource_class:nutanix-compute
+    relation: resource_class
+    object: nutanix_cluster:nutanix
+  - user: resource_class:nutanix-network
+    relation: resource_class
+    object: nutanix_cluster:nutanix
+  - user: resource_class:nutanix-data
+    relation: resource_class
+    object: nutanix_cluster:nutanix
+  - user: resource_class:nutanix-platform
+    relation: resource_class
+    object: nutanix_cluster:nutanix
+  - user: user:aws-compute-admin
+    relation: admin
+    object: resource_class:aws-compute
+  - user: user:ntnx-compute-viewer
+    relation: viewer
+    object: resource_class:nutanix-compute
+
+tests:
+  - name: recorded-check-results
+    check:
+      - user: user:superadmin
+        object: platform:main
+        assertions:
+          superadmin: true
+      - user: user:aws-owner
+        object: tenant:aws
+        assertions:
+          owner: true
+      - user: user:ntnx-owner
+        object: tenant:nutanix
+        assertions:
+          owner: true
+      - user: user:ntnx-admin
+        object: tenant:nutanix
+        assertions:
+          admin: true
+      - user: user:ntnx-viewer
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: tenant:aws
+        object: libcloud_api:main
+        assertions:
+          parent: true
+      - user: tenant:nutanix
+        object: libcloud_api:main
+        assertions:
+          parent: true
+      - user: tenant:aws
+        object: provider:aws
+        assertions:
+          parent: true
+      - user: tenant:nutanix
+        object: provider:nutanix
+        assertions:
+          parent: true
+      - user: provider:aws
+        object: aws_region:aws
+        assertions:
+          provider: true
+      - user: tenant:aws
+        object: aws_region:aws
+        assertions:
+          tenant: true
+      - user: provider:nutanix
+        object: nutanix_cluster:nutanix
+        assertions:
+          provider: true
+      - user: tenant:nutanix
+        object: nutanix_cluster:nutanix
+        assertions:
+          tenant: true
+      - user: user:int-viewer-test456
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-test456
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-viewer-bd6f8c24
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-bd6f8c24
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-viewer-8208f415
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-8208f415
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-viewer-360504b9
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-360504b9
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-viewer-978eeb7d
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-978eeb7d
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-admin
+        object: tenant:aws
+        assertions:
+          owner: true
+          admin: true
+      - user: user:int-admin
+        object: tenant:nutanix
+        assertions:
+          owner: true
+          admin: true
+      - user: user:aws-admin
+        object: tenant:aws
+        assertions:
+          admin: true
+      - user: user:aws-viewer
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-5a81989e
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-5a81989e
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: user:int-viewer-4216db29
+        object: tenant:aws
+        assertions:
+          viewer: true
+      - user: user:int-viewer-4216db29
+        object: tenant:nutanix
+        assertions:
+          viewer: true
+      - user: platform:main
+        object: tenant:aws
+        assertions:
+          platform: true
+      - user: platform:main
+        object: tenant:nutanix
+        assertions:
+          platform: true
+      - user: platform:main
+        object: libcloud_api:main
+        assertions:
+          platform: true
+      - user: platform:main
+        object: provider:aws
+        assertions:
+          platform: true
+      - user: platform:main
+        object: provider:nutanix
+        assertions:
+          platform: true
+      - user: platform:main
+        object: aws_region:aws
+        assertions:
+          platform: true
+      - user: platform:main
+        object: nutanix_cluster:nutanix
+        assertions:
+          platform: true
+      - user: tenant:aws
+        object: resource_class:aws-compute
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:aws-compute
+        assertions:
+          platform: true
+      - user: tenant:aws
+        object: resource_class:aws-network
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:aws-network
+        assertions:
+          platform: true
+      - user: tenant:aws
+        object: resource_class:aws-data
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:aws-data
+        assertions:
+          platform: true
+      - user: tenant:aws
+        object: resource_class:aws-platform
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:aws-platform
+        assertions:
+          platform: true
+      - user: tenant:nutanix
+        object: resource_class:nutanix-compute
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:nutanix-compute
+        assertions:
+          platform: true
+      - user: tenant:nutanix
+        object: resource_class:nutanix-network
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:nutanix-network
+        assertions:
+          platform: true
+      - user: tenant:nutanix
+        object: resource_class:nutanix-data
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:nutanix-data
+        assertions:
+          platform: true
+      - user: tenant:nutanix
+        object: resource_class:nutanix-platform
+        assertions:
+          tenant: true
+      - user: platform:main
+        object: resource_class:nutanix-platform
+        assertions:
+          platform: true
+      - user: resource_class:aws-compute
+        object: aws_region:aws
+        assertions:
+          resource_class: true
+      - user: resource_class:aws-network
+        object: aws_region:aws
+        assertions:
+          resource_class: true
+      - user: resource_class:aws-data
+        object: aws_region:aws
+        assertions:
+          resource_class: true
+      - user: resource_class:aws-platform
+        object: aws_region:aws
+        assertions:
+          resource_class: true
+      - user: resource_class:nutanix-compute
+        object: nutanix_cluster:nutanix
+        assertions:
+          resource_class: true
+      - user: resource_class:nutanix-network
+        object: nutanix_cluster:nutanix
+        assertions:
+          resource_class: true
+      - user: resource_class:nutanix-data
+        object: nutanix_cluster:nutanix
+        assertions:
+          resource_class: true
+      - user: resource_class:nutanix-platform
+        object: nutanix_cluster:nutanix
+        assertions:
+          resource_class: true
+      - user: user:aws-compute-admin
+        object: resource_class:aws-compute
+        assertions:
+          admin: true
+      - user: user:ntnx-compute-viewer
+        object: resource_class:nutanix-compute
+        assertions:
+          viewer: true
+
+  - name: recorded-list-objects-results
+    list_objects:
+      - user: platform:main
+        type: aws_region
+        assertions:
+          platform:
+            - aws_region:aws
+      - user: platform:main
+        type: libcloud_api
+        assertions:
+          platform:
+            - libcloud_api:main
+      - user: platform:main
+        type: nutanix_cluster
+        assertions:
+          platform:
+            - nutanix_cluster:nutanix
+      - user: platform:main
+        type: provider
+        assertions:
+          platform:
+            - provider:aws
+            - provider:nutanix
+      - user: platform:main
+        type: resource_class
+        assertions:
+          platform:
+            - resource_class:aws-compute
+            - resource_class:aws-data
+            - resource_class:aws-network
+            - resource_class:aws-platform
+            - resource_class:nutanix-compute
+            - resource_class:nutanix-data
+            - resource_class:nutanix-network
+            - resource_class:nutanix-platform
+      - user: platform:main
+        type: tenant
+        assertions:
+          platform:
+            - tenant:aws
+            - tenant:nutanix
+      - user: provider:aws
+        type: aws_region
+        assertions:
+          provider:
+            - aws_region:aws
+      - user: provider:nutanix
+        type: nutanix_cluster
+        assertions:
+          provider:
+            - nutanix_cluster:nutanix
+      - user: resource_class:aws-compute
+        type: aws_region
+        assertions:
+          resource_class:
+            - aws_region:aws
+      - user: resource_class:aws-data
+        type: aws_region
+        assertions:
+          resource_class:
+            - aws_region:aws
+      - user: resource_class:aws-network
+        type: aws_region
+        assertions:
+          resource_class:
+            - aws_region:aws
+      - user: resource_class:aws-platform
+        type: aws_region
+        assertions:
+          resource_class:
+            - aws_region:aws
+      - user: resource_class:nutanix-compute
+        type: nutanix_cluster
+        assertions:
+          resource_class:
+            - nutanix_cluster:nutanix
+      - user: resource_class:nutanix-data
+        type: nutanix_cluster
+        assertions:
+          resource_class:
+            - nutanix_cluster:nutanix
+      - user: resource_class:nutanix-network
+        type: nutanix_cluster
+        assertions:
+          resource_class:
+            - nutanix_cluster:nutanix
+      - user: resource_class:nutanix-platform
+        type: nutanix_cluster
+        assertions:
+          resource_class:
+            - nutanix_cluster:nutanix
+      - user: tenant:aws
+        type: libcloud_api
+        assertions:
+          parent:
+            - libcloud_api:main
+      - user: tenant:aws
+        type: provider
+        assertions:
+          parent:
+            - provider:aws
+      - user: tenant:aws
+        type: aws_region
+        assertions:
+          tenant:
+            - aws_region:aws
+      - user: tenant:aws
+        type: resource_class
+        assertions:
+          tenant:
+            - resource_class:aws-compute
+            - resource_class:aws-data
+            - resource_class:aws-network
+            - resource_class:aws-platform
+      - user: tenant:nutanix
+        type: libcloud_api
+        assertions:
+          parent:
+            - libcloud_api:main
+      - user: tenant:nutanix
+        type: provider
+        assertions:
+          parent:
+            - provider:nutanix
+      - user: tenant:nutanix
+        type: nutanix_cluster
+        assertions:
+          tenant:
+            - nutanix_cluster:nutanix
+      - user: tenant:nutanix
+        type: resource_class
+        assertions:
+          tenant:
+            - resource_class:nutanix-compute
+            - resource_class:nutanix-data
+            - resource_class:nutanix-network
+            - resource_class:nutanix-platform
+      - user: user:aws-admin
+        type: tenant
+        assertions:
+          admin:
+            - tenant:aws
+      - user: user:aws-compute-admin
+        type: resource_class
+        assertions:
+          admin:
+            - resource_class:aws-compute
+      - user: user:aws-owner
+        type: tenant
+        assertions:
+          owner:
+            - tenant:aws
+      - user: user:aws-viewer
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+      - user: user:int-admin
+        type: tenant
+        assertions:
+          admin:
+            - tenant:aws
+            - tenant:nutanix
+          owner:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-360504b9
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-4216db29
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-5a81989e
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-8208f415
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-978eeb7d
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-bd6f8c24
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:int-viewer-test456
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:aws
+            - tenant:nutanix
+      - user: user:ntnx-admin
+        type: tenant
+        assertions:
+          admin:
+            - tenant:nutanix
+      - user: user:ntnx-compute-viewer
+        type: resource_class
+        assertions:
+          viewer:
+            - resource_class:nutanix-compute
+      - user: user:ntnx-owner
+        type: tenant
+        assertions:
+          owner:
+            - tenant:nutanix
+      - user: user:ntnx-viewer
+        type: tenant
+        assertions:
+          viewer:
+            - tenant:nutanix
+      - user: user:superadmin
+        type: platform
+        assertions:
+          superadmin:
+            - platform:main

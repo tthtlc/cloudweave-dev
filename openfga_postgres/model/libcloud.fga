@@ -1,0 +1,80 @@
+model
+  schema 1.1
+
+type user
+
+type platform
+  relations
+    define can_manage_global_policy: superadmin
+    define can_manage_iam_mapping: superadmin
+    define can_manage_platform: superadmin
+    define can_manage_tenant_lifecycle: superadmin
+    define global_reader: superadmin
+    define superadmin: [user]
+
+type tenant
+  relations
+    define admin: [user]
+    define can_assign_admin: owner
+    define can_assign_owner: can_manage_platform from platform
+    define can_assign_viewer: owner
+    define can_manage_credentials: owner
+    define can_provision: admin or owner
+    define can_read: viewer or admin or owner or global_reader from platform
+    define can_update: admin or owner
+    define member: [user] or owner or admin or viewer
+    define owner: [user]
+    define platform: [platform]
+    define viewer: [user]
+
+type libcloud_api
+  relations
+    define can_connect: [user] or member from parent or global_reader from platform
+    define parent: [tenant]
+    define platform: [platform]
+
+type provider
+  relations
+    define can_use: [user] or member from parent or global_reader from platform
+    define parent: [tenant]
+    define platform: [platform]
+
+type resource_class
+  relations
+    define admin: [user]
+    define can_provision: admin or tenant_admin or tenant_owner
+    define can_read: viewer or tenant_viewer or admin or tenant_admin or tenant_owner or global_reader from platform
+    define can_update: admin or tenant_admin or tenant_owner
+    define platform: [platform]
+    define tenant: [tenant]
+    define tenant_admin: admin from tenant
+    define tenant_owner: owner from tenant
+    define tenant_viewer: viewer from tenant
+    define viewer: [user]
+
+type aws_region
+  relations
+    define can_provision: ((tenant_admin or tenant_owner) and can_use from provider) or can_provision from resource_class
+    define can_read: tenant_viewer or tenant_admin or tenant_owner or can_use from provider or can_read from resource_class or global_reader from platform
+    define can_update: ((tenant_admin or tenant_owner) and can_use from provider) or can_update from resource_class
+    define platform: [platform]
+    define provider: [provider]
+    define resource_class: [resource_class]
+    define tenant: [tenant]
+    define tenant_admin: admin from tenant
+    define tenant_owner: owner from tenant
+    define tenant_viewer: viewer from tenant
+
+type nutanix_cluster
+  relations
+    define can_provision: ((tenant_admin or tenant_owner) and can_use from provider) or can_provision from resource_class
+    define can_read: tenant_viewer or tenant_admin or tenant_owner or can_use from provider or can_read from resource_class or global_reader from platform
+    define can_update: ((tenant_admin or tenant_owner) and can_use from provider) or can_update from resource_class
+    define platform: [platform]
+    define provider: [provider]
+    define resource_class: [resource_class]
+    define tenant: [tenant]
+    define tenant_admin: admin from tenant
+    define tenant_owner: owner from tenant
+    define tenant_viewer: viewer from tenant
+

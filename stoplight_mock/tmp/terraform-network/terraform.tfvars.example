@@ -1,0 +1,54 @@
+# ── Copy to terraform.tfvars and customize ────────────────────────────
+# When running inside Docker: endpoint = "emulator"
+# When running on host:      endpoint = "localhost"
+nutanix_endpoint = "emulator"
+nutanix_port     = 9440
+nutanix_username = "admin"
+nutanix_password = "Nutanix.123"
+nutanix_insecure = true
+
+# ── Cluster (emulator seed) ───────────────────────────────────────────
+cluster_ext_id = "00000000-0000-0000-0000-000000000001"
+
+# ── External VLAN subnet (prerequisite for the VPC) ───────────────────
+external_subnet_name         = "emulator-ext-subnet"
+external_subnet_vlan_id      = 112
+external_subnet_ip           = "192.168.0.0"
+external_subnet_prefix_length = 24
+external_subnet_gateway      = "192.168.0.1"
+external_subnet_pool_start   = "192.168.0.20"
+external_subnet_pool_end     = "192.168.0.30"
+
+# ── VPC ────────────────────────────────────────────────────────────────
+vpc_name        = "emulator-vpc"
+vpc_description = "VPC provisioned against Nutanix emulator"
+vpc_type        = "REGULAR"
+# Externally routable prefixes (optional — leave empty to skip)
+vpc_externally_routable_prefixes = []
+# VPC-level DHCP DNS servers (optional — set to null to skip)
+vpc_dhcp_domain_name_servers = null
+
+# ── Overlay subnet (inside the VPC) ────────────────────────────────────
+overlay_subnet_name          = "emulator-overlay"
+overlay_subnet_description   = "Overlay subnet for emulator workloads"
+overlay_subnet_ip            = "10.0.0.0"
+overlay_subnet_prefix_length = 24
+overlay_subnet_gateway       = "10.0.0.1"
+overlay_subnet_pool_start    = "10.0.0.10"
+overlay_subnet_pool_end      = "10.0.0.250"
+# DHCP options for overlay subnet (set to null to skip)
+overlay_subnet_domain_name_servers = null
+overlay_subnet_search_domains      = []
+overlay_subnet_domain_name         = ""
+overlay_subnet_tftp_server_name    = ""
+overlay_subnet_boot_file_name      = ""
+
+# ── Network Security Policy (disabled by default) ─────────────────────
+create_security_policy       = false
+security_policy_name         = "emulator-security-policy"
+security_policy_description  = "Example APPLICATION security policy"
+
+# ── Floating IP (disabled by default) ─────────────────────────────────
+create_floating_ip       = false
+floating_ip_name         = "emulator-floating-ip"
+floating_ip_description  = "Example floating IP on the external subnet"

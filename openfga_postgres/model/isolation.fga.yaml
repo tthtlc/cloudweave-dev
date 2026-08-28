@@ -1,0 +1,266 @@
+# Cross-tenant isolation properties.
+#
+# PROVENANCE: unlike store.fga.yaml (whose assertions are replayed live-server
+# decisions), the assertions here are DERIVED — they state the security posture
+# the model is meant to enforce. They are trustworthy because the DSL is proven
+# equivalent to the live model (zero semantic diff on round-trip, 108/108
+# recorded decisions reproduced), so a pass here is what the live server does.
+#
+# The recorded checks only ever re-check stored tuples, so every one of them is
+# positive. Nothing in that set proves a tenant boundary actually holds. These do.
+
+name: libcloud-isolation
+model_file: ./libcloud.fga
+
+tuples:
+  - user: user:superadmin
+    relation: superadmin
+    object: platform:main
+  - user: user:aws-owner
+    relation: owner
+    object: tenant:aws
+  - user: user:aws-admin
+    relation: admin
+    object: tenant:aws
+  - user: user:aws-viewer
+    relation: viewer
+    object: tenant:aws
+  - user: user:ntnx-owner
+    relation: owner
+    object: tenant:nutanix
+  - user: user:ntnx-admin
+    relation: admin
+    object: tenant:nutanix
+  - user: user:ntnx-viewer
+    relation: viewer
+    object: tenant:nutanix
+  - user: user:aws-compute-admin
+    relation: admin
+    object: resource_class:aws-compute
+  - user: user:ntnx-compute-viewer
+    relation: viewer
+    object: resource_class:nutanix-compute
+  - user: platform:main
+    relation: platform
+    object: tenant:aws
+  - user: platform:main
+    relation: platform
+    object: tenant:nutanix
+  - user: platform:main
+    relation: platform
+    object: libcloud_api:main
+  - user: platform:main
+    relation: platform
+    object: provider:aws
+  - user: platform:main
+    relation: platform
+    object: provider:nutanix
+  - user: platform:main
+    relation: platform
+    object: aws_region:aws
+  - user: platform:main
+    relation: platform
+    object: nutanix_cluster:nutanix
+  - user: tenant:aws
+    relation: parent
+    object: libcloud_api:main
+  - user: tenant:nutanix
+    relation: parent
+    object: libcloud_api:main
+  - user: tenant:aws
+    relation: parent
+    object: provider:aws
+  - user: tenant:nutanix
+    relation: parent
+    object: provider:nutanix
+  - user: provider:aws
+    relation: provider
+    object: aws_region:aws
+  - user: tenant:aws
+    relation: tenant
+    object: aws_region:aws
+  - user: provider:nutanix
+    relation: provider
+    object: nutanix_cluster:nutanix
+  - user: tenant:nutanix
+    relation: tenant
+    object: nutanix_cluster:nutanix
+  - user: tenant:aws
+    relation: tenant
+    object: resource_class:aws-compute
+  - user: tenant:nutanix
+    relation: tenant
+    object: resource_class:nutanix-compute
+  - user: resource_class:aws-compute
+    relation: resource_class
+    object: aws_region:aws
+  - user: resource_class:nutanix-compute
+    relation: resource_class
+    object: nutanix_cluster:nutanix
+
+tests:
+  - name: nutanix-admin-is-confined-to-nutanix
+    check:
+      - user: user:ntnx-admin
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: true
+          can_provision: true
+          can_update: true
+      # The whole point of the intersection guard: no reach into AWS at all.
+      - user: user:ntnx-admin
+        object: aws_region:aws
+        assertions:
+          can_read: false
+          can_provision: false
+          can_update: false
+      - user: user:ntnx-admin
+        object: tenant:aws
+        assertions:
+          can_read: false
+          can_provision: false
+          member: false
+      - user: user:ntnx-admin
+        object: provider:aws
+        assertions:
+          can_use: false
+
+  - name: aws-admin-is-confined-to-aws
+    check:
+      - user: user:aws-admin
+        object: aws_region:aws
+        assertions:
+          can_read: true
+          can_provision: true
+          can_update: true
+      - user: user:aws-admin
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: false
+          can_provision: false
+          can_update: false
+      - user: user:aws-admin
+        object: provider:nutanix
+        assertions:
+          can_use: false
+
+  - name: viewers-can-read-but-never-write
+    check:
+      - user: user:aws-viewer
+        object: aws_region:aws
+        assertions:
+          can_read: true
+          can_provision: false
+          can_update: false
+      - user: user:ntnx-viewer
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: true
+          can_provision: false
+          can_update: false
+      # ...and viewers still cannot cross the tenant line.
+      - user: user:aws-viewer
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: false
+
+  - name: admin-is-weaker-than-owner-within-a-tenant
+    check:
+      - user: user:ntnx-admin
+        object: tenant:nutanix
+        assertions:
+          can_provision: true
+          can_update: true
+          # credential + grant management are owner-only
+          can_manage_credentials: false
+          can_assign_admin: false
+          can_assign_viewer: false
+          can_assign_owner: false
+      - user: user:ntnx-owner
+        object: tenant:nutanix
+        assertions:
+          can_manage_credentials: true
+          can_assign_admin: true
+          can_assign_viewer: true
+          # only the platform superadmin may mint another owner
+          can_assign_owner: false
+
+  - name: superadmin-governs-but-does-not-provision
+    check:
+      - user: user:superadmin
+        object: platform:main
+        assertions:
+          superadmin: true
+          global_reader: true
+          can_manage_platform: true
+          can_manage_tenant_lifecycle: true
+          can_manage_iam_mapping: true
+          can_manage_global_policy: true
+      # Reads everywhere via global_reader...
+      - user: user:superadmin
+        object: tenant:aws
+        assertions:
+          can_read: true
+          can_assign_owner: true
+      - user: user:superadmin
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: true
+      # ...but holds no provisioning right on any workload object.
+      - user: user:superadmin
+        object: aws_region:aws
+        assertions:
+          can_provision: false
+          can_update: false
+      - user: user:superadmin
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_provision: false
+          can_update: false
+
+  - name: resource-class-grants-are-scoped-to-their-cloud
+    check:
+      - user: user:aws-compute-admin
+        object: resource_class:aws-compute
+        assertions:
+          can_read: true
+          can_provision: true
+      # resource_class rights propagate up to the region...
+      - user: user:aws-compute-admin
+        object: aws_region:aws
+        assertions:
+          can_read: true
+          can_provision: true
+      # ...but not across the cloud boundary.
+      - user: user:aws-compute-admin
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: false
+          can_provision: false
+      - user: user:ntnx-compute-viewer
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: true
+          can_provision: false
+
+  - name: unassigned-principal-has-nothing
+    check:
+      - user: user:cloud-denied
+        object: tenant:aws
+        assertions:
+          can_read: false
+          member: false
+      - user: user:cloud-denied
+        object: libcloud_api:main
+        assertions:
+          can_connect: false
+      - user: user:cloud-denied
+        object: aws_region:aws
+        assertions:
+          can_read: false
+          can_provision: false
+      - user: user:cloud-denied
+        object: nutanix_cluster:nutanix
+        assertions:
+          can_read: false
+          can_provision: false

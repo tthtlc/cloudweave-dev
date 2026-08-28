@@ -1,0 +1,111 @@
+LIBCLOUD_USER=superadmin VERBOSE=1 ./system_validate.sh 
+
+############################################################
+# Section: infra
+############################################################
+  [PASS] libcloud_net exists and contains all 5 services
+  [PASS] container lldap running+healthy
+  [PASS] container dex running+healthy
+  [PASS] container openfga running+healthy
+  [PASS] container vault running+healthy
+  [PASS] container libcloud-rest-api running+healthy
+  -- section infra: 6 pass, 0 fail
+
+############################################################
+# Section: lldap
+############################################################
+  [PASS] LLDAP has superadmin + per-cloud owners/admins/viewers + denied
+  [PASS] LDAP bind as superadmin
+  [PASS] LDAP bind as aws-admin
+  [PASS] LDAP bind as aws-viewer
+  [PASS] LDAP bind as ntnx-admin
+  [PASS] LDAP bind as ntnx-viewer
+  [PASS] LDAP bind as cloud-denied
+  -- section lldap: 7 pass, 0 fail
+
+############################################################
+# Section: dex
+############################################################
+  [PASS] Dex config has no staticPasswords/enablePasswordDB
+  [PASS] Dex config has LDAP connector -> lldap (idAttr=uid, emailAttr=mail)
+  [PASS] Dex bindPW matches ../lldap/.env LLDAP_LDAP_USER_PASS
+  [PASS] Dex OIDC discovery endpoint reachable
+  [FAIL] /dex/auth redirects to /dex/auth/lldap (LDAP connector)
+  -- section dex: 4 pass, 1 fail
+
+############################################################
+# Section: rest
+############################################################
+  [PASS] libcloud REST API has no local/static users.json
+  [PASS] libcloud REST API AUTH_MODE=oidc
+  [PASS] libcloud REST API local password login disabled (admin/changeme -> 404)
+  -- section rest: 3 pass, 0 fail
+
+############################################################
+# Section: superadmin
+############################################################
+  [FAIL] superadmin Dex login produces a valid JWT
+  [FAIL] openfga_bootstrap refuses to run without SUPERADMIN_JWT (gate)
+  -- section superadmin: 0 pass, 2 fail
+
+############################################################
+# Section: tenant-creds
+############################################################
+  [PASS] set_tenant_credentials denies aws-admin (non-owner on tenant:aws)
+  [PASS] set_tenant_credentials denies aws-viewer (non-owner on tenant:aws)
+  [FAIL] set_tenant_credentials denies ntnx-admin (non-owner on tenant:nutanix)
+  -- section tenant-creds: 2 pass, 1 fail
+
+############################################################
+# Section: oidc
+############################################################
+  [PASS] idp_login.py: superadmin JWT has email=superadmin@libcloud.local
+  -- section oidc: 1 pass, 0 fail
+
+############################################################
+# Section: provision
+############################################################
+  [PASS] provision_aws.sh aws-admin (allow + dry-run)
+  [FAIL] provision_aws.sh aws-viewer (read-only skip)
+        | }
+        | 
+        | {
+        |     "data": [],
+        |     "meta": {
+        |         "request_id": "req_80e67b7a455e"
+        |     }
+        | }
+        | 
+        | === [7] Dry-run complete (set PROVISION=1 to create an EC2 instance) ===
+  [FAIL] provision_aws.sh cloud-denied (OpenFGA denies) (expected denial+marker; rc=0)
+        |             "relation": "can_connect",
+        |             "object": "libcloud_api:main"
+        |         }
+        |     },
+        |     "meta": {
+        |         "request_id": "req_c948102d9edd"
+        |     }
+        | }
+        | 
+        | === [7] Dry-run complete (set PROVISION=1 to create an EC2 instance) ===
+  [PASS] provision_nutanix.sh ntnx-admin (allow + dry-run)
+  [PASS] provision_nutanix.sh ntnx-viewer (read-only skip)
+  [FAIL] provision_nutanix.sh cloud-denied (OpenFGA denies) (expected denial+marker; rc=0)
+        |             "relation": "can_connect",
+        |             "object": "libcloud_api:main"
+        |         }
+        |     },
+        |     "meta": {
+        |         "request_id": "req_b670585d880e"
+        |     }
+        | }
+        | 
+        | === [7] Dry-run complete (set PROVISION=1 to create a Nutanix VM) ===
+  -- section provision: 3 pass, 3 fail
+
+############################################################
+# Validation summary
+############################################################
+  PASS: 26
+  FAIL: 7
+  RESULT: 7 VALIDATION(S) FAILED

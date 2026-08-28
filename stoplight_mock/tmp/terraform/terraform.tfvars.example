@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and customize
+# When running inside Docker: endpoint = "emulator"
+# When running on host:      endpoint = "localhost"
+nutanix_endpoint = "emulator"
+nutanix_port     = 9440
+nutanix_username = "admin"
+nutanix_password = "Nutanix.123"
+nutanix_insecure = true
+
+vm_name                 = "emulator-test-vm"
+vm_description          = "VM provisioned against Nutanix emulator"
+vm_num_sockets          = 2
+vm_num_cores_per_socket = 2
+vm_memory_size_bytes    = 8589934592 # 8 GiB
+
+# Emulator seed IDs (do not change unless you update mock/server.js)
+cluster_ext_id           = "00000000-0000-0000-0000-000000000001"
+subnet_ext_id            = "00000000-0000-0000-0000-000000000002"
+image_ext_id             = "00000000-0000-0000-0000-000000000003"
+storage_container_ext_id = "00000000-0000-0000-0000-000000000005"
