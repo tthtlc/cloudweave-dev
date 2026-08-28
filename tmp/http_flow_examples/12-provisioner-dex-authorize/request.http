@@ -1,6 +1,0 @@
-GET /dex/auth?client_id=libcloud-rest&redirect_uri=http%3A%2F%2F127.0.0.1%3A8766%2Foauth%2Fcallback&response_type=code&scope=openid+email+profile&state=libcloud-dex&connector_id=lldap HTTP/1.1
-Host: dex:5556
-Accept: text/html,application/xhtml+xml
-User-Agent: python-httpx/0.27.0
-
-(empty body — GET request, follows redirects to LDAP login form)

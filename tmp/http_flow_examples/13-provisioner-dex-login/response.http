@@ -1,6 +1,0 @@
-HTTP/1.1 302 Found
-Location: http://127.0.0.1:8766/oauth/callback?code=dex-prov-abc123xyz789&state=libcloud-dex
-Set-Cookie: dex_session=eyJhbGciOiJIUzI1NiJ9.authenticated-session; Path=/; HttpOnly; SameSite=Lax
-Date: Wed, 23 Jul 2026 14:22:11 GMT
-
-(empty body — 302 redirect; Identity Service captures `code` from Location header, does NOT follow)

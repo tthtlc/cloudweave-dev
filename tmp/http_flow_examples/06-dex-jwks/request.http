@@ -1,6 +1,0 @@
-GET /dex/keys HTTP/1.1
-Host: dex:5556
-Accept: application/json
-User-Agent: PyJWKClient/2.8.0
-
-(empty body — GET request, cached by PyJWKClient)

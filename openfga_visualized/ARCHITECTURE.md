@@ -10,7 +10,7 @@ verified, broken, and fixed during implementation.
 
 ## 1. Overview
 
-- One Python file (`app.py`, ~1130 lines) contains the entire backend **and**
+- One Python file (`app.py`, ~1642 lines) contains the entire backend **and**
   the frontend (HTML/CSS/JS embedded as string constants — no templates, no
   build step).
 - Frontend uses D3.js v7 (vendored at `static/d3.v7.min.js`, CDN fallback).
@@ -28,12 +28,15 @@ verified, broken, and fixed during implementation.
 openfga_visualized/
 ├── app.py                 # backend + embedded frontend (everything)
 ├── requirements.txt       # flask, requests, pyjwt[crypto], pyyaml
+├── Dockerfile             # container image for the visualizer
+├── docker-compose.yml     # compose service (openfga-visualizer)
+├── .env                   # env overrides (PUBLIC_HOSTNAME, OIDC_ISSUER, …)
 ├── README.md              # run/config instructions
 ├── ARCHITECTURE.md        # this file
 ├── static/d3.v7.min.js    # vendored D3 v7.9.0 (offline capable)
+├── static/vis-network.min.js  # vendored vis-network (Model Graph tab)
 ├── .flask_secret          # auto-generated Flask session key (mode 0600)
-├── .venv/                 # python virtualenv
-└── prompt.md              # original task description
+└── .venv/                 # python virtualenv
 ```
 
 Run: `.venv/bin/python app.py` → http://${PUBLIC_HOSTNAME:-localhost}:5050
@@ -51,7 +54,7 @@ Run: `.venv/bin/python app.py` → http://${PUBLIC_HOSTNAME:-localhost}:5050
    `openfga_tuples_transcribed.md`, `openfga_postgres/.env`,
    `dex/config.yaml`. Established: store `01KXFQ6JWFD2MZKFDFSHYNNNXE`,
    model `01KXWWZY8424AMK2B443FH7TQ0`, OpenFGA on `:8080` with OIDC authn,
-   issuer `http://login.quest4science.xyz:5556/dex`, audience `libcloud-rest`.
+   issuer `http://dex:5556/dex`, audience `libcloud-rest`.
 3. **Built v1**: Flask backend + embedded D3 frontend, venv, vendored D3,
    requirements, README. Verified against the live store using the project's
    superadmin JWT (52 tuples, 26 nodes, single root `platform:main`).
@@ -80,7 +83,7 @@ Run: `.venv/bin/python app.py` → http://${PUBLIC_HOSTNAME:-localhost}:5050
     ▼
  ┌─────────────────────┐        ┌──────────────────────────────┐
  │ RBAC Visualizer     │  ②     │ Dex (:5556)                  │
- │ app.py (:5050)      │◄──────►│ issuer login.quest4science…  │
+ │ app.py (:5050)      │◄──────►│ issuer http://dex:5556/dex   │
  │ Flask, threaded     │ token  │ connectors: LLDAP, Google,   │
  └─────────┬───────────┘ verify │            GitHub            │
            │ ③ bearer JWT       └──────────────────────────────┘
@@ -99,7 +102,7 @@ Key facts that shape the design:
   is rejected with `401 {"code":"invalid_claims"}`. → The dashboard must sign
   users in through the existing `libcloud-rest` Dex client; it cannot have
   its own client id without also changing OpenFGA.
-- The store holds **52 tuples** (39 wiring + 13 grants), **8 types**
+- The store holds **48 tuples** (39 wiring + 9 grants), **8 types**
   (`user`, `platform`, `tenant`, `libcloud_api`, `provider`,
   `resource_class`, `aws_region`, `nutanix_cluster`), model schema 1.1.
 - The authorization model is immutable/versioned; the store contains 4
@@ -118,14 +121,20 @@ All env-overridable, defaults match the project:
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENFGA_API_URL` | `http://localhost:8080` | OpenFGA base URL |
-| `OPENFGA_STORE_ID` | `01KXFQ6JWFD2MZKFDFSHYNNNXE` | store |
-| `OPENFGA_MODEL_ID` | `01KXWWZY8424AMK2B443FH7TQ0` | pinned model |
-| `OIDC_ISSUER` | `http://login.quest4science.xyz:5556/dex` | Dex issuer |
+| `OPENFGA_STORE_ID` | `""` (auto-discover) | store — empty = look up by `OPENFGA_STORE_NAME` |
+| `OPENFGA_MODEL_ID` | `""` (auto-discover) | model — empty = latest model in the store |
+| `OPENFGA_STORE_NAME` | `libcloud-rest-store` | store name used for auto-discovery |
+| `OIDC_ISSUER` | `http://dex:5556/dex` | Dex issuer (canonical in-container URL) |
 | `OIDC_CLIENT_ID` | `libcloud-rest` | must equal OpenFGA's audience |
 | `OIDC_CLIENT_SECRET` | read from `../dex/config.yaml` | client secret |
 | `OIDC_SCOPES` | `openid profile email groups` | requested scopes |
 | `DEX_CONFIG` | `../dex/config.yaml` | where to read the secret |
+| `DEX_BROWSER_URL` | `""` | browser-facing Dex URL (via portal nginx) for OAuth redirects |
 | `OAUTH_REDIRECT_URI` | derived from request host | must be registered in Dex |
+| `SUPERADMIN_EMAIL` | `superadmin@libcloud.local` | only this account may sign in (fallback gate) |
+| `SUPERADMIN_SUB` | `""` | exact Dex `sub` of the superadmin (strongest gate) |
+| `LIBCLOUD_FGA_PATH` | `../openfga_postgres/model/libcloud.fga` | DSL file for the Model Graph tab |
+| `PUBLIC_HOSTNAME` | `localhost` | used to derive OIDC_ISSUER / DEX_BROWSER_URL |
 | `FLASK_SECRET_KEY` | generated into `./.flask_secret` | cookie signing |
 | `PORT` | `5050` | listen port |
 
@@ -142,9 +151,10 @@ Constants: `CACHE_TTL = 30s`, `CHECK_WORKERS = 8`,
 - `get_model()` / `get_tuples()` — cached for 30 s in a module-level dict.
   `get_tuples` walks the `read` endpoint's `continuation_token` pagination
   (100/page) and normalizes to `{user, relation, object, timestamp}`.
-- `fga_check(user, relation, object, token=None)` — POST `/check`, always
-  pins `authorization_model_id`.
-- `fga_expand(object, relation)` — POST `/expand` for derivation trees.
+- `fga_check(user, relation, object, token=None)` — POST `/check`; pins
+  `authorization_model_id` only when `MODEL_ID` is set (auto-discovery omits it).
+- `fga_expand(object, relation)` — POST `/expand` for derivation trees; likewise
+  pins `authorization_model_id` only when `MODEL_ID` is set.
 
 ### 4.3 Graph derivation (`build_graph`)
 
@@ -186,6 +196,8 @@ session drop, `FGAError` → 502 JSON).
 | `GET /api/expand` | derivation tree for `object#relation` |
 | `GET /api/matrix?object=` | users × relations grid of live checks |
 | `GET /api/user_permissions?user=` | everything a user can do, grouped by object |
+| `GET /api/model_graph` | store/type/relation graph derived from the `libcloud.fga` DSL |
+| `GET /api/model_dsl` | raw `libcloud.fga` DSL source + type count |
 
 The last two **fan out**: matrix runs `len(users) × len(relations)` checks,
 user_permissions runs `len(objects) × len(relations-of-type)` checks, both
@@ -199,9 +211,11 @@ of failing the whole request.
 ## 5. How the visualization is implemented
 
 The frontend is a single embedded page (`HTML_PAGE`, no Jinja — served as a
-static string so JS braces never collide with templating). Four tabs, all
-data fetched at boot (`/api/config`, then `/api/graph` + `/api/model` in
-parallel).
+static string so JS braces never collide with templating). Five tabs —
+Hierarchy, Permission Matrix, Check, Model, and Model Graph (a vis-network
+force-directed graph built from the `libcloud.fga` DSL via
+`parse_fga_dsl`/`build_model_graph`) — all data fetched at boot (`/api/config`,
+then `/api/graph` + `/api/model` in parallel).
 
 ### 5.1 Hierarchy tab (D3 collapsible tree)
 
@@ -284,7 +298,9 @@ and chips for directly-assignable types. The header explains the notation
 - Type colors: platform purple, tenant blue, api cyan, provider green,
   resource_class amber, backends red/pink, user gray.
 - D3 loads from `/static/d3.v7.min.js`; a one-line `document.write` fallback
-  switches to the CDN if the vendored file is missing.
+  switches to the CDN if the vendored file is missing. The Model Graph tab loads
+  `vis-network` from the vendored `/static/vis-network.min.js` with the same
+  CDN-fallback pattern.
 
 ---
 
@@ -297,6 +313,13 @@ and chips for directly-assignable types. The header explains the notation
 - It must **not pick up any previously authenticated credential** — no token
   files, no env tokens, no shared sessions. (The v1 behavior of reading
   `generated/tokens/superadmin.jwt` was explicitly rejected and removed.)
+- **Sign-in is hard-gated to the LLDAP superadmin account only.** Any other
+  connector user (Google, GitHub) or any non-superadmin LLDAP user is denied at
+  `/callback`. The gate is `is_superadmin()` (app.py), which matches
+  `SUPERADMIN_SUB` (exact Dex `sub`) or, when unset, `SUPERADMIN_EMAIL`
+  (`superadmin@libcloud.local`); the rejection logs the offending `sub`/`email`
+  and redirects to
+  `/login?error=only the LLDAP superadmin account may sign in`.
 
 ### 6.2 Flow
 
@@ -306,12 +329,15 @@ GET /login       branded sign-in page (own screen, dark card)
 GET /auth/start  session.clear(); generate state+nonce (stored in the
                  Flask session); 302 to Dex /dex/auth with
                  client_id=libcloud-rest, redirect_uri, scope, state, nonce
-   │             Dex renders its connector page (LLDAP / Google / GitHub)
+   │             Dex renders its connector page (LLDAP / Google / GitHub) —
+   │             but only a superadmin login survives the callback gate below
    ▼
 GET /callback    verify state (one-time, popped); exchange code at
                  /dex/token with HTTP-Basic client_id:client_secret;
                  verify id_token signature via Dex JWKS (PyJWKClient,
-                 RS256) + issuer + audience + exp + **nonce**
+                 RS256) + issuer + audience + exp + **nonce**;
+                 **enforce is_superadmin(claims)** — any non-superadmin
+                 (incl. Google/GitHub) is rejected here
    ▼
  server-side session created; cookie carries only an opaque sid
 ```
@@ -351,8 +377,7 @@ GET /callback    verify state (one-time, popped); exchange code at
 - Registered in `dex/config.yaml` under `libcloud-rest` (with an explanatory
   comment):
   `http://localhost:5050/callback`, `http://127.0.0.1:5050/callback`,
-  `http://167.172.94.123:5050/callback`,
-  `http://login.quest4science.xyz:5050/callback`; then `docker restart dex`.
+  `http://rocky96:5050/callback`; then `docker restart dex`.
 
 ### 6.6 Failure & lifecycle handling
 
@@ -388,8 +413,11 @@ Flask's in-process test client, and a JS parser (esprima via pip).
 
 - API shape verified with curl + the project's superadmin JWT:
   `POST /stores/{id}/read` pagination (`continuation_token`), model fetch.
-- Graph counts asserted: 26 nodes, 39 wiring edges, 13 grants, root
-  `platform:main`.
+- Graph counts asserted: 26 nodes, 39 wiring edges, 9 grants, root
+  `platform:main`. (The SuperAdmin owner-grants on both tenants were
+  deliberately removed — superadmin is a control-plane role that can read
+  everything but cannot provision; see the comment in
+  `openfga_postgres/openfga_bootstrap.py`.)
 - **RBAC semantics asserted against the live check endpoint:**
   - `aws-viewer can_read tenant:aws` → true; `can_provision` → false;
   - `superadmin can_read tenant:aws` → true (global_reader),

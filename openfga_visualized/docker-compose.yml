@@ -26,6 +26,8 @@ services:
       # Strongest gate: exact Dex `sub` of the LLDAP superadmin (copy it from
       # the "login denied" warning in the container logs after one attempt).
       # SUPERADMIN_SUB: ""
+      # DSL file rendered by the "Model Graph" tab (mounted read-only below).
+      LIBCLOUD_FGA_PATH: /app/libcloud.fga
       PORT: "5050"
     volumes:
       # Read-only mount so the container can read the OAuth client secret
@@ -33,6 +35,8 @@ services:
       - ../dex/config.yaml:/app/dex-config.yaml:ro
       # Live-reload config (PUBLIC_HOSTNAME source of truth; restart-bound).
       - ../my.env:/run/config/my.env:ro
+      # libcloud.fga DSL rendered by the "Model Graph" tab.
+      - ../openfga_postgres/model/libcloud.fga:/app/libcloud.fga:ro
     restart: unless-stopped
 
 networks:

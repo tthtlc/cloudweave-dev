@@ -43,6 +43,7 @@ Run:  python3 app.py   ->  http://${PUBLIC_HOSTNAME}:5050  (default: http://loca
 """
 
 import os
+import re
 import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -129,6 +130,13 @@ def get_store_id():
 
 _here = os.path.dirname(os.path.abspath(__file__))
 DEX_CONFIG = os.environ.get("DEX_CONFIG", os.path.join(_here, "..", "dex", "config.yaml"))
+
+# Path to the libcloud OpenFGA DSL file rendered by the "Model Graph" tab.
+# Defaults to the model checked in alongside this project.
+LIBCLOUD_FGA_PATH = os.environ.get(
+    "LIBCLOUD_FGA_PATH",
+    os.path.join(_here, "..", "openfga_postgres", "model", "libcloud.fga"),
+)
 
 CACHE_TTL = 30  # seconds for model / tuple cache
 CHECK_WORKERS = 8
@@ -388,6 +396,144 @@ def model_summary(model):
 
 
 # --------------------------------------------------------------------------
+# DSL parsing (libcloud.fga) for the Model Graph tab
+# --------------------------------------------------------------------------
+
+_DSL_KEYWORDS = {"or", "and", "but", "not", "from"}
+
+
+def parse_fga_expr(expr):
+    """Parse one OpenFGA DSL rewrite expression.
+
+    Returns {"direct": [type, ...], "refs": [ {...}, ... ]} where each ref is
+    one of:
+      {"kind": "alias", "rel": "<rel>"}                 # computed userset (same type)
+      {"kind": "ttu", "rel": "<rel>", "parent": "<rel>"} # <rel> from <parent>
+      {"kind": "ttu_self", "rel": "<rel>", "parent_type": "<type>"} # type#rel
+    """
+    direct, refs = [], []
+    # direct type lists, e.g. [user] or [user, organization#member]
+    for m in re.finditer(r"\[([^\]]*)\]", expr):
+        for tok in m.group(1).split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            if "#" in tok:
+                base, sub = tok.split("#", 1)
+                direct.append(base.strip())
+                refs.append({"kind": "ttu_self", "rel": sub.strip(),
+                             "parent_type": base.strip()})
+            else:
+                direct.append(tok)
+    expr_no_brackets = re.sub(r"\[[^\]]*\]", " ", expr)
+    # tuple-to-userset: "rel from parent"
+    for m in re.finditer(r"(\w+)\s+from\s+(\w+)", expr_no_brackets):
+        refs.append({"kind": "ttu", "rel": m.group(1), "parent": m.group(2)})
+    expr_no_ttu = re.sub(r"\w+\s+from\s+\w+", " ", expr_no_brackets)
+    # remaining bare words (excluding operators) are same-type aliases
+    for tok in re.findall(r"\w+", expr_no_ttu):
+        if tok not in _DSL_KEYWORDS:
+            refs.append({"kind": "alias", "rel": tok})
+    # de-dup while preserving order
+    seen = set()
+    refs = [r for r in refs if not (r["kind"], r.get("rel"), r.get("parent"),
+                                   r.get("parent_type")) in seen
+            and not seen.add((r["kind"], r.get("rel"), r.get("parent"),
+                              r.get("parent_type")))]
+    return {"direct": direct, "refs": refs}
+
+
+def parse_fga_dsl(text):
+    """Parse an OpenFGA DSL document into {type: {relation: parsed_expr}}."""
+    types = {}
+    current_type = None
+    in_relations = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("model") or line.startswith("schema"):
+            in_relations = False
+            continue
+        m = re.match(r"^type\s+(\w+)\s*$", line)
+        if m:
+            current_type = m.group(1)
+            types[current_type] = {}
+            in_relations = False
+            continue
+        if line == "relations":
+            in_relations = True
+            continue
+        if in_relations and current_type is not None:
+            m = re.match(r"^define\s+(\w+)\s*:\s*(.+)$", line)
+            if m:
+                types[current_type][m.group(1)] = parse_fga_expr(m.group(2).strip())
+    return types
+
+
+def build_model_graph(dsl):
+    """Turn parsed DSL into a graph of store / type / relation nodes.
+
+    Edges:
+      store-type    : store -> type
+      type-relation: type -> relation
+      alias        : relation -> relation (same type, computed userset)
+      cross-type   : relation -> relation (rel from parent, parent is [Type])
+      direct-type  : type -> relation (relation accepts [Type] directly)
+    """
+    nodes, edges = [], []
+    node_ids = set()
+    store_id = "store:libcloud"
+    nodes.append({"id": store_id, "kind": "store", "label": "libcloud"})
+    node_ids.add(store_id)
+
+    def add_node(n):
+        if n["id"] not in node_ids:
+            nodes.append(n)
+            node_ids.add(n["id"])
+
+    for type_name, rels in dsl.items():
+        type_id = "type:" + type_name
+        add_node({"id": type_id, "kind": "type", "label": type_name})
+        edges.append({"source": store_id, "target": type_id, "kind": "store-type"})
+        for rel_name, info in rels.items():
+            rel_id = "rel:%s:%s" % (type_name, rel_name)
+            add_node({"id": rel_id, "kind": "relation", "label": rel_name,
+                      "type": type_name, "relation": rel_name})
+            edges.append({"source": type_id, "target": rel_id,
+                          "kind": "type-relation"})
+
+    for type_name, rels in dsl.items():
+        for rel_name, info in rels.items():
+            rel_id = "rel:%s:%s" % (type_name, rel_name)
+            for ref in info["refs"]:
+                if ref["kind"] == "alias":
+                    tgt = "rel:%s:%s" % (type_name, ref["rel"])
+                    if tgt in node_ids:
+                        edges.append({"source": tgt, "target": rel_id,
+                                      "kind": "alias"})
+                elif ref["kind"] == "ttu":
+                    parent_rel = ref["parent"]
+                    parent_info = rels.get(parent_rel)
+                    if parent_info:
+                        for dt in parent_info["direct"]:
+                            if dt in dsl:
+                                tgt = "rel:%s:%s" % (dt, ref["rel"])
+                                if tgt in node_ids:
+                                    edges.append({"source": tgt, "target": rel_id,
+                                                  "kind": "cross-type"})
+                elif ref["kind"] == "ttu_self":
+                    tgt = "rel:%s:%s" % (ref["parent_type"], ref["rel"])
+                    if tgt in node_ids:
+                        edges.append({"source": tgt, "target": rel_id,
+                                      "kind": "cross-type"})
+            # direct type edges (type -> relation, dashed)
+            for dt in info["direct"]:
+                if dt in dsl:
+                    edges.append({"source": "type:" + dt, "target": rel_id,
+                                  "kind": "direct-type"})
+    return {"nodes": nodes, "edges": edges}
+
+
+# --------------------------------------------------------------------------
 # Graph derivation
 # --------------------------------------------------------------------------
 
@@ -491,6 +637,33 @@ def api_model():
             "types": model_summary(model),
         }
     )
+
+
+@app.get("/api/model_graph")
+@require_auth
+@api
+def api_model_graph():
+    """Graph (store/type/relation nodes) derived from the libcloud.fga DSL."""
+    try:
+        with open(LIBCLOUD_FGA_PATH) as fh:
+            text = fh.read()
+    except OSError as exc:
+        return jsonify({"error": "cannot read DSL file %s: %s" % (LIBCLOUD_FGA_PATH, exc)}), 502
+    dsl = parse_fga_dsl(text)
+    return jsonify(build_model_graph(dsl))
+
+
+@app.get("/api/model_dsl")
+@require_auth
+@api
+def api_model_dsl():
+    """Raw libcloud.fga DSL source + type count, for the Model Graph editor pane."""
+    try:
+        with open(LIBCLOUD_FGA_PATH) as fh:
+            text = fh.read()
+    except OSError as exc:
+        return jsonify({"error": "cannot read DSL file %s: %s" % (LIBCLOUD_FGA_PATH, exc)}), 502
+    return jsonify({"dsl": text, "type_count": len(parse_fga_dsl(text))})
 
 
 @app.get("/api/tuples")
@@ -622,6 +795,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="/static/d3.v7.min.js"></script>
 <script>window.d3 || document.write('<script src="https:\/\/d3js.org\/d3.v7.min.js"><\/script>')</script>
+<script src="/static/vis-network.min.js"></script>
+<script>window.vis || document.write('<script src="https:\/\/unpkg.com\/vis-network\/standalone\/umd\/vis-network.min.js"><\/script>')</script>
 <style>
   :root {
     --bg: #f1f5f9; --card: #ffffff; --ink: #0f172a; --muted: #64748b;
@@ -696,6 +871,50 @@ HTML_PAGE = r"""<!DOCTYPE html>
   table.rel td.rsum { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
   .muted { color: var(--muted); font-size: 12px; }
   h2.sec { font-size: 15px; margin: 4px 0 10px; }
+  /* model graph */
+  .mg-layout { display: flex; gap: 12px; height: calc(100vh - 150px); min-height: 560px; }
+  .mg-left { width: 430px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .mg-right { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .mg-panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px;
+             display: flex; flex-direction: column; overflow: hidden; }
+  .mg-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+             background: #1e293b; color: #e2e8f0; font-size: 12px; font-weight: 600;
+             border-bottom: 1px solid #334155; }
+  .mg-head .tabs { margin-left: auto; display: flex; gap: 4px; }
+  .mg-head .tabs button { background: #0f172a; color: #94a3b8; border: 1px solid #334155;
+             border-radius: 5px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
+  .mg-head .tabs button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .mg-dsl { flex: 1; overflow: auto; margin: 0; padding: 10px 0; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .mg-dsl .ln { display: flex; }
+  .mg-dsl .no { width: 42px; flex: 0 0 auto; text-align: right; padding-right: 12px;
+               color: #475569; user-select: none; }
+  .mg-dsl .code { white-space: pre; color: #e2e8f0; }
+  .mg-dsl .kw { color: #c084fc; }
+  .mg-dsl .ty { color: #38bdf8; }
+  .mg-dsl .rl { color: #fbbf24; }
+  .mg-tuples { height: 220px; overflow: auto; }
+  .mg-tuples table { width: 100%; border-collapse: collapse; font: 11px ui-monospace, Menlo, Consolas, monospace; }
+  .mg-tuples th { position: sticky; top: 0; background: #1e293b; color: #94a3b8; text-align: left;
+                  padding: 5px 10px; border-bottom: 1px solid #334155; font-weight: 600; }
+  .mg-tuples td { padding: 3px 10px; color: #e2e8f0; border-top: 1px solid #1e293b; }
+  .mg-tuples td.u { color: #fbbf24; }
+  .mg-tuples td.r { color: #86efac; }
+  .mg-tuples td.o { color: #93c5fd; }
+  #mgraph-wrap { flex: 1; background: #0f172a; border: 1px solid #1e293b; border-radius: 10px;
+                 overflow: hidden; min-height: 0;
+                 background-image: radial-gradient(#1e293b 1px, transparent 1px);
+                 background-size: 22px 22px; }
+  #mgraph { width: 100%; height: 100%; cursor: grab; }
+  #mgraph:active { cursor: grabbing; }
+  .mg-tip { position: fixed; pointer-events: none; background: #1e293b; color: #e2e8f0;
+            border: 1px solid #334155; border-radius: 6px; padding: 5px 9px; font-size: 12px;
+            font-family: ui-monospace, Menlo, Consolas, monospace; display: none; max-width: 320px; z-index: 50; }
+  .mg-tip b { color: #fff; }
+  .mg-tip .m { color: #94a3b8; }
+  .mg-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: #94a3b8;
+               padding: 6px 12px; background: #1e293b; border-radius: 8px; }
+  .mg-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+                    margin-right: 5px; vertical-align: -1px; }
 </style>
 </head>
 <body>
@@ -707,6 +926,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <button data-tab="matrix">Permission Matrix</button>
     <button data-tab="check">Check</button>
     <button data-tab="model">Model</button>
+    <button data-tab="mgraph">Model Graph</button>
     <a href="/logout" style="color:#94a3b8;font-size:13px;align-self:center;margin-left:8px">sign out</a>
   </nav>
 </header>
@@ -779,6 +999,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div class="typegrid" id="model-out"></div>
   </section>
 
+  <section id="tab-mgraph" class="tab">
+    <div class="card" style="padding:10px 14px;">
+      <div class="controls" style="margin-bottom:0;">
+        <span class="muted">Model graph — store → types → relations, with cross-type dependencies (reproduced from the OpenFGA Playground layout).</span>
+        <label style="margin-left:auto;"><input type="checkbox" id="mg-cross" checked> cross-type</label>
+        <label><input type="checkbox" id="mg-alias" checked> alias</label>
+        <label><input type="checkbox" id="mg-direct" checked> direct-type</label>
+        <button class="sec" id="mg-relax">Re-heat</button>
+      </div>
+    </div>
+    <div class="mg-layout">
+      <div class="mg-left">
+        <div class="mg-panel" style="flex:1; min-height:0;">
+          <div class="mg-head">
+            <span id="mg-dsl-title">Authorization Model</span>
+            <span class="tabs">
+              <button id="mg-tab-dsl" class="active">DSL</button>
+            </span>
+          </div>
+          <pre class="mg-dsl" id="mg-dsl"></pre>
+        </div>
+        <div class="mg-panel">
+          <div class="mg-head">
+            <span id="mg-tuples-title">Tuples</span>
+          </div>
+          <div class="mg-tuples" id="mg-tuples"></div>
+        </div>
+      </div>
+      <div class="mg-right">
+        <div class="mg-legend">
+          <span><span class="dot" style="background:#94a3b8"></span> store</span>
+          <span><span class="dot" style="background:#7c3aed"></span> type</span>
+          <span><span class="dot" style="background:#16a34a"></span> relation</span>
+          <span><span style="color:#f472b6">⤏</span> cross-type</span>
+          <span><span style="color:#38bdf8">⤏</span> alias</span>
+          <span><span style="color:#fbbf24">⤏</span> direct</span>
+        </div>
+        <div id="mgraph-wrap"><div id="mgraph"></div></div>
+      </div>
+    </div>
+    <div class="mg-tip" id="mg-tip"></div>
+  </section>
+
 </main>
 """
 HTML_PAGE += r"""<script>
@@ -808,6 +1071,7 @@ document.querySelectorAll('nav button').forEach(btn => btn.addEventListener('cli
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b===btn));
   document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-'+btn.dataset.tab));
   if(btn.dataset.tab === 'hierarchy' && GRAPH) renderTree();
+  if(btn.dataset.tab === 'mgraph' && MGRAPH) renderModelGraph();
 }));
 
 /* ---------- hierarchy tree ---------- */
@@ -993,6 +1257,152 @@ async function loadModel(){
   }).join('');
 }
 
+/* ---------- model graph (force-directed, from libcloud.fga DSL) ---------- */
+let MGRAPH = null, MG_NET = null;
+
+async function loadModelGraph(){
+  MGRAPH = await api('/api/model_graph');
+  renderModelGraph();
+}
+
+async function loadModelDsl(){
+  const j = await api('/api/model_dsl');
+  $('mg-dsl-title').textContent = 'AUTHORIZATION MODEL (' + j.type_count + ' TYPES)';
+  $('mg-dsl').innerHTML = highlightDsl(j.dsl);
+}
+
+function highlightDsl(text){
+  const lines = text.split('\n');
+  const kw = new Set(['model','schema','type','relations','define']);
+  const ops = new Set(['or','and','but','not','from']);
+  return lines.map((line, i) => {
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let html = esc(line);
+    // tokenize while preserving structure: keywords, type names after "type", relation names after "define"
+    html = html.replace(/(\bdefine\b\s+)(\w+)/g, '$1<span class="rl">$2</span>');
+    html = html.replace(/(\btype\b\s+)(\w+)/g, '$1<span class="ty">$2</span>');
+    html = html.replace(/\b(model|schema|type|relations|define)\b/g, '<span class="kw">$1</span>');
+    return '<div class="ln"><span class="no">' + (i+1) + '</span><span class="code">' + html + '</span></div>';
+  }).join('');
+}
+
+function renderTuples(tuples){
+  $('mg-tuples-title').textContent = 'Tuples (' + tuples.length + ')';
+  if(!tuples.length){ $('mg-tuples').innerHTML = '<div class="muted" style="padding:10px;">no tuples</div>'; return; }
+  let h = '<table><tr><th>user</th><th>relation</th><th>object</th></tr>';
+  tuples.forEach(t => {
+    h += '<tr><td class="u">' + esc(t.user) + '</td><td class="r">' + esc(t.relation) +
+          '</td><td class="o">' + esc(t.object) + '</td></tr>';
+  });
+  $('mg-tuples').innerHTML = h + '</table>';
+}
+
+function mgSize(kind){ return kind === 'store' ? 22 : kind === 'type' ? 16 : 8; }
+
+const MG_GROUPS = {
+  store:    { color: { background: '#94a3b8', border: '#cbd5e1' } },
+  type:     { color: { background: '#7c3aed', border: '#c4b5fd' } },
+  relation: { color: { background: '#16a34a', border: '#86efac' } },
+  selected: { color: { background: '#38bdf8', border: '#ffffff' },
+              shadow: { enabled: true, color: 'rgba(56,189,248,0.65)', size: 26 } }
+};
+
+function mgEdgeStyle(kind){
+  // base solid edges for the store -> type -> relation hierarchy
+  if(kind === 'store-type' || kind === 'type-relation')
+    return { color: { color: '#475569', opacity: 0.85 }, dashes: false, arrows: { to: { enabled: false } } };
+  // semantic dependency edges: dashed + arrowhead
+  const palette = { 'alias': '#38bdf8', 'cross-type': '#f472b6', 'direct-type': '#fbbf24' };
+  const dashes = { 'alias': [4,3], 'cross-type': [6,4], 'direct-type': [2,3] }[kind] || false;
+  return { color: { color: palette[kind] || '#475569', opacity: kind === 'direct-type' ? 0.45 : 0.9 },
+           dashes, arrows: { to: { enabled: true, scaleFactor: 0.5 } } };
+}
+
+function renderModelGraph(){
+  const data = MGRAPH;
+  if(!data || !data.nodes || !data.nodes.length){ return; }
+  const container = $('mgraph');
+  container.innerHTML = '';
+
+  const showCross = $('mg-cross').checked, showAlias = $('mg-alias').checked,
+        showDirect = $('mg-direct').checked;
+  const keep = k => (k === 'cross-type' ? showCross : k === 'alias' ? showAlias
+                    : k === 'direct-type' ? showDirect : true);
+  const edges = data.edges.filter(e => keep(e.kind)).map(e => {
+    const st = mgEdgeStyle(e.kind);
+    return { id: e.source + '->' + e.target, from: e.source, to: e.target,
+            color: st.color, dashes: st.dashes, arrows: st.arrows,
+            _kind: e.kind };
+  });
+  const linkedIds = new Set();
+  edges.forEach(e => { linkedIds.add(e.from); linkedIds.add(e.to); });
+  const nodes = data.nodes.filter(n => linkedIds.has(n.id) || n.kind === 'store')
+    .map(n => ({
+      id: n.id, label: n.label, group: n.kind,
+      size: mgSize(n.kind), _kind: n.kind, _type: n.type, _relation: n.relation
+    }));
+
+  const visNodes = new vis.DataSet(nodes);
+  const visEdges = new vis.DataSet(edges);
+
+  const options = {
+    nodes: {
+      shape: 'dot',
+      borderWidth: 2,
+      font: { color: '#e2e8f0', size: 13, face: 'ui-monospace, Menlo, Consolas, monospace',
+              vadjust: -24, strokeWidth: 0 },
+      shadow: { enabled: false }
+    },
+    groups: MG_GROUPS,
+    edges: { width: 1.3, smooth: { enabled: true, type: 'curvedCW', roundness: 0.15 } },
+    physics: {
+      enabled: true, stabilization: { enabled: true, iterations: 200, fit: true },
+      barnesHut: { gravitationalConstant: -8000, centralGravity: 0.3,
+                  springLength: 110, springConstant: 0.04, damping: 0.4 },
+      maxVelocity: 50, minVelocity: 0.75, timestep: 0.5
+    },
+    interaction: { hover: true, tooltipDelay: 120, navigationButtons: false,
+                   keyboard: false, multiselect: false, zoomView: true }
+  };
+
+  const network = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
+
+  // click-to-highlight a bubble (light-blue glow), matching the playground selection look
+  let selectedId = null;
+  network.on('click', params => {
+    const id = params.nodes && params.nodes[0];
+    if(selectedId && visNodes.get(selectedId)){
+      visNodes.update({ id: selectedId, group: visNodes.get(selectedId)._kind });
+    }
+    if(id){
+      visNodes.update({ id: id, group: 'selected' });
+      selectedId = id;
+    } else {
+      selectedId = null;
+    }
+  });
+
+  // hover tooltip (relation shows type#relation)
+  const tip = $('mg-tip');
+  network.on('hoverNode', params => {
+    const n = visNodes.get(params.node);
+    tip.style.display = 'block';
+    tip.innerHTML = n._kind === 'relation'
+      ? '<b>' + esc(n._type) + '#' + esc(n._relation) + '</b>'
+      : '<b>' + esc(n.label) + '</b> <span class="m">(' + n._kind + ')</span>';
+  });
+  network.on('blurNode', () => { tip.style.display = 'none'; });
+  // keep the fixed tooltip near the cursor
+  container.addEventListener('mousemove', ev => {
+    if(tip.style.display === 'block'){
+      tip.style.left = (ev.clientX + 12) + 'px';
+      tip.style.top  = (ev.clientY + 12) + 'px';
+    }
+  });
+
+  MG_NET = network;
+}
+
 /* ---------- boot ---------- */
 async function boot(){
   try{
@@ -1025,6 +1435,9 @@ async function boot(){
 
   renderTree();
   loadModel().catch(() => {});
+  loadModelGraph().catch(() => {});
+  loadModelDsl().catch(() => {});
+  api('/api/tuples').then(j => renderTuples(j.tuples)).catch(() => {});
 }
 $('show-grants').addEventListener('change', renderTree);
 $('expand-all').addEventListener('click', () => { FOREST.forEach(d => walk(d, n => n.collapsed = false)); renderTree(); });
@@ -1033,6 +1446,8 @@ $('matrix-object').addEventListener('change', () => loadMatrix($('matrix-object'
 $('chk-go').addEventListener('click', () => doCheck().catch(() => {}));
 $('chk-expand').addEventListener('click', () => doExpand().catch(() => {}));
 $('up-go').addEventListener('click', () => doUserPerms().catch(() => {}));
+['mg-cross','mg-alias','mg-direct'].forEach(id => $(id).addEventListener('change', () => { if(MGRAPH) renderModelGraph(); }));
+$('mg-relax').addEventListener('click', () => { if(MG_NET){ MG_NET.setOptions({ physics: { enabled: true } }); MG_NET.stabilize(); } });
 boot();
 </script>
 </body>

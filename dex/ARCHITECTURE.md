@@ -3,7 +3,7 @@
 Dex is the **stable OIDC front door** for the libcloud REST API, OpenFGA, and the
 host-side provisioning scripts. It does **not** own a user directory of its own;
 it federates authentication to **LLDAP** (`../lldap`) over an LDAP connector and
-issues the JWTs that **OpenFGA** (`../openfga_my`) validates on every call.
+issues the JWTs that **OpenFGA** (`../openfga_postgres`) validates on every call.
 
 This directory is a **standalone Docker Compose project** that runs the Dex
 container named **`dex`** on the shared external `libcloud_net` network.
@@ -33,17 +33,27 @@ container named **`dex`** on the shared external `libcloud_net` network.
 - **Identity provider (upstream):** LLDAP — users, passwords, group membership.
   Reached at `ldap://lldap:3890` over `libcloud_net`.
 - **OIDC issuer (this service):** Dex — issues access/ID/refresh tokens, exposes
-  discovery + JWKS, registers the OAuth client `libcloud-rest`.
+  discovery + JWKS, registers **two** static OAuth clients: `libcloud-rest`
+  (service accounts / CLI scripts / OpenFGA audience) and `libcloud-portal`
+  (browser login via the role portal).
 - **Relying parties (downstream):**
-  - **libcloud REST API** — performs the authorization-code flow; uses Dex as
-    IdP for user login.
+  - **libcloud REST API** — in `auth_mode=oidc` (the default) it does **not**
+    run a login flow; it only **validates** the Dex bearer JWT on each request
+    against JWKS / issuer / audience (`libcloud.rest/app/auth/oidc_service.py`).
+    The authorization-code flow is run by `test_script/scripts/idp_login.py` and
+    `identity_service/app/idp_login.py`.
+  - **Role portal** — browser login via identity-service using the
+    `libcloud-portal` client; this is the only flow that uses PKCE S256.
   - **OpenFGA** — does **not** do a login flow; it validates the JWT that the
     caller already obtained from Dex, by fetching JWKS from
     `http://dex:5556/dex/keys` and checking `iss=http://dex:5556/dex` and
     `aud=libcloud-rest`.
-  - **Host provisioning scripts** — `scripts/idp_login.py`,
-    `scripts/superadmin_auth.sh`, `scripts/verify_superadmin_jwt.py` obtain and
-    verify tokens via the host-published port `http://localhost:5556`.
+  - **Host provisioning scripts** — `test_script/scripts/idp_login.py`,
+    `test_script/scripts/superadmin_auth.sh`,
+    `test_script/scripts/verify_superadmin_jwt.py` obtain and verify tokens via
+    the host-published port `http://localhost:5556`. `verify_superadmin_jwt.py`
+    is executed **inside** the identity-service container via `docker exec`
+    (see `superadmin_auth.sh`).
 
 The same Dex-issued access token is therefore accepted by both the libcloud REST
 API and OpenFGA — one IdP, one audience (`libcloud-rest`), one JWKS endpoint.
@@ -54,12 +64,12 @@ API and OpenFGA — one IdP, one audience (`libcloud-rest`), one JWKS endpoint.
 
 | File | Purpose |
 | --- | --- |
-| `config.template.yaml` | Template rendered by `../openfga_my/dex_bootstrap.py`. Placeholders: `__DEX_ISSUER__`, `__CLIENT_SECRET__`, `__LLDAP_BIND_DN__`, `__LLDAP_BIND_PW__`, `__LLDAP_BASE_DN__`. |
+| `config.template.yaml` | Template rendered by `../openfga_postgres/dex_bootstrap.py`. Placeholders: `__DEX_ISSUER__`, `__CLIENT_SECRET__`, `__LLDAP_BIND_DN__`, `__LLDAP_BIND_PW__`, `__LLDAP_BASE_DN__`. |
 | `config.yaml` | Rendered, runtime config — mounted read-only into the container at `/etc/dex/config.yaml`. **Do not edit by hand;** re-run `dex_bootstrap.py` instead. |
-| `config.phase2.example.yaml` | Optional phase-2 snippet showing Dex federating to an upstream external IdP (Entra ID / Authentik) as an additional OIDC connector. Merge into `config.yaml` on cutover. |
+| `config.phase2.example.yaml` | Illustrative phase-2 snippet (Entra ID / Authentik). The federation that is **actually implemented** is Google + GitHub, emitted by `dex_bootstrap.py` (`_extra_connectors_block`) when `DEX_GOOGLE_*` / `DEX_GITHUB_*` are set — see §3. |
 | `docker-compose.yml` | Standalone compose project that runs the `dex` container. |
 | `.env.example` | Host port override (`DEX_HTTP_PORT=5556`). |
-| `generated/dex.env` | Emitted by `dex_bootstrap.py`; consumed by libcloud REST API, OpenFGA compose (`../openfga_my`), and host scripts. Contains issuer/JWKS/discovery URLs, OAuth client secret, and per-user LLDAP passwords. |
+| `generated/dex.env` | Emitted by `dex_bootstrap.py`; consumed by libcloud REST API, OpenFGA compose (`../openfga_postgres`), and host scripts. Contains issuer/JWKS/discovery URLs, OAuth client secret, and per-user LLDAP passwords. |
 
 ---
 
@@ -101,10 +111,13 @@ oauth2:
   grantTypes: ["authorization_code", "refresh_token"]
 ```
 
-Authorization-code with PKCE-style flow + refresh tokens; the approval screen is
-skipped because there is exactly one first-party client.
+Authorization-code flow + refresh tokens; the approval screen is skipped because
+all clients are first-party. PKCE S256 is used **only** for the `libcloud-portal`
+browser flow (identity-service mints the code verifier/challenge in
+`identity_service/app/auth_state.py`); the `libcloud-rest` service-account / CLI
+flow authenticates with the client secret and does **not** use PKCE.
 
-### Static client
+### Static clients
 
 ```yaml
 staticClients:
@@ -112,14 +125,39 @@ staticClients:
     name: libcloud REST API
     secret: <rendered from LIBCLOUD_OIDC_CLIENT_SECRET>
     redirectURIs:
-      - http://127.0.0.1:8766/oauth/callback
-      - http://localhost:8765/oauth/callback
+      - http://127.0.0.1:8766/oauth/callback    # identity-service /oauth/callback
+      - http://localhost:8765/oauth/callback    # libcloud-rest-api (legacy/alternate)
+      - http://127.0.0.1:8767/oauth/callback    # host-script callback (idp_login.py)
+      - http://localhost:5050/callback          # OpenFGA RBAC visualizer
+      - http://127.0.0.1:5050/callback
+      - http://rocky96:5050/callback
+
+  - id: libcloud-portal
+    name: libcloud Role Portal
+    secret: <rendered from DEX_PORTAL_CLIENT_SECRET>
+    redirectURIs:
+      - http://localhost:3000/auth/callback
+      - http://rocky96:3000/auth/callback
 ```
 
-`libcloud-rest` is the **single OAuth client** shared by the libcloud REST API
-and (as the token `aud` claim) by OpenFGA. The secret is generated by
-`dex_bootstrap.py` (`secrets.token_urlsafe(32)`) unless `LIBCLOUD_OIDC_CLIENT_SECRET`
-is provided, then written to `generated/dex.env`.
+There are **two** static clients:
+
+- **`libcloud-rest`** — shared by the libcloud REST API, the host provisioning
+  scripts, and (as the token `aud` claim) OpenFGA. It authenticates with a
+  client secret; no PKCE. Its six redirect URIs cover the identity-service
+  callback (`:8766`), the REST API itself (`:8765`), the host-script callback
+  (`:8767`, used by `test_script/scripts/idp_login.py` — 8767 was chosen because
+  8766 is published by the identity-service container), and the OpenFGA RBAC
+  visualizer (`:5050`).
+- **`libcloud-portal`** — the role portal (`../server`), whose browser login via
+  identity-service uses PKCE S256. Its two redirect URIs cover localhost and the
+  public hostname (`:3000/auth/callback`).
+
+The `libcloud-rest` secret is generated by `dex_bootstrap.py`
+(`secrets.token_urlsafe(32)`) unless `LIBCLOUD_OIDC_CLIENT_SECRET` is provided,
+then written to `generated/dex.env`. The portal client block is rendered by
+`dex_bootstrap.py` (`_portal_client_block`) when `DEX_PORTAL_REDIRECT_URI` /
+`PUBLIC_HOSTNAME` is set.
 
 ### LDAP connector → LLDAP
 
@@ -158,15 +196,20 @@ connectors:
   The user types their `uid` (e.g. `cloud-admin`) at the Dex login form.
 
 There is **no group search** configured — group/membership enforcement is done
-by OpenFGA tuples, not by Dex claims. See `../openfga_my/authorization.md`.
+by OpenFGA tuples, not by Dex claims. See `../openfga_postgres/authorization.md`.
 
-### Phase-2 federation (optional)
+### Federation (optional)
 
-`config.phase2.example.yaml` shows adding a second upstream connector
-(`type: oidc`) for Entra ID or Authentik, so Dex stays the stable issuer while
-the user directory moves upstream. On cutover: add `by_sub` entries to
-`data/principal_map.json` for each upstream object ID, disable any password db,
-and leave OpenFGA tuples unchanged (still `user:cloud-admin`, etc.).
+`dex_bootstrap.py` (`_extra_connectors_block`) can append **Google** and
+**GitHub** upstream connectors, emitting `type: google` / `type: github` when
+`DEX_GOOGLE_CLIENT_ID`+`DEX_GOOGLE_CLIENT_SECRET` and
+`DEX_GITHUB_CLIENT_ID`+`DEX_GITHUB_CLIENT_SECRET` are set. The role portal login
+screen shows the corresponding buttons (`server/src/pages/LoginPage.js`). The
+LDAP connector stays the primary directory for the libcloud REST API + OpenFGA.
+For **air-gapped** installs set `DEX_DISABLE_FEDERATION=1`, which forces the
+Google/GitHub connectors off regardless of credential values. (The checked-in
+`config.phase2.example.yaml` is an unrelated Entra ID / Authentik example, not
+the implemented path.)
 
 ---
 
@@ -183,7 +226,7 @@ services:
     networks:
       - libcloud_net
     ports:
-      - "${DEX_HTTP_PORT:-5556}:5556"
+      - "127.0.0.1:${DEX_HTTP_PORT:-5556}:5556"
     volumes:
       - ./config.yaml:/etc/dex/config.yaml:ro
     command: ["dex", "serve", "/etc/dex/config.yaml"]
@@ -207,10 +250,12 @@ Key points:
   `libcloud_net` use to reach it (`http://dex:5556/dex`), and the name the
   issuer string is built from.
 - **Network:** `libcloud_net` (external) — the shared bridge network across all
-  sibling compose projects (`../lldap`, `../openfga_my`, `../vault`,
-  `../libcloud.rest`). Created by `../openfga_my/setup.sh` before Dex starts.
-- **Port:** host `5556` → container `5556`, overridable via `DEX_HTTP_PORT`.
-  This is the **host-side** entry point for browsers and provisioning scripts.
+  sibling compose projects (`../lldap`, `../openfga_postgres`, `../vault`,
+  `../libcloud.rest`). Created by `../openfga_postgres/setup.sh` before Dex starts.
+- **Port:** bound to **loopback only** (`127.0.0.1:5556` → container `5556`),
+  overridable via `DEX_HTTP_PORT`. This is the **host-side** entry point for
+  provisioning scripts. Browsers never reach port 5556 directly — the role
+  portal's nginx proxies `/dex/` to the `dex` container (`server/Dockerfile`).
 - **Config mount:** `./config.yaml` is mounted **read-only** at
   `/etc/dex/config.yaml`. Dex runs `dex serve /etc/dex/config.yaml`.
 - **Healthcheck:** probes
@@ -219,7 +264,7 @@ Key points:
 
 ### Lifecycle
 
-Dex is started by `../openfga_my/setup.sh` as part of the joint bootstrap:
+Dex is started by `../openfga_postgres/setup.sh` as part of the joint bootstrap:
 
 1. `setup.sh` sources `../lldap/.env` to obtain `LLDAP_BIND_PW`,
    `LLDAP_BASE_DN`, etc.
@@ -250,7 +295,7 @@ intentional for a dev/single-host deployment.
 
 ## 5. `generated/dex.env` — what consumers read
 
-Emitted by `../openfga_my/dex_bootstrap.py`. Two URL forms are exposed because
+Emitted by `../openfga_postgres/dex_bootstrap.py`. Two URL forms are exposed because
 in-cluster and host-side callers see different DNS:
 
 | Variable | Value | Used by |
@@ -265,6 +310,11 @@ in-cluster and host-side callers see different DNS:
 | `LIBCLOUD_OIDC_CLIENT_ID` | `libcloud-rest` | OAuth client id |
 | `LIBCLOUD_OIDC_CLIENT_SECRET` | `<random>` | OAuth client secret (also in `config.yaml`) |
 | `LIBCLOUD_USER_*` / `LIBCLOUD_PASSWORD_*` | per-user | host scripts (`idp_login.py`, `superadmin_auth.sh`) — these users live in LLDAP; the passwords here are used to log in **through Dex** and to seed LLDAP on first run. |
+| `DEX_PORTAL_CLIENT_ID` | `libcloud-portal` | role portal OAuth client id (emitted when `DEX_PORTAL_REDIRECT_URI`/`PUBLIC_HOSTNAME` set) |
+| `DEX_PORTAL_CLIENT_SECRET` | `<random>` | role portal OAuth client secret (also in `config.yaml`) |
+| `DEX_PORTAL_REDIRECT_URI` | `http://<host>:3000/auth/callback` | role portal callback |
+| `DEX_GOOGLE_CLIENT_ID` / `DEX_GOOGLE_CLIENT_SECRET` | optional | Google federation (only when set) |
+| `DEX_GITHUB_CLIENT_ID` / `DEX_GITHUB_CLIENT_SECRET` | optional | GitHub federation (only when set) |
 
 The split between `DEX_JWKS_URL` (host) and `OIDC_JWKS_URL` (in-cluster) is the
 mechanism that lets the same token be validated both by host scripts
@@ -274,7 +324,7 @@ mechanism that lets the same token be validated both by host scripts
 
 ## 6. OpenFGA consumption
 
-`../openfga_my/docker-compose.yml` starts OpenFGA with:
+`../openfga_postgres/docker-compose.yml` starts OpenFGA with:
 
 ```
 --authn-method=oidc
@@ -302,6 +352,9 @@ tuples are written against (`user:cloud-admin`, `user:aws-admin`, …).
 - The issuer is plain `http://` — fine on `libcloud_net` and localhost; put a
   TLS-terminating reverse proxy in front for any non-local exposure and change
   `issuer`/redirect URIs accordingly.
-- `skipApprovalScreen: true` is safe because the only client is first-party.
-- Rotate the OAuth client secret with `scripts/openfga-presharedkey-rotate.sh`
-  (re-runs `dex_bootstrap.py` and recreates the `dex` container).
+- `skipApprovalScreen: true` is safe because all clients are first-party.
+- To rotate the OAuth client secret, regenerate it with `dex_bootstrap.py`
+  (which re-renders `config.yaml`), then recreate the container:
+  `docker compose -f dex/docker-compose.yml up -d --force-recreate dex` (see
+  `setup.sh`). Note: `test_script/scripts/openfga-presharedkey-rotate.sh`
+  rotates the **OpenFGA** preshared key in Vault and does **not** touch Dex.

@@ -1,6 +1,0 @@
-# NOTE: This is a browser-to-SPA navigation, not an API call.
-# The React SPA at localhost:3000 handles /auth/callback client-side.
-# AuthCallbackPage.js reads `code` and `state` from the URL query params
-# and calls POST /api/auth/exchange (see 04-auth-exchange).
-#
-# No HTTP response is generated here — the SPA renders client-side.

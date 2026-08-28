@@ -11,7 +11,7 @@
 2. [Architecture Overview](#architecture-overview)
 3. [HTTP Conventions](#http-conventions)
 4. [Authentication & Authorization](#authentication--authorization)
-   - [Authentik OIDC Integration](#authentik-oidc-integration)
+   - [Dex OIDC Integration](#dex-oidc-integration)
    - [OpenFGA Fine-Grained Authorization](#openfga-fine-grained-authorization)
    - [Updates Required When Introducing New OpenFGA Objects](#updates-required-when-introducing-new-openfga-objects)
 5. [API Endpoint Tables](#api-endpoint-tables)
@@ -22,6 +22,8 @@
    - [Network APIs](#5-network-apis)
    - [Job API](#6-job-api)
    - [Health API](#7-health-api)
+   - [Storage APIs](#8-storage-apis)
+   - [Admin API](#9-admin-api)
 6. [Libcloud Driver Redirection Map](#libcloud-driver-redirection-map)
 7. [Provider-Specific `provider_options` Allowlists](#provider-specific-provider_options-allowlists)
 8. [Full Scope Reference](#full-scope-reference)
@@ -37,7 +39,7 @@
 
 | File | Role |
 |---|---|
-| `app/main.py` | **Application entry point.** Creates the FastAPI app, registers `RequestIDMiddleware`, mounts all routers (auth, providers, connections, compute, network, jobs), and defines `/health`. |
+| `app/main.py` | **Application entry point.** Creates the FastAPI app, registers `RequestIDMiddleware` (the only middleware), mounts all routers (auth, providers, connections, compute, network, storage, jobs, admin — `main.py:26-33`), and defines `/health` returning `{"status": "ok"}`. |
 
 #### `app/auth/` — Authentication & Authorization
 
@@ -45,11 +47,14 @@
 |---|---|
 | `app/auth/models.py` | **Pydantic models** for auth domain: `LoginRequest`, `RefreshRequest`, `IntrospectRequest`, `TokenResponse`, `UserRecord`, `TokenClaims`. Defines the shape of JWT tokens and user records. |
 | `app/auth/service.py` | **Local JWT AuthService.** Handles login, token refresh, logout, JWT signing/verification (HS256), user bootstrap from `data/users.json`, password hashing (argon2id), and JTI revocation set. Singleton: `auth_service`. |
-| `app/auth/oidc_service.py` | **Authentik OIDC token verification.** `OidcAuthService` decodes tokens from Authentik: auto-detects RS/ES (JWKS) vs HS (shared secret) algorithms, maps OIDC `preferred_username` to libcloud scopes via `USERNAME_SCOPES` and `USERNAME_PROVIDERS` lookup tables. Singleton: `oidc_auth_service`. |
-| `app/auth/fga_client.py` | **OpenFGA client.** `FgaClient` calls the OpenFGA `/check` API to evaluate relationship tuples (`user:name`, `relation`, `object:id`). Provides `check()` (boolean) and `require()` (raises on deny). Singleton via `get_fga_client()`. |
-| `app/auth/policy.py` | **Policy engine.** `PolicyEngine` combines JWT scope validation, provider allowlists, and OpenFGA authorization. `authorize_connection()` is the single entry point called by every compute/network route handler. Also checks driver capabilities. Singleton: `policy_engine`. |
-| `app/auth/dependencies.py` | **FastAPI dependency injection.** Provides `get_current_claims()` (extracts and validates Bearer token, dispatches to `auth_service` or `oidc_auth_service` based on `auth_mode`), `require_scopes()` (all scopes required), and `require_any_scopes()` (at least one scope required). Supports `local`, `oidc`, and `hybrid` auth modes. |
-| `app/auth/routes.py` | **Auth REST endpoints.** Defines `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, `GET /v1/auth/me`, `POST /v1/auth/token/introspect`. |
+| `app/auth/oidc_service.py` | **OIDC token verification (Dex → LLDAP).** `OidcAuthService` decodes tokens issued by Dex (JWKS at `OIDC_JWKS_URL` = `http://dex:5556/dex/keys`): auto-detects RS/ES (JWKS) vs HS (shared secret) algorithms. Principal resolution is delegated to `app/auth/identity.py`. Singleton: `oidc_auth_service`. |
+| `app/auth/fga_client.py` | **OpenFGA client.** `FgaClient` calls the OpenFGA `/check` API to evaluate relationship tuples (`user:name`, `relation`, `object:id`). Auto-discovers store/model IDs by name when `FGA_STORE_ID`/`FGA_MODEL_ID` are empty, and forwards the caller's Dex JWT as `Authorization: Bearer`. Provides `check()` (boolean) and `require()` (raises on deny). Singleton via `get_fga_client()`. |
+| `app/auth/policy.py` | **Policy engine.** `PolicyEngine` combines JWT scope validation, provider allowlists, and OpenFGA authorization. `authorize_connection()` is invoked by `AuthorizedAPIRoute` (never by handlers). Derives the backend object from `PROVIDER_OBJECT_TYPES` keyed on `auth_binding`. Also checks driver capabilities. Singleton: `policy_engine`. |
+| `app/auth/dependencies.py` | **FastAPI dependencies.** `claims_from_request()` / `connection_from_request()` (used by `AuthorizedAPIRoute`), plus `get_current_claims()`, `require_scopes()`, `require_any_scopes()` which now serve only the auth router. Supports `local`, `oidc`, and `hybrid` auth modes. |
+| `app/auth/routes.py` | **Auth REST endpoints.** Defines `POST /v1/auth/login`, `POST /v1/auth/refresh`, `POST /v1/auth/logout`, `GET /v1/auth/me`, `POST /v1/auth/token/introspect`. Login/refresh/introspect return 404 `auth_local_disabled` when `auth_mode=oidc` (the default). |
+| `app/auth/policy_table.py` | **Authorization policy table.** Loads `app/auth/policies.json` into memory, keyed by `"METHOD path_template"`. Hot-reloads on mtime change; fail-closed (missing entry → 500 `policy_unknown_operation`). Singleton: `policy_table`. |
+| `app/auth/authorized_route.py` | **`AuthorizedAPIRoute`** — an `APIRoute` subclass that enforces authorization before every handler. `make_authorized_router()` installs it on compute/network/storage/connections/jobs/admin routers. Handlers contain no authorization logic. |
+| `app/auth/identity.py` | **Principal mapping.** `PRINCIPAL_SCOPES` / `PRINCIPAL_PROVIDERS` (keyed by `superadmin`, `aws-owner`, `aws-admin`, `aws-viewer`, `ntnx-owner`, `ntnx-admin`, `ntnx-viewer`, `cloud-denied`), `resolve_principal()` (sub → email → aliases → sub → username), and `-(owner|admin|viewer)` suffix derivation. |
 
 #### `app/common/` — Shared Infrastructure
 
@@ -63,22 +68,25 @@
 
 | File | Role |
 |---|---|
-| `app/config/settings.py` | **Pydantic Settings.** Loads from `.env` file and environment variables. Defines all configuration: JWT secrets/TTLs, admin credentials, `auth_mode`, OIDC parameters (issuer URL, JWKS URL, client secret), OpenFGA parameters (API URL, store ID, model ID, FGA object names), and AWS image filter default. Singleton via `get_settings()`. |
+| `app/config/settings.py` | **Pydantic Settings.** Loads from `.env` file and environment variables. Defines all configuration: JWT secrets/TTLs, `auth_mode` (default `oidc`), `allow_client_credentials` (default `false`), server-side backend identity env vars (`aws_prod_key`/`aws_prod_secret`, `ntnx_lab_user`/`ntnx_lab_password`), Nutanix connection defaults (`nutanix_host`, `nutanix_port`, `nutanix_login_path`), Vault (`vault_addr`/`vault_token`/`vault_mount`/`vault_kv_prefix`), OIDC parameters (issuer/JWKS URL, client secret), OpenFGA parameters (API URL, store name/ID, model ID), principal/policy map files, and the AWS image filter default. Singleton via `get_settings()`. |
 
 #### `app/connections/` — Provider Connection Management
 
 | File | Role |
 |---|---|
-| `app/connections/models.py` | **Connection domain models.** `ProviderConnection` (provider + config + credentials), `ConnectionConfig`, `ConnectionCredentials`, `ConnectionCapabilities`, `ALL_SCOPES` constant. Also `connection_target()` helper that normalizes a connection into a stable target string like `aws:us-east-1` or `nutanix:host:9440`. |
-| `app/connections/dependencies.py` | **Connection query parser.** `parse_connection_query()` FastAPI dependency that URL-decodes and validates the `connection` query parameter into a `ProviderConnection` for GET/DELETE endpoints. |
-| `app/connections/routes.py` | **Connection REST endpoint.** Defines `POST /v1/connections:test` which builds a driver from a client-supplied connection and returns capabilities. |
+| `app/connections/models.py` | **Connection domain models.** `ProviderConnection` (provider + config + optional credentials + `auth_binding`), `ConnectionConfig` (`region`/`host`/`port`/`secure`/`api_version`/`verify_ssl_cert`/`login_path`/`session_cookie`), `ConnectionCredentials`, `ConnectionCapabilities`, `ALL_SCOPES` constant, and the `PROVIDER_OBJECT_TYPES` registry (provider → OpenFGA object type). `provider` is validated against that registry, not a `Literal`. Also `connection_target()` → `aws:us-east-1` or `nutanix:host:9440`. |
+| `app/connections/credentials.py` | **Server-side credential resolution.** `enforce_credential_policy()` rejects client-supplied credentials (403 `auth_client_credentials_forbidden` unless `ALLOW_CLIENT_CREDENTIALS=true`); `resolve_server_credentials()` reads from Vault (env fallback when Vault is unconfigured); `effective_credentials()` is the single entry point. |
+| `app/connections/vault_client.py` | **Vault KV v2 client.** `GET /v1/{mount}/data/{prefix}/{binding}` with `X-Vault-Token`, 30s in-memory cache. Surfaces 503 `server_credentials_missing` / `server_credentials_unavailable`. Singleton: `get_vault_client()`. |
+| `app/connections/session_cache.py` | **Nutanix session-cookie cache.** Module-level dict keyed `nutanix:<host>:<port>`, 3600s TTL, `threading.Lock`-guarded. |
+| `app/connections/dependencies.py` | **Connection query parser.** `parse_connection_query()` / `parse_connection_raw()` URL-decode and validate the `connection` query parameter / `X-Provider-Connection` header into a `ProviderConnection`. |
+| `app/connections/routes.py` | **Connection REST endpoint.** Defines `POST /v1/connections:test` which builds a driver from the authorized connection and returns capabilities. |
 
 #### `app/compute/` — Compute Resource Services
 
 | File | Role |
 |---|---|
 | `app/compute/models.py` | **Compute Pydantic models.** All request/response schemas: `NodeCreateRequest`, `NodeUpdateRequest`, `VolumeCreateRequest`, `VolumeUpdateRequest`, `VolumeAttachRequest`, `SnapshotCreateRequest`, `ImageCreateRequest`, `KeyPairCreateRequest`, `ExecutionOptions`, and response types (`NodeResponse`, `VolumeResponse`, `SnapshotResponse`, `ImageResponse`, `SizeResponse`, `LocationResponse`, `KeyPairResponse`). |
-| `app/compute/routes.py` | **Compute REST endpoints.** Defines all `/v1/compute/*` routes: nodes (CRUD + start/stop/reboot), volumes (CRUD + attach/detach), snapshots (CRUD), images (create/delete), key pairs (CRUD), locations, sizes. Every handler calls `policy_engine.authorize_connection()` as the first authorization gate, then delegates to `compute_service`. |
+| `app/compute/routes.py` | **Compute REST endpoints.** Defines all `/v1/compute/*` routes: hosts (list/get/bmc-info), nodes (CRUD + start/stop/reboot), volumes (CRUD + attach/detach), snapshots (CRUD), images (create/delete), key pairs (CRUD), locations, sizes. Handlers contain no authorization logic — enforcement happens in `AuthorizedAPIRoute` before the handler runs, then delegates to `compute_service`. |
 | `app/compute/service.py` | **Compute business logic.** `ComputeService` class with methods for every compute operation. Builds libcloud drivers via `build_driver()`, translates REST request models into libcloud calls, serializes libcloud objects into response models. Contains `_filter_provider_options()` allowlists (AWS and Nutanix `ex_*` keys), `_build_auth()` (SSH key / password), and helper functions for resolving sizes, locations, subnets, and security groups. Singleton: `compute_service`. |
 
 #### `app/network/` — Network Resource Services
@@ -87,8 +95,22 @@
 |---|---|
 | `app/network/__init__.py` | Package marker (empty). |
 | `app/network/models.py` | **Network Pydantic models.** Request schemas: `NetworkCreateRequest`, `NetworkUpdateRequest`, `SubnetCreateRequest`, `SubnetUpdateRequest`, `SecurityGroupCreateRequest`, `LoadBalancerCreateRequest`. |
-| `app/network/routes.py` | **Network REST endpoints.** Defines all `/v1/compute/*` network routes: networks/VPCs (CRUD), subnets (CRUD), storage containers (list), security groups (CRUD), load balancers (CRUD). Every handler calls `policy_engine.authorize_connection()`. |
+| `app/network/routes.py` | **Network REST endpoints.** Defines all `/v1/compute/*` network routes: networks/VPCs (CRUD), subnets (CRUD), storage containers (list), security groups (CRUD), load balancers (CRUD), floating IPs, internet gateways, route tables, network interfaces. Handlers contain no authorization logic — enforcement happens in `AuthorizedAPIRoute`. |
 | `app/network/service.py` | **Network business logic.** `NetworkService` class with methods for every network operation. Handles provider-specific dispatch (Nutanix VPCs vs AWS VPCs), serialization helpers (`_serialize_network`, `_serialize_subnet`, `_serialize_sg`, `_serialize_lb`, `_serialize_storage`), and resource ID/name extraction from both dicts and objects. Singleton: `network_service`. |
+
+#### `app/storage/` — Object Storage Services
+
+| File | Role |
+|---|---|
+| `app/storage/routes.py` | **Storage REST endpoints.** `make_authorized_router` (`/v1/storage`): buckets CRUD + object list/upload/download/delete. |
+| `app/storage/service.py` | **Storage business logic.** `StorageService` built on `build_storage_driver()` (S3 / Nutanix Objects). |
+| `app/storage/models.py` | **Storage Pydantic models.** Bucket/object request schemas. |
+
+#### `app/admin/` — Administrative Endpoints
+
+| File | Role |
+|---|---|
+| `app/admin/routes.py` | **Admin REST endpoints.** `make_authorized_router` (`/v1/admin`): `POST /v1/admin/policies:reload` (connection-less, gated by `admin:connections:read`). |
 
 #### `app/providers/` — Libcloud Driver Management
 
@@ -97,7 +119,8 @@
 | `app/providers/factory.py` | **Driver factory.** `build_driver(connection)` dispatches to the correct driver creator based on `connection.provider`. `probe_capabilities(driver)` inspects a driver instance for features (volumes, snapshots, key pairs, wait_until_running). `test_connection(connection)` validates a connection by calling `list_locations()`. |
 | `app/providers/aws.py` | **AWS driver factory.** `create_aws_driver(key, secret, config)` instantiates the libcloud EC2 driver (`Provider.EC2`) with region and secure flag. |
 | `app/providers/nutanix.py` | **Nutanix driver factory.** `create_nutanix_driver(key, secret, config)` instantiates `NutanixNodeDriver` with host, port, secure, api_version, and verify_ssl_cert. |
-| `app/providers/routes.py` | **Provider discovery endpoint.** Defines `GET /v1/providers` returning a static list of supported providers (aws, nutanix) with their supported operations. |
+| `app/providers/routes.py` | **Provider discovery endpoint.** Defines `GET /v1/providers` returning a static list of supported providers (aws, nutanix) with their supported operations. Plain `APIRouter` — unauthenticated. |
+| `app/providers/storage_factory.py` | **Storage driver factory.** `build_storage_driver(connection)` builds libcloud *storage* drivers (S3 for AWS; Nutanix Objects S3-compatible for Nutanix when a dedicated Objects endpoint is supplied). Credentials via `effective_credentials()`. |
 
 #### `app/jobs/` — Async Job Execution
 
@@ -124,7 +147,7 @@
 | Function / Method | Signature | Description |
 |---|---|---|
 | `__init__` | `() -> None` | Initializes in-memory user store, refresh token dict, JTI revocation set, and audit log. Calls `_bootstrap_users()`. |
-| `_bootstrap_users` | `() -> None` | Loads users from `data/users.json` on first start, or creates admin user from env vars. Ensures admin always has `ALL_SCOPES`. |
+| `_bootstrap_users` | `() -> None` | Loads users from `data/users.json` only if that file exists, else returns (service.py:29-41). No admin user is ever auto-created. |
 | `_persist_users` | `() -> None` | Writes current user records to `data/users.json`. |
 | `verify_password` | `(plain: str, hashed: str) -> bool` | Verifies a plaintext password against an argon2id hash via passlib. |
 | `login` | `(request: LoginRequest) -> TokenResponse` | Validates credentials, intersects requested scopes with user scopes, signs a JWT access token (HS256), generates an opaque refresh token, and stores it in memory. |
@@ -138,20 +161,21 @@
 | Function / Method | Signature | Description |
 |---|---|---|
 | `__init__` | `() -> None` | Initializes with no JWKS client (lazy). |
-| `_client` | `() -> PyJWKClient` | Lazily creates a `PyJWKClient` pointed at `settings.oidc_jwks_url` (Authentik's JWKS endpoint). |
+| `_client` | `() -> PyJWKClient` | Lazily creates a `PyJWKClient` pointed at `settings.oidc_jwks_url` (Dex's JWKS endpoint = `http://dex:5556/dex/keys`). |
 | `_looks_like_oidc_token` | `(token: str) -> bool` | Heuristic: checks if token uses asymmetric alg (RS/ES/PS) or if HS alg + issuer matches OIDC issuer. Used in hybrid mode to route decoding. |
-| `_decode_with_jwks` | `(token: str, settings) -> dict` | Fetches the signing key from JWKS endpoint and decodes the token. Used for RS256/ES256 Authentik tokens. |
-| `_decode_with_client_secret` | `(token: str, settings) -> dict` | Decodes HS256 tokens using the shared OIDC client secret. Used when Authentik is configured with symmetric signing. |
-| `decode_access_token` | `(token: str) -> TokenClaims` | **Main entry point.** Auto-detects algorithm, decodes token, maps `preferred_username` to libcloud scopes and allowed providers via lookup tables. |
+| `_decode_with_jwks` | `(token: str, settings) -> dict` | Fetches the signing key from JWKS endpoint and decodes the token. Used for RS256/ES256 Dex tokens. |
+| `_decode_with_client_secret` | `(token: str, settings) -> dict` | Decodes HS256 tokens using the shared OIDC client secret. Used when Dex is configured with symmetric signing. |
+| `decode_access_token` | `(token: str) -> TokenClaims` | **Main entry point.** Auto-detects algorithm, decodes token, resolves the principal via `identity.resolve_principal()` and maps it to scopes/providers via `PRINCIPAL_SCOPES` / `PRINCIPAL_PROVIDERS`. |
 
 #### `app/auth/fga_client.py` — FgaClient
 
 | Function / Method | Signature | Description |
 |---|---|---|
-| `__init__` | `() -> None` | Reads FGA configuration from settings (`fga_api_url`, `fga_store_id`, `fga_model_id`). |
-| `enabled` (property) | `() -> bool` | Returns `True` only if `fga_enabled` is set AND store/model IDs are configured. |
-| `check` | `(user: str, relation: str, obj: str) -> bool` | Calls `POST /stores/{store_id}/check` on the OpenFGA API. Returns `True` if the relationship tuple is allowed. Returns `True` always when FGA is disabled. |
-| `require` | `(user: str, relation: str, obj: str) -> None` | Calls `check()` and raises `authz_fga_denied` if not allowed. |
+| `__init__` | `() -> None` | Reads FGA configuration from settings (`fga_api_url`, `fga_store_id`, `fga_model_id`, `fga_store_name`). |
+| `_ensure_discovered` | `() -> None` | Auto-discovers store ID by name and latest model ID when `FGA_STORE_ID`/`FGA_MODEL_ID` are empty. |
+| `enabled` (property) | `() -> bool` | Returns `True` only if `fga_enabled` is set AND store/model IDs are resolvable (configured or auto-discovered). |
+| `check` | `(user: str, relation: str, obj: str, bearer?) -> bool` | Calls `POST /stores/{store_id}/check` on the OpenFGA API, forwarding the caller's Dex JWT as `Authorization: Bearer`. Returns `True` if the relationship tuple is allowed. Returns `True` always when FGA is disabled. |
+| `require` | `(user: str, relation: str, obj: str, bearer?) -> None` | Calls `check()` and raises `authz_fga_denied` if not allowed. |
 | `get_fga_client` | `() -> FgaClient` | Module-level singleton factory. |
 
 #### `app/auth/policy.py` — PolicyEngine
@@ -160,9 +184,9 @@
 |---|---|---|
 | `_token_has_scope` | `(token_scopes: set[str], required_scope: str) -> bool` | Checks if token includes the required scope, also resolves `compute:read` aliases. |
 | `_fga_user` | `(claims: TokenClaims) -> str` | Formats token claims into FGA user string: `user:<username>`. |
-| `_backend_object` | `(connection: ProviderConnection) -> str` | Maps a connection to an FGA object: `nutanix_cluster:<cluster>` or `aws_region:<region>`. |
+| `_backend_object` | `(connection: ProviderConnection) -> str` | Maps a connection to an FGA object via the `PROVIDER_OBJECT_TYPES` registry keyed on `connection.auth_binding`: `aws_region:<binding>` or `nutanix_cluster:<binding>`. |
 | `_enforce_openfga` | `(claims, connection, required_scope) -> None` | **OpenFGA enforcement pipeline.** Checks three FGA tuples in sequence: `can_connect` on the API object, `can_use` on the provider, and `can_provision`/`can_read` on the backend. Write/manage scopes require `can_provision`. |
-| `authorize_connection` | `(claims, connection, required_scope) -> ProviderConnection` | **Main authorization gate.** Validates JWT scopes, provider allowlists, and runs OpenFGA enforcement. Returns the connection on success. Called by every resource route handler. |
+| `authorize_connection` | `(claims, connection, required_scope) -> ProviderConnection` | **Main authorization gate.** Validates JWT scopes, provider allowlists, credential policy, and OpenFGA enforcement. Returns the connection on success. Called by `AuthorizedAPIRoute`, not by handlers. |
 | `check_driver_capability` | `(connection, operation) -> None` | Builds a driver, probes capabilities, and raises `provider_capability_unsupported` if the provider doesn't support the requested operation. |
 
 #### `app/auth/dependencies.py` — FastAPI Dependencies
@@ -309,53 +333,59 @@
        │                             │  │ Auth     │  │ Policy   │  │ Prov │ │   libcloud        └─────────────────┘
        │  connection object          │  │ Service  │─>│ Engine   │─>│ Fact │ │   driver responses
        │  (provider, config,         │  │ (JWT +   │  │ (scopes  │  │ -ory │ │
-       │   credentials)              │  │  OIDC)   │  │ + FGA)   │  └──────┘ │
+       │   auth_binding)             │  │  OIDC)   │  │ + FGA)   │  └──────┘ │
        │                             │  └──────────┘  └──────────┘           │
        │                             │         │             │                │
        │                             │         v             v                │
        │                             │  ┌──────────────────────────┐         │
-       │                             │  │ Authentik (OIDC)         │         │
+       │                             │  │ Dex → LLDAP (OIDC)       │         │
        │                             │  │ OpenFGA (Fine-Grained)   │         │
        │                             │  └──────────────────────────┘         │
        │                             └───────────────────────────────────────┘
 ```
 
+**Service port:** FastAPI listens on port **8765** (`Dockerfile:56,62`; `docker-compose.yml:32` maps `127.0.0.1:${API_PORT:-8765}:8765`).
+
 ### Key Design Points
 
-- **Provider credentials are supplied by the client** in a `connection` object on every compute/network call. The server does not store cloud accounts, regions, or provider keys in Docker or on disk.
-- **Driver selection** happens in `app/providers/factory.py:build_driver()` — inspects `connection.provider` and calls either `create_aws_driver()` or `create_nutanix_driver()` using `connection.credentials`.
+- **Provider credentials are never supplied by the client.** The client names a server-side identity via `connection.auth_binding` (the tenant id); the API resolves its own backend credentials from Vault (env fallback only when Vault is unconfigured). Client-supplied `credentials` are rejected with 403 `auth_client_credentials_forbidden` unless `ALLOW_CLIENT_CREDENTIALS=true` (default false). The server does not store cloud accounts, regions, or provider keys in Docker or on disk.
+- **Driver selection** happens in `app/providers/factory.py:build_driver()` — inspects `connection.provider` and calls either `create_aws_driver()` or `create_nutanix_driver()` using `effective_credentials(connection)` (Vault-resolved).
 - **All resource operations** go through service classes (`ComputeService`, `NetworkService`) which call the libcloud driver methods.
-- **All authorization** flows through `app/auth/policy.py:PolicyEngine.authorize_connection()` which validates JWT scopes, provider allowlists, AND OpenFGA tuples in a single gate.
+- **All authorization** is enforced by `app/auth/authorized_route.py:AuthorizedAPIRoute` (installed via `make_authorized_router`), which looks up the route's policy-table entry and calls `app/auth/policy.py:PolicyEngine.authorize_connection()` (JWT scopes + provider allowlists + OpenFGA) before the handler runs. Route handlers contain no authorization logic.
 
 ### Driver Selection Logic (`build_driver`)
 
 ```python
 # app/providers/factory.py
-key, secret = connection.credentials.key, connection.credentials.secret
+if connection.provider == "nutanix":
+    # Reuse a client-supplied or cached session cookie first; else a one-time
+    # Basic-auth login against config.login_path (default /api/nutanix/v1/session)
+    # and cache the returned Set-Cookie in app/connections/session_cache.py.
+    return _build_nutanix_driver(connection)
+creds = effective_credentials(connection)   # Vault-resolved (env fallback in dev)
 if connection.provider == "aws":
-    return create_aws_driver(key, secret, connection.config)
+    return create_aws_driver(creds.key, creds.secret, connection.config)
     # → libcloud.compute.providers.get_driver(Provider.EC2)
-elif connection.provider == "nutanix":
-    return create_nutanix_driver(key, secret, connection.config)
-    # → libcloud.compute.drivers.nutanix.NutanixNodeDriver
 ```
 
 ### Provider Connection Object (`ProviderConnection`)
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `provider` | `"aws"` \| `"nutanix"` | Yes | Cloud provider |
+| `provider` | string (registered in `PROVIDER_OBJECT_TYPES`) | Yes | Cloud provider id (`aws` \| `nutanix`). Validated against the registry, not a `Literal`. |
+| `auth_binding` | string | No | **Client-facing selector** for the server-side credential/tenant (e.g. `aws`, `aws-dev`, `nutanix`). Defaults per provider (`aws` / `nutanix`). |
+| `credentials` | object | No (rejected unless `ALLOW_CLIENT_CREDENTIALS=true`) | Optional client-supplied credentials. Normally omitted — the API resolves its own backend identity from Vault. |
 | `config.region` | string | AWS | AWS region (e.g. `us-east-1`) |
 | `config.host` | string | Nutanix | Prism Central hostname |
 | `config.port` | int | No | Prism Central port (default `9440`) |
 | `config.secure` | bool | No | Use HTTPS (default `true`) |
 | `config.api_version` | string | No | Nutanix API version (default `v4.0`) |
 | `config.verify_ssl_cert` | bool | No | Verify TLS certificate (Nutanix) |
-| `credentials.key` | string | Yes | AWS access key ID or Nutanix username |
-| `credentials.secret` | string | Yes | AWS secret access key or Nutanix password |
+| `config.login_path` | string | No | Nutanix session-cookie login path (default `/api/nutanix/v1/session`) |
+| `config.session_cookie` | string | No | Replay an already-established Nutanix session cookie |
 
-**GET / DELETE:** pass as `connection` query parameter (URL-encoded JSON).  
-**POST / PATCH:** include as `"connection": { ... }` in the request body.
+**GET / DELETE:** pass as `connection` query parameter (URL-encoded JSON), or via the `X-Provider-Connection` header (preferred).  
+**POST / PATCH:** include as `"connection": { ... }` in the request body, or via the `X-Provider-Connection` header.
 
 ---
 
@@ -411,12 +441,21 @@ Every endpoint returns:
 | `auth_invalid_credentials` | 401 | Wrong username or password |
 | `auth_insufficient_scope` | 403 | Token lacks required scope |
 | `auth_provider_denied` | 403 | Token not authorized for the requested provider |
+| `auth_local_disabled` | 404 | Local password login/refresh/introspect is disabled in `oidc` auth mode |
+| `auth_client_credentials_forbidden` | 403 | Client-supplied backend credentials rejected (unless `ALLOW_CLIENT_CREDENTIALS=true`) |
+| `auth_provider_unsupported` | 400 | Provider id not in `PROVIDER_OBJECT_TYPES` |
 | `auth_misconfigured` | 500 | OIDC/JWKS/issuer configuration missing or wrong |
-| `auth_user_unknown` | 403 | OIDC user not mapped to any libcloud role |
+| `auth_user_unknown` | 403 | OIDC principal not mapped to any libcloud role |
+| `auth_connection_denied` | 403 | Caller not authorized to view the requested job |
 | `authz_fga_denied` | 403 | OpenFGA denied the requested action |
 | `authz_fga_error` | 503 | OpenFGA check returned an error |
 | `authz_fga_unavailable` | 503 | OpenFGA service unreachable |
-| `invalid_connection` | 400 | Malformed or missing `connection` query parameter or body field |
+| `server_credentials_missing` | 503 | API backend identity missing (Vault secret absent / env not configured) |
+| `server_credentials_unavailable` | 503 | Vault secret read failed / Vault unreachable |
+| `policy_table_unreadable` | 500 | Policy table file not readable |
+| `policy_table_invalid` | 500 | Policy table JSON malformed / entry missing `scopes_any_of` |
+| `policy_unknown_operation` | 500 | No policy entry for this route (fail-closed) |
+| `invalid_connection` | 400 | Malformed or missing `connection` query parameter / `X-Provider-Connection` header / body field |
 | `resource_not_found` | 404 | Resource (node, volume, image, etc.) not found |
 | `resource_conflict` | 409 | Resource already exists |
 | `validation_error` | 400 | Missing/incorrect required fields |
@@ -434,53 +473,60 @@ The system supports three authentication modes, configured via `auth_mode` in `.
 | Mode | Description | Token Verification |
 |---|---|---|
 | `local` | Uses the built-in `AuthService` with users stored in `data/users.json`. Passwords hashed with argon2id. JWT signed with HS256. | `app/auth/service.py:AuthService.decode_access_token()` |
-| `oidc` | Delegates to Authentik (or any OIDC provider). Tokens are issued by Authentik and verified against its JWKS endpoint or shared client secret. | `app/auth/oidc_service.py:OidcAuthService.decode_access_token()` |
+| `oidc` | Delegates to Dex (→ LLDAP). Tokens are issued by Dex and verified against its JWKS endpoint (`http://dex:5556/dex/keys`) or shared client secret. This is the default (`auth_mode=oidc`). | `app/auth/oidc_service.py:OidcAuthService.decode_access_token()` |
 | `hybrid` | Accepts both local and OIDC tokens. Uses heuristics (`_looks_like_oidc_token`) to detect token type: RS/ES/PS alg tokens → OIDC; HS alg tokens with matching issuer → OIDC; otherwise → local. | Dispatched in `app/auth/dependencies.py:_decode_token()` |
 
-### Authentik OIDC Integration
+### Dex OIDC Integration
 
-**How Authentik tokens are verified (end-to-end):**
+The IdP is **Dex → LLDAP** (not Authentik). `docker-compose.yml:25-26` sets
+`OIDC_ISSUER_URL: http://dex:5556/dex` and `OIDC_JWKS_URL: http://dex:5556/dex/keys`.
 
-1. **Token Acquisition:** The client obtains a token from Authentik directly (e.g., via Authentik's OAuth2/OIDC flow). The REST API does not proxy Authentik login — it only **verifies** tokens that clients present.
+**How Dex tokens are verified (end-to-end):**
 
-2. **Token Submission:** The client includes the Authentik-issued token in the `Authorization: Bearer <token>` header of every API request.
+1. **Token Acquisition:** The client obtains a token from Dex via the identity service's OAuth2/OIDC flow. The REST API does not proxy Dex login — it only **verifies** tokens that clients present.
+
+2. **Token Submission:** The client includes the Dex-issued token in the `Authorization: Bearer <token>` header of every API request.
 
 3. **Token Detection** (`app/auth/dependencies.py:_decode_token`):
-   - In `oidc` mode: always routes to `oidc_auth_service.decode_access_token()`.
+   - In `oidc` mode (the default): always routes to `oidc_auth_service.decode_access_token()`.
    - In `hybrid` mode: calls `_looks_like_oidc_token()` which checks the JWT header's `alg`:
-     - **RS256/ES256/PS256** → token is asymmetric → definitely OIDC (Authentik defaults to RS256).
+     - **RS256/ES256/PS256** → token is asymmetric → definitely OIDC (Dex defaults to RS256).
      - **HS256** → checks if `iss` matches `settings.oidc_issuer_url` → if yes, OIDC with shared secret; if no, local.
 
 4. **Token Verification** (`app/auth/oidc_service.py:decode_access_token`):
-   - **Asymmetric (RS/ES/PS):** Fetches the signing key from Authentik's JWKS endpoint (`settings.oidc_jwks_url`, typically `https://<authentik-host>/application/o/<slug>/jwks/`). Uses `PyJWKClient` from the `PyJWT` library to fetch and cache keys.
+   - **Asymmetric (RS/ES/PS):** Fetches the signing key from Dex's JWKS endpoint (`settings.oidc_jwks_url` = `http://dex:5556/dex/keys`). Uses `PyJWKClient` from the `PyJWT` library to fetch and cache keys.
    - **Symmetric (HS):** Decodes using `settings.oidc_client_secret` as the shared key.
    - Validates `exp` (expiry), `iss` (issuer), and `aud` (audience) claims.
-   - Extracts the user identity from `preferred_username` (fallback: `sub`).
 
-5. **User-to-Permission Mapping** (`app/auth/oidc_service.py` lookup tables):
+5. **Principal Resolution & Permission Mapping** (`app/auth/identity.py`):
+   `resolve_principal()` (identity.py:106-149) maps the token to a stable principal slug in order: `principal_map.by_sub[sub]` → `principal_map.by_email[email]` → `legacy_username_aliases[preferred_username|username]` → `sub` (if a known principal) → `preferred_username` / `username`. The principal then maps to scopes/providers via `PRINCIPAL_SCOPES` / `PRINCIPAL_PROVIDERS` (identity.py:50-70):
    ```python
-   USERNAME_SCOPES = {
-       "admin": ALL_SCOPES,
-       "provisioner": PROVISIONER_SCOPES,
-       "reader": READER_SCOPES,
+   PRINCIPAL_SCOPES = {
+       "superadmin": PROVISIONER_SCOPES,
+       "aws-owner": PROVISIONER_SCOPES, "aws-admin": PROVISIONER_SCOPES,
+       "aws-viewer": READER_SCOPES,
+       "ntnx-owner": PROVISIONER_SCOPES, "ntnx-admin": PROVISIONER_SCOPES,
+       "ntnx-viewer": READER_SCOPES,
+       "cloud-denied": READER_SCOPES,
    }
-   USERNAME_PROVIDERS = {
-       "admin": ["*"],
-       "provisioner": ["aws", "nutanix"],
-       "reader": ["aws", "nutanix"],
+   PRINCIPAL_PROVIDERS = {
+       "superadmin": ["*"],
+       "aws-owner": ["aws"], "aws-admin": ["aws"], "aws-viewer": ["aws"],
+       "ntnx-owner": ["nutanix"], "ntnx-admin": ["nutanix"], "ntnx-viewer": ["nutanix"],
+       "cloud-denied": ["aws", "nutanix"],
    }
    ```
-   The OIDC `preferred_username` is looked up in these dicts to determine the user's libcloud scopes and allowed providers. If the username is not found, the request is denied with `auth_user_unknown`.
+   A `-(owner|admin|viewer)` suffix is recognized (identity.py:152-165), so a new tenant works without editing these tables. If no mapping is found the request is denied with `auth_user_unknown`.
 
-6. **TokenClaims Construction:** A `TokenClaims` object is built from the OIDC payload — this makes OIDC tokens indistinguishable from local tokens for the rest of the authorization pipeline.
+6. **TokenClaims Construction:** A `TokenClaims` object is built from the OIDC payload (`sub` = the resolved principal) — this makes OIDC tokens indistinguishable from local tokens for the rest of the authorization pipeline.
 
-**Configuration for Authentik (`.env`):**
+**Configuration for Dex (`.env`):**
 
 ```bash
-AUTH_MODE=hybrid                         # or oidc
+AUTH_MODE=oidc                          # default; or hybrid / local
 OIDC_ENABLED=true
-OIDC_ISSUER_URL=https://auth.example.com/application/o/libcloud-rest/
-OIDC_JWKS_URL=https://auth.example.com/application/o/libcloud-rest/jwks/
+OIDC_ISSUER_URL=http://dex:5556/dex
+OIDC_JWKS_URL=http://dex:5556/dex/keys
 OIDC_CLIENT_SECRET=your-client-secret    # for HS256 tokens
 OIDC_AUDIENCE=libcloud-rest
 OIDC_TENANT_ID=default
@@ -512,7 +558,7 @@ OIDC_TENANT_ID=default
    - Verifies the token's `allowed_providers` includes the requested provider (or `"*"`).
    
    **Stage 3 — OpenFGA Check** (`_enforce_openfga`):
-   - If FGA is disabled (`fga_enabled=false` or missing store/model IDs): **skipped entirely** — all requests pass.
+   - If FGA is disabled (`fga_enabled=false`) or the store/model cannot be resolved (configured or auto-discovered): **skipped entirely** — all requests pass.
    - If FGA is enabled, checks three relationship tuples in sequence:
      
      | # | Tuple | Meaning |
@@ -531,6 +577,8 @@ OIDC_TENANT_ID=default
 
 3. **FGA Client** (`app/auth/fga_client.py`):
    - Calls OpenFGA's `/stores/{store_id}/check` REST endpoint.
+   - Auto-discovers store/model by name when `FGA_STORE_ID`/`FGA_MODEL_ID` are empty.
+   - Forwards the caller's Dex JWT as `Authorization: Bearer` to OpenFGA (fga_client.py:122-123).
    - `check()` returns boolean; `require()` raises `authz_fga_denied` (403) on denial.
    - On OpenFGA errors: raises `authz_fga_error` (503) or `authz_fga_unavailable` (503).
 
@@ -599,58 +647,60 @@ class Settings(BaseSettings):
     fga_gcp_project_object: str = "default-gcp-project"
 ```
 
-#### 4. `app/auth/policy.py` — `_backend_object()` Method
+#### 4. `app/connections/models.py` — `PROVIDER_OBJECT_TYPES` registry
 
-Add a new branch to map the provider connection to the FGA object string:
+`_backend_object()` (app/auth/policy.py:48-71) derives the FGA object from a
+`PROVIDER_OBJECT_TYPES` registry keyed on `connection.auth_binding` — no
+per-provider branch exists. Add a registry entry:
 ```python
-def _backend_object(self, connection: ProviderConnection) -> str:
-    settings = get_settings()
-    if connection.provider == "nutanix":
-        return f"nutanix_cluster:{settings.fga_nutanix_cluster}"
-    if connection.provider == "gcp":
-        return f"gcp_project:{settings.fga_gcp_project_object}"
-    region = connection.config.region or settings.fga_aws_region_object
-    return f"aws_region:{region}"
+PROVIDER_OBJECT_TYPES = {
+    "aws": "aws_region",
+    "nutanix": "nutanix_cluster",
+    "gcp": "gcp_project",   # new provider
+}
 ```
 
-#### 5. `app/auth/oidc_service.py` — User Scopes/Providers Mapping
+#### 5. `app/auth/identity.py` — Principal Scopes/Providers Mapping
 
-If the new object requires new scopes, update `USERNAME_SCOPES` and `USERNAME_PROVIDERS`:
+If the new object requires new scopes or a new provider, update `PRINCIPAL_SCOPES`
+and `PRINCIPAL_PROVIDERS` (keyed by `superadmin` / `aws-owner` / `aws-admin` /
+`aws-viewer` / `ntnx-owner` / `ntnx-admin` / `ntnx-viewer` / `cloud-denied`):
 ```python
 PROVISIONER_SCOPES = [
     # ... existing scopes ...
     "compute:gcp:manage",  # new scope
 ]
 
-USERNAME_PROVIDERS = {
-    "admin": ["*"],
-    "provisioner": ["aws", "nutanix", "gcp"],  # add new provider
-    "reader": ["aws", "nutanix", "gcp"],
+PRINCIPAL_PROVIDERS = {
+    "aws-admin": ["aws"],
+    "ntnx-admin": ["nutanix"],
+    "gcp-admin": ["gcp"],   # add new provider
 }
 ```
 
 #### 6. `app/connections/models.py` — `ALL_SCOPES` and `ProviderConnection`
 
-If adding new scopes or a new provider type:
+If adding new scopes:
 ```python
 ALL_SCOPES = [
     # ... existing scopes ...
     "compute:gcp:read",
     "compute:gcp:manage",
 ]
-
-class ProviderConnection(BaseModel):
-    provider: Literal["aws", "nutanix", "gcp"]  # add new provider literal
 ```
+
+`ProviderConnection.provider` is a plain `str` validated against the
+`PROVIDER_OBJECT_TYPES` registry — there is no `Literal` to edit (see step 4).
 
 #### 7. `app/providers/factory.py` — `build_driver()`
 
-Add a new dispatch branch:
+Add a new dispatch branch (credentials come from `effective_credentials`, not the client):
 ```python
 def build_driver(connection: ProviderConnection) -> NodeDriver:
     # ...
     if connection.provider == "gcp":
-        return create_gcp_driver(key, secret, connection.config)
+        creds = effective_credentials(connection)
+        return create_gcp_driver(creds.key, creds.secret, connection.config)
 ```
 
 #### Summary Checklist for New Objects
@@ -660,13 +710,47 @@ def build_driver(connection: ProviderConnection) -> NodeDriver:
 | 1 | External: OpenFGA model | Define new `type` with `can_read` / `can_provision` relations |
 | 2 | `.env` | Add FGA object ID config var (e.g., `FGA_GCP_PROJECT_OBJECT=...`) |
 | 3 | `app/config/settings.py` | Add Settings field for the new FGA object |
-| 4 | `app/auth/policy.py::_backend_object()` | Map provider → FGA object string |
+| 4 | `app/connections/models.py::PROVIDER_OBJECT_TYPES` | Add provider → FGA object-type registry entry |
 | 5 | `app/auth/policy.py::_enforce_openfga()` | No change needed (uses `_backend_object()` dynamically) |
-| 6 | `app/auth/oidc_service.py` | Add new scopes to role mappings if needed |
-| 7 | `app/connections/models.py` | Add new scopes to `ALL_SCOPES`, update `ProviderConnection.provider` Literal |
-| 8 | `app/providers/factory.py` | Add new driver dispatch branch |
+| 6 | `app/auth/identity.py` | Add new scopes to `PRINCIPAL_SCOPES` / `PRINCIPAL_PROVIDERS` if needed |
+| 7 | `app/connections/models.py` | Add new scopes to `ALL_SCOPES` (no `Literal` edit — registry covers providers) |
+| 8 | `app/providers/factory.py` | Add new driver dispatch branch (uses `effective_credentials`) |
 | 9 | `app/providers/routes.py` | Add new provider to the `PROVIDERS` list |
 | 10 | OpenFGA tuples | Write the actual relationship tuples for existing users |
+
+---
+
+### Authorization Policy Table (`app/auth/policies.json`)
+
+Authorization is data-driven. `app/auth/policies.json` + `app/auth/policy_table.py`
+are the source of truth for what every route requires; `AuthorizedAPIRoute` is
+their only consumer. Each entry is keyed by `"METHOD /path/template"`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `scopes_any_of` | Yes (non-empty list) | Token must hold at least one of these scopes |
+| `authz_scope` | No | Scope passed to `authorize_connection()`; defaults to `scopes_any_of[0]` |
+| `capability` | No | Optional driver capability check (e.g. `create_node`, `volumes`) |
+| `connection_required` | No (default `true`) | `false` for connection-less routes (jobs, admin reload) |
+| `authz_scope_by_body_field` | No | `{field, map}` — routes `PATCH /nodes/{node_id}` by body `action` |
+
+The table hot-reloads when the file's mtime changes (`policy_table.py:101-108`)
+or on demand via `POST /v1/admin/policies:reload`. It is **fail-closed**: a route
+with no policy entry returns 500 `policy_unknown_operation` (`policy_table.py:110-126`).
+
+### Request Authorization Chain
+
+Per request, in order (`app/main.py` → `app/auth/authorized_route.py`):
+
+1. `RequestIDMiddleware` (`app/common/middleware.py:9-14`, registered `main.py:23`).
+2. `AuthorizedAPIRoute.custom_route_handler` looks up `policy_table.get("METHOD path")`.
+3. `claims_from_request` (`app/auth/dependencies.py:60-67` → `_decode_token` at `dependencies.py:16-38`).
+4. `connection_from_request` (`dependencies.py:70-88`) reads the `X-Provider-Connection` header, else the `?connection=` query param.
+5. Resolve `authz_scope` (explicit, `scopes_any_of[0]`, or `authz_scope_by_body_field` map).
+6. `policy_engine.authorize_connection` (`app/auth/policy.py:115-148`): scope check → provider allowlist → credential policy → OpenFGA `can_connect @ libcloud_api:main`, `can_use @ provider:<x>`, `can_provision|can_read @ backend object`.
+7. `check_driver_capability` (only if the entry declares a `capability`).
+8. Handler runs.
+9. `build_driver` (`app/providers/factory.py:13-46`) → `effective_credentials` → Vault (env fallback).
 
 ---
 
@@ -675,6 +759,10 @@ def build_driver(connection: ProviderConnection) -> NodeDriver:
 ### 1. Auth APIs
 
 **Prefix:** `/v1/auth`
+
+> `POST /v1/auth/login`, `POST /v1/auth/refresh`, and `POST /v1/auth/token/introspect`
+> return 404 `auth_local_disabled` when `auth_mode=oidc` (the default; routes.py:13-25).
+> `POST /v1/auth/login` and `POST /v1/auth/refresh` are unauthenticated (no bearer needed).
 
 | # | Method | Path | Auth | Scope | Description |
 |---|---|---|---|---|---|
@@ -799,6 +887,8 @@ def build_driver(connection: ProviderConnection) -> NodeDriver:
 
 **Prefix:** `/v1/providers`
 
+> `GET /v1/providers` is served by a plain `APIRouter` (not `AuthorizedAPIRoute`), so it is unauthenticated (providers/routes.py:6,50).
+
 | # | Method | Path | Auth | Scope | Description |
 |---|---|---|---|---|---|
 | 6 | `GET` | `/v1/providers` | None | — | List available provider types |
@@ -817,7 +907,7 @@ def build_driver(connection: ProviderConnection) -> NodeDriver:
 
 | # | Method | Path | Auth | Scope | Description |
 |---|---|---|---|---|---|
-| 7 | `POST` | `/v1/connections:test` | Bearer | `compute:read` | Test a client-supplied connection |
+| 7 | `POST` | `/v1/connections:test` | Bearer | `compute:read` | Test a connection (credentials resolved server-side) |
 
 #### 3.1 `POST /v1/connections:test`
 
@@ -827,7 +917,7 @@ def build_driver(connection: ProviderConnection) -> NodeDriver:
 {
   "provider": "aws",
   "config": { "region": "us-east-1", "secure": true },
-  "credentials": { "key": "AKIA...", "secret": "..." }
+  "auth_binding": "aws"
 }
 ```
 
@@ -859,6 +949,31 @@ The server does **not** persist connections. List/create/get connection endpoint
 **Prefix:** `/v1/compute`
 
 All compute endpoints require `Authorization: Bearer <token>` and a `connection` (URL-encoded JSON query param for GET/DELETE, or inline object in the body for POST/PATCH). The `connection.provider` field determines which libcloud driver is used.
+
+---
+
+#### 4.0 Hosts (Nutanix Only)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 53 | `GET` | `/v1/compute/hosts` | `compute:read` | List physical hosts |
+| 54 | `GET` | `/v1/compute/hosts/{host_id}` | `compute:read` | Get a single host |
+| 55 | `GET` | `/v1/compute/hosts/{host_id}/bmc-info` | `compute:read` | Get host BMC IP/status |
+
+**Input (query params):**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `connection` | string | Yes | URL-encoded JSON `ProviderConnection` (or `X-Provider-Connection` header) |
+| `clusterExtId` | string | No | Cluster ext ID (required for bmc-info) |
+
+**Driver Redirection (Nutanix only):**
+
+| Condition | libcloud Method |
+|---|---|
+| list | `driver.ex_list_hosts(cluster_ext_id=...)` |
+| get | `driver.ex_get_host(host_id, cluster_ext_id=...)` |
+| bmc-info | `driver.ex_get_host_bmc_info(host_id, cluster_ext_id)` |
 
 ---
 
@@ -958,7 +1073,7 @@ All compute endpoints require `Authorization: Bearer <token>` and a `connection`
       "api_version": "v4.0",
       "verify_ssl_cert": false
     },
-    "credentials": { "key": "admin", "secret": "..." }
+    "auth_binding": "nutanix"
   },
   "name": "my-image",
   "url": "http://fileserver/disk.qcow2",
@@ -1167,7 +1282,7 @@ All compute endpoints require `Authorization: Bearer <token>` and a `connection`
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "name": "my-new-vm",
   "size": { "id": "t2.micro" },
@@ -1255,7 +1370,7 @@ node = driver.create_node(**kwargs)
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "action": "resize",
   "name": null,
@@ -1408,7 +1523,7 @@ Same as start — calls `driver.reboot_node(node)`.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "name": "data-volume",
   "size_gb": 100,
@@ -1448,7 +1563,7 @@ Same as start — calls `driver.reboot_node(node)`.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "action": "modify",
   "new_size_gb": 200,
@@ -1497,7 +1612,7 @@ Same as start — calls `driver.reboot_node(node)`.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "node_id": "i-0abcd1234efgh5678",
   "device": "/dev/sdf"
@@ -1588,7 +1703,7 @@ Same input shape as attach.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "volume_id": "vol-0abcd1234efgh5678",
   "name": "backup-2026-06-22",
@@ -1674,7 +1789,7 @@ Same input shape as attach.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "name": "my-new-keypair",
   "public_key": null
@@ -1770,7 +1885,7 @@ Same input shape as attach.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "name": "my-vpc",
   "description": "Production VPC",
@@ -1813,7 +1928,7 @@ Same input shape as attach.
       "api_version": "v4.0",
       "verify_ssl_cert": false
     },
-    "credentials": { "key": "admin", "secret": "..." }
+    "auth_binding": "nutanix"
   },
   "name": "updated-name",
   "description": "Updated description",
@@ -1887,7 +2002,7 @@ Same input shape as attach.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "name": "my-subnet",
   "subnet_type": "VLAN",
@@ -1936,7 +2051,7 @@ Same input shape as attach.
   "connection": {
     "provider": "aws",
     "config": { "region": "us-east-1", "secure": true },
-    "credentials": { "key": "AKIA...", "secret": "..." }
+    "auth_binding": "aws"
   },
   "action": "auto_public_ip",
   "name": null,
@@ -2006,7 +2121,7 @@ Same input shape as attach.
 
 ---
 
-#### 5.4 Security Groups (Nutanix Only)
+#### 5.4 Security Groups (AWS + Nutanix)
 
 | # | Method | Path | Scope | Description |
 |---|---|---|---|---|
@@ -2020,15 +2135,17 @@ Same input shape as attach.
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `connection` | string | Yes | Connection (must be `nutanix`) |
+| `connection` | string | Yes | Connection (`aws` or `nutanix`) |
 | `id` | string | No | Filter by group ID |
 
-**Driver Redirection (Nutanix only):**
+**Driver Redirection:**
 
-| Condition | libcloud Method |
-|---|---|
-| `id` given | `driver.ex_get_security_group(group_id)` |
-| No `id` | `driver.ex_list_security_groups()` |
+| Provider | Condition | libcloud Method |
+|---|---|---|
+| **AWS** | `id` given | `driver.ex_get_security_groups(group_ids=[group_id])` |
+| **AWS** | No `id` | `driver.ex_get_security_groups()` |
+| **Nutanix** | `id` given | `driver.ex_get_security_group(group_id)` |
+| **Nutanix** | No `id` | `driver.ex_list_security_groups()` |
 
 ##### 5.4.2 `POST /v1/compute/security-groups`
 
@@ -2044,7 +2161,7 @@ Same input shape as attach.
       "api_version": "v4.0",
       "verify_ssl_cert": false
     },
-    "credentials": { "key": "admin", "secret": "..." }
+    "auth_binding": "nutanix"
   },
   "name": "web-sg",
   "description": "Security group for web servers",
@@ -2053,24 +2170,26 @@ Same input shape as attach.
 ```
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `connection` | object | **Yes** | Connection (must be `nutanix`) |
+| `connection` | object | **Yes** | Connection (`aws` or `nutanix`) |
 | `name` | string | **Yes** | Security group name |
 | `description` | string | No | Description |
-| `vpc_id` | string | No | VPC external ID |
+| `vpc_id` | string | No | VPC ID (`vpc-...` for AWS; external ID for Nutanix) |
 
-**Driver Redirection (Nutanix only):**
+**Driver Redirection:**
 
-| libcloud Method |
-|---|
-| `driver.ex_create_security_group(name, description, vpc_ext_id)` |
+| Provider | libcloud Method |
+|---|---|
+| **AWS** | `driver.ex_create_security_group(name, description, vpc_id)` |
+| **Nutanix** | `driver.ex_create_security_group(name, description, vpc_ext_id)` |
 
 ##### 5.4.3 `DELETE /v1/compute/security-groups/{group_id}`
 
-**Driver Redirection (Nutanix only):**
+**Driver Redirection:**
 
-| libcloud Method |
-|---|
-| `driver.ex_delete_security_group(group_id)` |
+| Provider | libcloud Method |
+|---|---|
+| **AWS** | `driver.ex_delete_security_group_by_id(group_id)` |
+| **Nutanix** | `driver.ex_delete_security_group(group_id)` |
 
 ---
 
@@ -2112,7 +2231,7 @@ Same input shape as attach.
       "api_version": "v4.0",
       "verify_ssl_cert": false
     },
-    "credentials": { "key": "admin", "secret": "..." }
+    "auth_binding": "nutanix"
   },
   "name": "web-lb",
   "vpc_id": "vpc_ext_12345",
@@ -2139,6 +2258,78 @@ Same input shape as attach.
 | libcloud Method |
 |---|
 | `driver.ex_delete_load_balancer(lb_id)` |
+
+---
+
+#### 5.6 Floating IPs (AWS Elastic IPs)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 56 | `GET` | `/v1/compute/floating-ips` | `compute:network:read` or `compute:read` | List floating IPs |
+| 57 | `POST` | `/v1/compute/floating-ips` | `compute:network:manage` | Allocate floating IP |
+| 58 | `DELETE` | `/v1/compute/floating-ips/{address}` | `compute:network:manage` | Release floating IP |
+| 59 | `POST` | `/v1/compute/floating-ips/{address}:associate` | `compute:network:manage` | Associate IP to node |
+| 60 | `POST` | `/v1/compute/floating-ips/{address}:disassociate` | `compute:network:manage` | Disassociate IP |
+
+**Driver Redirection (AWS only; Nutanix → 501):**
+
+| Operation | libcloud Method |
+|---|---|
+| list | `driver.ex_describe_all_addresses()` |
+| allocate | `driver.ex_allocate_address(domain=...)` |
+| release | `driver.ex_release_address(ip, domain=...)` |
+| associate | `driver.ex_associate_address_with_node(node, ip, domain=...)` |
+| disassociate | `driver.ex_disassociate_address(ip, domain=...)` |
+
+---
+
+#### 5.7 Internet Gateways (AWS Only)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 61 | `GET` | `/v1/compute/internet-gateways` | `compute:network:read` or `compute:read` | List internet gateways |
+| 62 | `POST` | `/v1/compute/internet-gateways` | `compute:network:manage` | Create + attach internet gateway |
+
+**Driver Redirection (AWS only; Nutanix → 501):**
+
+| Operation | libcloud Method |
+|---|---|
+| list | `driver.ex_list_internet_gateways()` |
+| create | `driver.ex_create_internet_gateway(name)` then `driver.ex_attach_internet_gateway(gateway, network)` |
+
+---
+
+#### 5.8 Route Tables (AWS Only)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 63 | `GET` | `/v1/compute/route-tables` | `compute:network:read` or `compute:read` | List route tables |
+| 64 | `POST` | `/v1/compute/route-tables` | `compute:network:manage` | Create route table |
+| 65 | `POST` | `/v1/compute/route-tables/{route_table_id}/routes` | `compute:network:manage` | Add a route (0.0.0.0/0 → IGW) |
+| 66 | `POST` | `/v1/compute/route-tables/{route_table_id}:associate` | `compute:network:manage` | Associate route table to subnet |
+
+**Driver Redirection (AWS only; Nutanix → 501):**
+
+| Operation | libcloud Method |
+|---|---|
+| list | `driver.ex_list_route_tables()` |
+| create | `driver.ex_create_route_table(network, name=...)` |
+| add route | `driver.ex_create_route(table, cidr_block, internet_gateway=...)` |
+| associate | `driver.ex_associate_route_table(table, subnet)` |
+
+---
+
+#### 5.9 Network Interfaces (AWS ENIs)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 67 | `GET` | `/v1/compute/network-interfaces` | `compute:network:read` or `compute:read` | List network interfaces |
+
+**Driver Redirection (AWS only; Nutanix → 501):**
+
+| Operation | libcloud Method |
+|---|---|
+| list | `driver.ex_list_network_interfaces()` |
 
 ---
 
@@ -2191,15 +2382,50 @@ pending → running → completed
 
 | # | Method | Path | Auth | Scope | Description |
 |---|---|---|---|---|---|
-| 52 | `GET` | `/health` | None | — | Health check |
+| 52 | `GET` | `/health` | None | — | Health check (unauthenticated) |
 
-**Output:**
+**Output** (bare — not wrapped in the standard `data`/`meta` envelope; main.py:35-37):
 ```json
 {
-  "data": { "status": "ok" },
-  "meta": { "request_id": "..." }
+  "status": "ok"
 }
 ```
+
+---
+
+### 8. Storage APIs
+
+**Prefix:** `/v1/storage` (object storage via `build_storage_driver`)
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 68 | `GET` | `/v1/storage/buckets` | `compute:read` or `compute:network:read` | List buckets |
+| 69 | `POST` | `/v1/storage/buckets` | `compute:network:manage` | Create bucket |
+| 70 | `DELETE` | `/v1/storage/buckets/{bucket_name}` | `compute:network:manage` | Delete bucket |
+| 71 | `GET` | `/v1/storage/buckets/{bucket_name}/objects` | `compute:read` or `compute:network:read` | List objects |
+| 72 | `POST` | `/v1/storage/buckets/{bucket_name}/objects` | `compute:network:manage` | Upload object |
+| 73 | `POST` | `/v1/storage/buckets/{bucket_name}/objects/{object_name:path}:download` | `compute:read` or `compute:network:read` | Download object |
+| 74 | `DELETE` | `/v1/storage/buckets/{bucket_name}/objects/{object_name:path}` | `compute:network:manage` | Delete object |
+
+**Driver Redirection:**
+
+| Provider | libcloud Method |
+|---|---|
+| **AWS** | S3 driver (`build_storage_driver`) — `list_containers` / `create_container` / `delete_container` / `list_container_objects` / `upload_object` / `download_object` / `delete_object` |
+| **Nutanix** | `NutanixObjectsStorageDriver` (S3-compatible) — requires a dedicated Nutanix Objects endpoint; a Prism connection returns 501 |
+
+---
+
+### 9. Admin API
+
+**Prefix:** `/v1/admin`
+
+| # | Method | Path | Scope | Description |
+|---|---|---|---|---|
+| 75 | `POST` | `/v1/admin/policies:reload` | `admin:connections:read` | Hot-reload `app/auth/policies.json` |
+
+`POST /v1/admin/policies:reload` is connection-less (`connection_required=false`) — it is
+gated only by the `admin:connections:read` scope and forces `policy_table.reload()`.
 
 ---
 
@@ -2216,6 +2442,9 @@ This table shows the exact libcloud method called for each API endpoint, per pro
 | `GET /sizes` | `driver.list_sizes()` | `driver.list_sizes()` |
 | `GET /nodes` | `driver.list_nodes()` | `driver.list_nodes()` |
 | `GET /nodes/{id}` | `driver.ex_get_node(id)` | `driver.ex_get_node(id)` |
+| `GET /hosts` | Not supported | `driver.ex_list_hosts(cluster_ext_id=...)` |
+| `GET /hosts/{id}` | Not supported | `driver.ex_get_host(id, cluster_ext_id=...)` |
+| `GET /hosts/{id}/bmc-info` | Not supported | `driver.ex_get_host_bmc_info(id, cluster_ext_id)` |
 | `POST /nodes` | `driver.create_node(name, size, image, location, auth, ex_keyname, ex_securitygroup, ex_subnet, ex_assign_public_ip, ex_metadata, ...)` | `driver.create_node(name, size, image, location, auth, ex_subnet, ex_description, ex_memory_mib, ex_vcpus, ex_cores_per_vcpu, ex_storage_container, ex_disk_size_mib, ex_cloud_init, ex_nics, ex_categories, ex_power_on, ex_wait)` |
 | `PATCH /nodes/{id}` (resize) | `driver.ex_change_node_size(node, size)` | Not supported |
 | `PATCH /nodes/{id}` (tag) | `driver.ex_create_tags(node, {...})` | `driver.ex_create_tags(node, {...})` |
@@ -2251,12 +2480,31 @@ This table shows the exact libcloud method called for each API endpoint, per pro
 | `PATCH /subnets/{id}` (tag) | `driver.ex_create_tags(subnet, {...})` | `driver.ex_create_tags(subnet, {...})` |
 | `DELETE /subnets/{id}` | `driver.ex_delete_subnet(id)` | `driver.ex_delete_subnet(id)` |
 | `GET /storage-containers` | Not supported | `ex_list_storage_containers_vmm()` / `ex_list_storage_containers()` / `ex_get_storage_container*()` |
-| `GET /security-groups` | Not supported | `driver.ex_list_security_groups()` / `ex_get_security_group(id)` |
-| `POST /security-groups` | Not supported | `driver.ex_create_security_group(name, description, vpc_ext_id)` |
-| `DELETE /security-groups/{id}` | Not supported | `driver.ex_delete_security_group(id)` |
+| `GET /security-groups` | `driver.ex_get_security_groups()` | `driver.ex_list_security_groups()` / `ex_get_security_group(id)` |
+| `POST /security-groups` | `driver.ex_create_security_group(name, description, vpc_id)` | `driver.ex_create_security_group(name, description, vpc_ext_id)` |
+| `DELETE /security-groups/{id}` | `driver.ex_delete_security_group_by_id(id)` | `driver.ex_delete_security_group(id)` |
 | `GET /load-balancers` | Not supported | `driver.ex_list_load_balancers()` / `ex_get_load_balancer(id)` |
 | `POST /load-balancers` | Not supported | `driver.ex_create_load_balancer(name, vpc_ext_id, external_ip)` |
 | `DELETE /load-balancers/{id}` | Not supported | `driver.ex_delete_load_balancer(id)` |
+| `GET /floating-ips` | `driver.ex_describe_all_addresses()` | Not supported |
+| `POST /floating-ips` | `driver.ex_allocate_address(domain)` | Not supported |
+| `DELETE /floating-ips/{address}` | `driver.ex_release_address(ip, domain)` | Not supported |
+| `POST /floating-ips/{address}:associate` | `driver.ex_associate_address_with_node(node, ip, domain)` | Not supported |
+| `POST /floating-ips/{address}:disassociate` | `driver.ex_disassociate_address(ip, domain)` | Not supported |
+| `GET /internet-gateways` | `driver.ex_list_internet_gateways()` | Not supported |
+| `POST /internet-gateways` | `driver.ex_create_internet_gateway(name)` + `ex_attach_internet_gateway` | Not supported |
+| `GET /route-tables` | `driver.ex_list_route_tables()` | Not supported |
+| `POST /route-tables` | `driver.ex_create_route_table(network, name)` | Not supported |
+| `POST /route-tables/{id}/routes` | `driver.ex_create_route(table, cidr, internet_gateway)` | Not supported |
+| `POST /route-tables/{id}:associate` | `driver.ex_associate_route_table(table, subnet)` | Not supported |
+| `GET /network-interfaces` | `driver.ex_list_network_interfaces()` | Not supported |
+| `GET /storage/buckets` | `storage_driver.list_containers()` | `NutanixObjectsStorageDriver` (dedicated Objects endpoint required) |
+| `POST /storage/buckets` | `storage_driver.create_container(name)` | same (requires Objects endpoint) |
+| `DELETE /storage/buckets/{name}` | `storage_driver.delete_container(container)` | same |
+| `GET /storage/buckets/{name}/objects` | `storage_driver.list_container_objects(container)` | same |
+| `POST /storage/buckets/{name}/objects` | `storage_driver.upload_object(stream, container, name)` | same |
+| `POST /storage/buckets/{name}/objects/{obj}:download` | `storage_driver.download_object(obj)` | same |
+| `DELETE /storage/buckets/{name}/objects/{obj}` | `storage_driver.delete_object(obj)` | same |
 
 ---
 
@@ -2301,6 +2549,10 @@ These are the exact `ex_*` keys that pass through the filter in `app/compute/ser
 | `ex_nics` | Network interface configuration |
 | `ex_categories` | Nutanix categories |
 | `ex_power_on` | Power on after create (bool) |
+| `ex_assign_ip` | Assign an IP to the VM (bool) |
+| `ex_ip_address` | Static IP address |
+| `ex_ip_prefix_length` | IP prefix length |
+| `ex_data_disks` | Extra data disk specs |
 | `ex_wait` | Wait for completion (bool) |
 
 ---
@@ -2326,7 +2578,7 @@ These are the exact `ex_*` keys that pass through the filter in `app/compute/ser
 | `compute:network:manage` | Create/update/delete network resources | `POST/PATCH/DELETE` on network resources |
 | `compute:keypair:manage` | Manage key pairs | All `/key-pairs` endpoints |
 | `jobs:read` | Poll job status | `GET /jobs/{job_id}` |
-| `admin:connections:read` | Token introspection, admin job access | `POST /auth/token/introspect` |
+| `admin:connections:read` | Token introspection, admin job access, policy reload | `POST /auth/token/introspect`, `POST /admin/policies:reload` |
 
 **Scope Aliases:** `compute:read` implies `compute:image:read`, `compute:size:read`, `compute:location:read`, and `compute:network:read`.
 
@@ -2363,20 +2615,17 @@ File: `app/auth/service.py`
 3. Checks the `jti` (JWT ID) against the in-memory `_revoked_jtis` set — if the token was explicitly logged out, it's rejected.
 4. Returns `TokenClaims` with user identity, scopes, allowed providers, session ID.
 
-#### Mode B: `oidc` (Authentik-issued tokens)
+#### Mode B: `oidc` (Dex-issued tokens)
 
-File: `app/auth/oidc_service.py`
+File: `app/auth/oidc_service.py` (identity mapping in `app/auth/identity.py`)
 
 1. `decode_access_token(token)` reads the unverified JWT header to detect the algorithm:
-   - **RS256/ES256/PS256:** Fetches the signing key from Authentik's JWKS endpoint (`settings.oidc_jwks_url`) via `PyJWKClient`. The JWKS URL is typically `https://<authentik>/application/o/<slug>/jwks/`. Keys are cached by `PyJWKClient`.
+   - **RS256/ES256/PS256:** Fetches the signing key from Dex's JWKS endpoint (`settings.oidc_jwks_url` = `http://dex:5556/dex/keys`) via `PyJWKClient`. Keys are cached by `PyJWKClient`.
    - **HS256:** Decodes using `settings.oidc_client_secret` as the shared symmetric key.
 2. PyJWT validates: signature via JWKS or shared secret, `exp`, `iss`, `aud`.
-3. Extracts `preferred_username` (falls back to `sub`) as the user identity.
-4. Maps the username to libcloud scopes via `USERNAME_SCOPES` dict:
-   - `"admin"` → all 16 scopes
-   - `"provisioner"` → 14 scopes (no admin, no image manage)
-   - `"reader"` → 7 read-only scopes
-5. Maps the username to allowed providers via `USERNAME_PROVIDERS` dict.
+3. Resolves the principal via `identity.resolve_principal()` (sub → email → aliases → sub → username).
+4. Maps the principal to scopes via `PRINCIPAL_SCOPES` (`superadmin` / `aws-owner` / `aws-admin` / `aws-viewer` / `ntnx-owner` / `ntnx-admin` / `ntnx-viewer` / `cloud-denied`, plus `-owner|-admin|-viewer` suffix derivation).
+5. Maps the principal to allowed providers via `PRINCIPAL_PROVIDERS`.
 6. Returns `TokenClaims` — indistinguishable from local tokens downstream.
 
 #### Mode C: `hybrid` (accepts both)
@@ -2414,7 +2663,7 @@ File: `app/auth/dependencies.py:_decode_token()`
                     └──────────────────────────────────────────────────────────────┘
 ```
 
-**The `authorize_connection()` method is called by every compute/network route handler** as the first step after extracting the token claims. This is the single authorization gate; there is no way to reach a libcloud driver without passing through it.
+**`authorize_connection()` is invoked by `AuthorizedAPIRoute.custom_route_handler` before any handler runs** — never by the handlers themselves. This is the single authorization gate; there is no way to reach a libcloud driver without passing through it.
 
 ### 3. Provider Credential Flow: Connection → Driver
 
@@ -2422,21 +2671,27 @@ File: `app/auth/dependencies.py:_decode_token()`
                     ┌─────────────────────────────────────────────────────┐
                     │        app/providers/factory.py:build_driver()      │
                     │                                                     │
-  ProviderConnection │  connection.provider == "aws"?                     │
-  (from request) ───>│    → create_aws_driver(key, secret, config)        │
+  ProviderConnection │  effective_credentials(connection)                 │
+  (from request) ───>│    → Vault KV v2 GET /v1/{mount}/data/.../binding  │
+                    │      (X-Vault-Token header, 30s in-memory cache)    │
+                    │    → env fallback only when Vault is unconfigured   │
+                    │                                                     │
+                    │  connection.provider == "aws"?                      │
+                    │    → create_aws_driver(creds.key, creds.secret,     │
+                    │                        connection.config)           │
                     │      → Provider.EC2 driver                          │
                     │                                                     │
                     │  connection.provider == "nutanix"?                  │
-                    │    → create_nutanix_driver(key, secret, config)     │
-                    │      → NutanixNodeDriver(host, port, secure, ...)   │
+                    │    → reuse cached/client session cookie, else       │
+                    │      one-time Basic login → cache Set-Cookie        │
                     └─────────────────────────────────────────────────────┘
 ```
 
-**Key point:** The provider credentials (`connection.credentials.key` and `connection.credentials.secret`) are extracted directly from the request body/query and passed to the libcloud driver constructor. They are:
+**Key point:** Backend credentials are resolved by the API from its own identity — the Vault secret `secret/libcloud/<auth_binding>` (env fallback only when Vault is unconfigured). Client-supplied `connection.credentials` are rejected with 403 `auth_client_credentials_forbidden` unless `ALLOW_CLIENT_CREDENTIALS=true`. Resolved credentials are:
 
 - **Never stored** on the server's filesystem (users.json only stores JWT user records, not provider keys).
 - **Never logged** (sensitive keys are redacted in async job payloads via `redact_payload()`).
-- **Transient** — they exist only for the duration of the API call.
+- **Cached only in memory** (Vault secrets 30s TTL; Nutanix session cookies 3600s TTL keyed `nutanix:<host>:<port>`).
 
 ### 4. Complete Request Lifecycle
 
@@ -2444,12 +2699,8 @@ File: `app/auth/dependencies.py:_decode_token()`
 Client sends request:
   POST /v1/compute/nodes
   Authorization: Bearer <token>          ← Step 1: Auth header
+  X-Provider-Connection: {"provider":"aws","auth_binding":"aws"}   ← names a credential
   Body: {
-    "connection": {                       ← Step 2: Provider credentials
-      "provider": "aws",
-      "config": {"region": "us-east-1"},
-      "credentials": {"key": "AKIA...", "secret": "..."}
-    },
     "name": "my-vm",
     "size": {"id": "t2.micro"},
     "image": {"id": "ami-xxx"}
@@ -2460,19 +2711,25 @@ Server processing:
   RequestIDMiddleware                     ← Attach X-Request-ID
        │
        ▼
-  get_current_claims()                    ← Step 3: Extract & verify Bearer token
-       │                                    (local HS256, OIDC JWKS, or hybrid)
-       ▼
-  require_scopes("compute:node:create")   ← Step 4: Verify JWT scope
+  AuthorizedAPIRoute.custom_route_handler ← policy_table.get("POST /v1/compute/nodes")
        │
        ▼
-  policy_engine.authorize_connection()    ← Step 5: Provider allowlist + OpenFGA
-       │                                    - JWT scope check (already done)
-       │                                    - allowed_providers check
-       │                                    - FGA: can_connect → can_use → can_provision
+  claims_from_request()                   ← Step 2: Extract & verify Bearer token
+       │                                    (local HS256, OIDC JWKS, or hybrid)
        ▼
-  compute_service.create_node()           ← Step 6: Build driver from credentials
-       │                                    build_driver(connection)
+  connection_from_request()               ← Step 3: Read X-Provider-Connection / ?connection=
+       │
+       ▼
+  policy_engine.authorize_connection()    ← Step 4: scope → provider allowlist → credential policy → OpenFGA
+       │                                    - can_connect @ libcloud_api:main
+       │                                    - can_use @ provider:aws
+       │                                    - can_provision|can_read @ aws_region:<binding>
+       ▼
+  check_driver_capability()               ← Step 5: only if policy entry declares a capability
+       │
+       ▼
+  compute_service.create_node()           ← Step 6: build_driver(connection)
+       │                                    → effective_credentials → Vault
        │                                    → create_aws_driver(key, secret, config)
        ▼
   driver.create_node(**kwargs)            ← Step 7: Libcloud API call
@@ -2488,14 +2745,17 @@ Server processing:
 
 | Property | How It's Achieved |
 |---|---|
-| **Token authenticity** | JWT signature verified against HS256 key (local) or Authentik JWKS/client-secret (OIDC) |
+| **Token authenticity** | JWT signature verified against HS256 key (local) or Dex JWKS/client-secret (OIDC) |
 | **Token freshness** | `exp` claim validated; 15-minute access token TTL |
 | **Token revocation** | JTI blacklist (`_revoked_jtis`) checked on every request; logout adds JTI to blacklist |
-| **Scope enforcement** | `require_scopes()` / `require_any_scopes()` FastAPI dependencies check every endpoint |
+| **Scope enforcement** | Policy-table `scopes_any_of` checked by `AuthorizedAPIRoute` (`require_scopes()` now serves only the auth router) |
 | **Provider restriction** | `allowed_providers` claim checked by `PolicyEngine` |
 | **Fine-grained access** | OpenFGA tuple checks: `can_connect` → `can_use` → `can_provision`/`can_read` |
-| **Credential confidentiality** | Provider credentials never stored; redacted in async job payloads; excluded from logs |
-| **Transport security** | All credentials transit in HTTPS request body; use TLS in production |
+| **Credential confidentiality** | Backend credentials held server-side (Vault); redacted in async job payloads; excluded from logs |
+| **Transport security** | Use TLS in production; bind to `127.0.0.1` by default (docker-compose.yml) |
+
+**Absent controls:** there is no CORS middleware and no rate limiting — only
+`RequestIDMiddleware` is registered (`main.py:23`).
 
 ---
 
@@ -2518,29 +2778,31 @@ Async jobs run on a `ThreadPoolExecutor` (4 workers). Poll with `GET /v1/jobs/{j
 ## Credential Flow (Security Model)
 
 ```
-1. Client holds provider credentials (AWS keys, Nutanix password, etc.)
+1. The API holds its own backend credentials (AWS keys, Nutanix password, etc.)
+   in Vault KV v2 (secret/libcloud/<binding>), with an env fallback for dev.
 
 2. Client logs in to the REST API:
    POST /v1/auth/login → receives JWT with scopes and allowed_providers
    OR
-   Client obtains token from Authentik → presents OIDC token
+   Client obtains a Dex (OIDC) token via the identity service
 
-3. Client calls compute/network API with connection in the request:
-   GET /v1/compute/nodes?connection=<url-encoded-json>
+3. Client calls compute/network API naming a credential, never supplying its value:
+   GET /v1/compute/nodes?connection=<url-encoded-json with auth_binding>
    or
-   POST /v1/compute/nodes { "connection": {...}, "name": "...", ... }
+   POST /v1/compute/nodes { "connection": {"provider":"aws","auth_binding":"aws"}, ... }
+   or via the X-Provider-Connection header
 
 4. Server validates JWT/OIDC token (signature, expiry, issuer, audience, JTI)
    → Checks JWT scopes and allowed_providers
    → Checks OpenFGA tuples (if enabled)
-   → Builds libcloud driver from connection.credentials
-   → Calls driver.list_nodes() (or other operation)
+   → Resolves backend credentials from Vault (effective_credentials)
+   → Builds libcloud driver and calls driver.list_nodes() (or other operation)
    → Returns results to client
 
-5. Async jobs redact credentials.key and credentials.secret in stored payloads
+5. Async jobs redact the credentials object in stored payloads (redact_payload())
 ```
 
-**Note:** Provider credentials transit the API in the `connection` object. Use HTTPS in production and treat the REST API as a trusted proxy boundary.
+**Note:** Client-supplied backend credentials are rejected (403 `auth_client_credentials_forbidden`) unless `ALLOW_CLIENT_CREDENTIALS=true` (local dev only). The API's own Vault-resolved credentials never transit the client; use HTTPS in production.
 
 ---
 

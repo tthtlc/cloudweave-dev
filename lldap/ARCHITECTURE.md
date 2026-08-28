@@ -54,10 +54,12 @@ attribute.
 | role         | `role`                     | `role`         | custom attribute   |
 | job desc     | `jobtitle`                 | `jobtitle`     | custom attribute   |
 
-The custom attributes are defined as STRING, single-valued, editable and
-visible (see `bootstrap/user-schemas/custom-attributes.json`). Once registered
-in the schema they appear in the web UI user form and are returned by LDAP
-searches.
+The custom attributes are defined as STRING, editable and visible.
+`department` and `jobtitle` are single-valued; `role` is **multi-valued**
+(`isList: true` in `scripts/setup-schema.sh`, the authoritative source — the
+JSON at `bootstrap/user-schemas/custom-attributes.json` records all three as
+`isList: false` but is never applied). Once registered in the schema they
+appear in the web UI user form and are returned by LDAP searches.
 
 ## Container topology
 
@@ -85,8 +87,9 @@ Three services are defined in `docker-compose.yml`:
 ### `lldap` (server)
 
 - Image `lldap/lldap:latest`, `restart: unless-stopped`.
-- Host ports `${LLDAP_LDAP_PORT}:3890` (LDAP) and `${LLDAP_HTTP_PORT}:17170`
-  (Web UI), configurable via `.env`.
+- Host ports `127.0.0.1:${LLDAP_LDAP_PORT}:3890` (LDAP) and
+  `127.0.0.1:${LLDAP_HTTP_PORT}:17170` (Web UI), loopback-only, configurable
+  via `.env`.
 - Persistent data in the named volume `lldap_data` mounted at `/data` (holds
   the embedded DB and generated `lldap_config.toml`).
 - Runs rootless as UID/GID 1000.
@@ -99,8 +102,9 @@ Three services are defined in `docker-compose.yml`:
     once, up front, to avoid refactoring later.
   - `LLDAP_HTTP_ADDR=0.0.0.0`, `LLDAP_LDAP_HOST=0.0.0.0` — bind on all
     interfaces inside the container.
-- The upstream image ships a healthcheck, so `depends_on` can use
-  `condition: service_healthy` for the tooling services.
+- The compose file defines its own explicit healthcheck (`curl -fsS
+  http://127.0.0.1:17170/`) at `docker-compose.yml` lines 23-28, so
+  `depends_on` can use `condition: service_healthy` for the tooling services.
 
 ### `lldap-tools` (management tooling)
 
@@ -124,8 +128,9 @@ Three services are defined in `docker-compose.yml`:
 
 - Same image as `lldap-tools`, behind the `bootstrap` profile.
 - `entrypoint: ["bash", "/scripts/setup-schema.sh"]`, `restart: "no"`.
-- Run with `docker compose --profile bootstrap run --rm --build bootstrap` to
-  (re)apply the custom attribute schema idempotently after the server is up.
+- Run with `docker compose -f docker-compose.yml --profile bootstrap up
+  bootstrap` to (re)apply the custom attribute schema idempotently after the
+  server is up (this is what `setup.sh` invokes).
 
 ## Customizing the schema
 
@@ -142,23 +147,28 @@ success.
    `{"username":"admin","password":"<LLDAP_ADMIN_PASS>"}`, extracting the
    `token` (JWT, valid 1 day; refresh token valid 30 days).
 3. For each of `department`, `role`, `jobtitle`, calls `addUserAttribute` with
-   `attributeType: STRING, isList: false, isVisible: true, isEditable: true`.
+   `attributeType: STRING, isVisible: true, isEditable: true` — `isList: false`
+   for `department` and `jobtitle`, but `isList: true` for `role` (see the
+   `create_attr` calls at the end of `scripts/setup-schema.sh`).
 4. Queries `schema { userSchema { attributes { ... } } }` and prints the
    resulting schema as JSON.
 
-The same attribute definitions are also recorded in
-`bootstrap/user-schemas/custom-attributes.json` for LLDAP's community bootstrap
-feature (`USER_SCHEMAS_DIR=/bootstrap/user-schemas`); the JSON file is a
-reference/supply for that path, while the GraphQL script is what this deployment
-actually applies.
+A matching JSON is also recorded in
+`bootstrap/user-schemas/custom-attributes.json`, but it is **never mounted or
+read**: the `lldap` container mounts only `lldap_data:/data` and sets no
+`USER_SCHEMAS_DIR` (see `docker-compose.yml` lines 12-22). That JSON is a stale
+reference only — and it disagrees with the script, recording `role` as
+`isList: false`. The GraphQL script is what this deployment actually applies,
+so it is authoritative.
 
 ### Adding a new field later
 
-1. Add an entry to `bootstrap/user-schemas/custom-attributes.json`.
-2. Add the attribute name to the loop in `scripts/setup-schema.sh`
-   (`for attr in ...`).
-3. Re-run `docker compose --profile bootstrap run --rm --build bootstrap` (or
-   `docker compose run --rm lldap-tools /scripts/setup-schema.sh`).
+1. (Optional — the JSON is not read by the deployment) Add an entry to
+   `bootstrap/user-schemas/custom-attributes.json` for reference.
+2. Add a `create_attr <name> <is_list>` call to `scripts/setup-schema.sh`.
+3. Re-run `docker compose -f docker-compose.yml --profile bootstrap up
+   bootstrap` (or `docker compose run --rm lldap-tools
+   /scripts/setup-schema.sh`).
 4. Reference the new attribute in `scripts/create-user.sh`'s `ATTRS` block.
 
 ## Creating users
@@ -230,7 +240,7 @@ existing DNs are anchored to it.
 | Action                      | Command                                                                    |
 |-----------------------------|----------------------------------------------------------------------------|
 | Start server                | `docker compose up -d`                                                     |
-| Apply custom schema (once)  | `docker compose --profile bootstrap run --rm --build bootstrap`            |
+| Apply custom schema (once)  | `docker compose --profile bootstrap up bootstrap`                          |
 | (Re)apply schema on demand  | `docker compose run --rm lldap-tools /scripts/setup-schema.sh`             |
 | Create a user               | `docker compose run --rm lldap-tools /scripts/create-user.sh ...`          |
 | List/verify users over LDAP | `docker compose run --rm lldap-tools /scripts/verify-ldap.py`              |
@@ -260,6 +270,6 @@ optional layer; the `docker compose` commands are the canonical interface).
 - **Tooling services must use profiles.** Without a profile, `docker compose
   up` would try to start the one-shot `bootstrap`/`lldap-tools` services on
   every run. Profiles keep `up` limited to the long-running `lldap` service.
-- **Healthcheck-driven ordering.** The upstream `lldap` image exposes a
-  healthcheck, which lets `depends_on` use `service_healthy` so tooling does
-  not race the server on first boot.
+- **Healthcheck-driven ordering.** The compose file defines its own explicit
+  healthcheck for `lldap`, which lets `depends_on` use `service_healthy` so
+  tooling does not race the server on first boot.

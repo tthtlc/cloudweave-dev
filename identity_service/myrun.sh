@@ -1,6 +1,4 @@
-
-
-#  cd $REPO_ROOT/identity_service
+  cd $REPO_ROOT/identity_service
   # Path 1 (auth hardening) — 13 checks
   ./verify_auth.sh
   # Path 2 (provision replay) — provisions a real VM, then tears it down
@@ -8,9 +6,6 @@
   CLOUD=nutanix ./verify_provision.sh         # Nutanix
   TEARDOWN=0 ./verify_provision.sh             # keep the VM
   BASE_URL=http://\$PUBLIC_HOSTNAME:8766 ./verify_provision.sh
-
-
-
 
     Verification (live AWS)
 

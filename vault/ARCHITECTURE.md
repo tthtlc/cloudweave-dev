@@ -12,9 +12,9 @@ is **not** a user password living in LLDAP. Concretely:
   `generated/vault.env`, not stored *inside* Vault's KV).
 
 What Vault does **not** store: human login passwords. Those live in LLDAP
-(`../lldap`) and are verified by LLDAP/Dex at login time. Vault's LDAP auth
-method binds against LLDAP **in real time** — it never imports or replicates
-passwords (see §6).
+(`../lldap`) and are verified by LLDAP/Dex at login time. Vault has **no LDAP
+auth method** — callers authenticate to Vault by token only (see §6), so it
+never imports or replicates LLDAP passwords.
 
 This directory is a **standalone Docker Compose project** running the Vault
 container named **`vault`** on the shared external `libcloud_net` network.
@@ -28,26 +28,27 @@ container named **`vault`** on the shared external `libcloud_net` network.
             │                                                                      │
             │   ┌─────────┐   read-only token    ┌─────────┐                       │
             │   │libcloud │ ───────────────────► │ vault   │  (this project)       │
-            │   │ REST API│   GET /v1/secret/... │ :8200   │  KV v2 + LDAP auth    │
-            │   └────┬────┘                      └────┬────┘                       │
-            │        │ JWT (Dex-issued)               │  LDAP bind (real-time)     │
-            │        ▼                                ▼                            │
+            │   │ REST API│   GET /v1/secret/... │ :8200   │  KV v2 (token auth)   │
+            │   └────┬────┘                      └─────────┘                       │
+            │        │ JWT (Dex-issued)                                            │
+            │        ▼                                                             │
             │   ┌─────────┐   Check           ┌─────────┐                          │
             │   │openfga  │ ◄── can_manage_ ──│ lldap   │  user directory          │
             │   │ :8080   │     credentials   │ :3890   │  (uid, mail, cn, groups) │
             │   └─────────┘                   └─────────┘                          │
             └─────────────────────────────────▲────────────────────────────────────┘
                                               │  HTTP API (X-Vault-Token)
-                              host admin scripts (../openfga_my/scripts/vault-*.sh,
-                                  set_tenant_credentials.py, vault_bootstrap.py)
+                              host admin scripts (../test_script/scripts/vault-*.sh,
+                                  set_tenant_credentials.py) + ../openfga_postgres/vault_bootstrap.py
 ```
 
 - **Secrets store (this service):** Vault holds cloud-provider credentials as
   KV v2 secrets and (optionally) registers cloud secrets engines for dynamic
   short-lived credentials.
-- **Identity / authentication (upstream):** LLDAP holds users + groups. Vault's
-  `auth/ldap` method binds against LLDAP to authenticate human callers and read
-  their group memberships; LLDAP groups are mapped to Vault ACL policies.
+- **Identity / authentication (upstream):** LLDAP holds users + groups and is
+  verified by Dex at login time. Vault itself has **no LDAP auth method** —
+  callers reach Vault by token only (root token for admin scripts, read-only
+  token for the libcloud REST API). LLDAP is not mapped to Vault ACL policies.
 - **Authorization gate (sibling):** OpenFGA gates **writes** to Vault: a
   tenant's backend credentials can only be written by a caller who (a) logs in
   to Dex (i.e. is a real LLDAP user) and (b) holds the OpenFGA
@@ -68,12 +69,12 @@ container named **`vault`** on the shared external `libcloud_net` network.
 | `add_credential.py` | Insert / overwrite a KV v2 secret at `secret/libcloud/<name>` (root-token write). |
 | `delete_credential.py` | Delete a KV v2 secret (metadata + all versions, or destroy current version only). |
 | `list_credentials.py` | Enumerate every secret under `secret/libcloud/` (keys + metadata, optionally values). |
-| `generated/vault.env` | Emitted by `vault_bootstrap.py` (chmod `0600`, gitignored). Contains `VAULT_ADDR`, `VAULT_TOKEN` (libcloud REST read token), `VAULT_ROOT_TOKEN`, `VAULT_UNSEAL_KEY`. |
+| `generated/vault.env` | Emitted by `vault_bootstrap.py` (chmod `0600`). Contains `VAULT_ADDR`, `VAULT_TOKEN` (libcloud REST read token), `VAULT_ROOT_TOKEN`, `VAULT_UNSEAL_KEY`. **Committed to git — treat values as compromised; see §8.5.** |
 | `vault.log` | Captured server log from a manual run (not used by the container; the compose project logs to Docker). |
 | `myrun.sh` | Developer convenience wrapper for a manual local run. |
 
-The bootstrap logic itself lives in the orchestrator project at
-`../openfga_my/vault_bootstrap.py` and is mounted read-only into the
+The bootstrap logic itself lives in the OpenFGA orchestrator project at
+`../openfga_postgres/vault_bootstrap.py` and is mounted read-only into the
 `vault-bootstrap` container (see `docker-compose.yml`).
 
 ---
@@ -130,7 +131,7 @@ services:
     networks:
       - libcloud_net
     ports:
-      - "${VAULT_PORT:-8200}:8200"
+      - "127.0.0.1:${VAULT_PORT:-8200}:8200"
     cap_add:
       - IPC_LOCK
     volumes:
@@ -152,10 +153,11 @@ Key points:
   use (`http://vault:8200`), used by the libcloud REST API at runtime and by
   `vault-bootstrap` for init/unseal.
 - **Network:** `libcloud_net` (external) — shared bridge across all sibling
-  compose projects (`../lldap`, `../dex`, `../openfga_my`, `../libcloud.rest`).
-  Created by `../openfga_my/setup.sh` before Vault starts.
-- **Port:** host `8200` → container `8200`, overridable via `VAULT_PORT`. This
-  is the **host-side** entry point for the admin scripts and the web UI.
+  compose projects (`../lldap`, `../dex`, `../openfga_postgres`, `../libcloud.rest`).
+  Created by the repo-root `../setup.sh` before Vault starts.
+- **Port:** host `127.0.0.1:8200` → container `8200`, overridable via
+  `VAULT_PORT` (loopback-only — not reachable from other hosts). This is the
+  **host-side** entry point for the admin scripts and the web UI.
 - **`cap_add: IPC_LOCK`** — required by Vault's `mlock` syscall; harmless when
   `disable_mlock = true` (kept for forward-compat if mlock is re-enabled).
 - **Volumes:** `config.hcl` is mounted **read-only**; the `vault-data` named
@@ -168,16 +170,18 @@ Key points:
 
 ### Bootstrap container (`vault-bootstrap`)
 
-A one-shot `python:3.12-slim` container runs `../openfga_my/vault_bootstrap.py`
+A one-shot `python:3.12-slim` container runs `../openfga_postgres/vault_bootstrap.py`
 to initialize, unseal, configure, and issue the libcloud REST API read token.
 It runs as the host UID/GID so `generated/vault.env` (chmod `0600`) is owned by
 the host user and readable by `setup.sh`. It is started by
-`../openfga_my/setup.sh` after the `vault` service is healthy.
+`../setup.sh`; compose `depends_on` waits only for `condition: service_started`
+(not `service_healthy`), and the script itself polls `/sys/init` until Vault
+responds.
 
-### Lifecycle (driven by `../openfga_my/setup.sh`)
+### Lifecycle (driven by `../setup.sh`)
 
 1. `setup.sh` creates `libcloud_net` if missing.
-2. `setup.sh` performs a **superadmin Dex login** (`scripts/superadmin_auth.sh`)
+2. `setup.sh` performs a **superadmin Dex login** (`test_script/scripts/superadmin_auth.sh`)
    to obtain `SUPERADMIN_JWT`. Without it, `vault_bootstrap.py` refuses to run
    (§6).
 3. `docker compose -f ../vault/docker-compose.yml up -d vault` starts the
@@ -255,7 +259,7 @@ the normal path for cloud credentials):
 TENANT=aws \
   LIBCLOUD_USER=aws-owner LIBCLOUD_PASSWORD="$LIBCLOUD_PASSWORD_AWS_OWNER" \
   LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \
-  python3 ../openfga_my/scripts/set_tenant_credentials.py
+  python3 ../test_script/scripts/set_tenant_credentials.py
 ```
 
 This is the **authorized** path: it (1) logs the caller in to Dex as the LLDAP
@@ -269,7 +273,7 @@ are **never** read from `.env` — the owner supplies them at runtime.
 short-lived credentials):
 
 ```bash
-../openfga_my/scripts/vault-secrets-engine-enable.sh \
+../test_script/scripts/vault-secrets-engine-enable.sh \
     --provider aws --mount aws --root-creds-file /tmp/aws-root.env --region us-east-1
 ```
 
@@ -315,84 +319,44 @@ dedicated policy is added (via `vault-policy-apply.sh`).
 
 ---
 
-## 6. How LLDAP credentials reach Vault
+## 6. How Vault is authenticated (token-only; no LDAP)
 
-There are **two distinct LLDAP→Vault credential flows**; do not conflate them.
+Vault is reached **exclusively by Vault token** over the HTTP API
+(`X-Vault-Token`). There is **no LDAP auth method** in this deployment:
+`vault_bootstrap.py` never writes `auth/ldap/config`, never issues
+LDAP-issued tokens, and never maps LLDAP groups to Vault policies.
 
-### 6.1 User login passwords — never enter Vault
+The only two tokens Vault uses are:
 
-Human passwords live in LLDAP only. When a user authenticates to Vault via the
-LDAP auth method, Vault performs a **real-time LDAP bind** against LLDAP using
-*the user's own* username + password:
+- **`VAULT_ROOT_TOKEN`** — the root token from `vault operator init`, used by
+  host admin scripts (`add_credential.py`, `delete_credential.py`, the
+  `vault-*.sh` operators) for writes, policy/engine management, and
+  credential seeding.
+- **`VAULT_TOKEN`** — the least-privilege read token (ttl 768h, renewable),
+  bound to the `libcloud-rest-read` policy, used by the libcloud REST API to
+  read `secret/libcloud/*` at request time.
 
-1. The caller POSTs `username` + `password` to
-   `/v1/auth/ldap/login/<username>`.
-2. Vault binds to LLDAP as that user (verifying the password against LLDAP's
-   stored hash — the password never leaves LLDAP).
-3. On success, Vault reads the user's group memberships from LLDAP via an LDAP
-   search.
-4. Vault maps those groups to ACL policies (via
-   `vault-ldap-group-bind.sh`, §6.2) and issues a short-lived Vault token
-   scoped to those policies.
+Both are written to `generated/vault.env` by `vault_bootstrap.py` (§4).
 
-No password is stored in, replicated to, or hashed by Vault. LLDAP remains the
-sole authority for password verification. Replacing LLDAP with AD later only
-requires repointing `auth/ldap/config` — the rest of the stack is unchanged.
+### 6.1 LLDAP credentials do not reach Vault
 
-### 6.2 Service-account bind credential — stored in Vault's LDAP auth config
+LLDAP holds the user directory and is the password authority, but it is
+**upstream of Dex, not Vault**. The `LLDAP_BIND_DN` / `LLDAP_BIND_PW` exports
+in `setup.sh` are consumed by `openfga_postgres/dex_bootstrap.py` to render
+**Dex's** LDAP connector. When a human (or a host script) logs in to Dex, the
+result is a Dex-issued JWT; that JWT is validated by OpenFGA and the libcloud
+REST API — **not** by Vault. Vault performs no LLDAP bind, no group search,
+and no group→policy mapping.
 
-For Vault to *search* LLDAP for users/groups (independent of any individual
-login), the LDAP auth method needs a **service-account bind DN + password**.
-This is the one LLDAP credential that flows into Vault:
-
-```
-setup.sh  →  sources ../lldap/.env
-              exports LLDAP_BIND_DN = uid=admin,ou=people,dc=libcloud,dc=local
-              exports LLDAP_BIND_PW = <LLDAP_LDAP_USER_PASS>
-              exports LLDAP_BASE_DN = dc=libcloud,dc=local
-       ↓
-vault write auth/ldap/config \
-   url="ldap://lldap:3890" \
-   userdn="ou=people,dc=libcloud,dc=local" \
-   groupdn="ou=groups,dc=libcloud,dc=local" \
-   binddn="$LLDAP_BIND_DN" bindpass="$LLDAP_BIND_PW" \
-   userattr="uid" insecure_tls=true
-```
-
-- `url=ldap://lldap:3890` — LLDAP is on `libcloud_net`, resolved by container
-  DNS. **For production**, use `ldaps://lldap:3890` (or 636) with a valid CA
-  and `insecure_tls=false`.
-- `binddn` / `bindpass` — the LLDAP admin (or a dedicated read-only service
-  account) used by Vault to search the directory. The password is read from
-  `../lldap/.env` (host-side, gitignored) by `setup.sh` and written into
-  Vault's `auth/ldap/config` over the HTTP API; it is then stored **encrypted
-  at rest inside Vault**, not in any env file going forward.
-- `userdn` / `groupdn` — the LLDAP search bases (people / groups).
-- `userattr=uid` — matches the LLDAP `uid` attribute that Dex also uses for
-  `sub`, so the principal identity is identical across Dex and Vault.
-
-Once configured, **LLDAP groups are bound to Vault policies** with
-`vault-ldap-group-bind.sh`:
-
-```bash
-../openfga_my/scripts/vault-ldap-group-bind.sh cloud-admin-aws cloud-admin-aws
-# writes auth/ldap/groups/cloud-admin-aws { policies: "cloud-admin-aws" }
-```
-
-So when a member of the LLDAP group `cloud-admin-aws` logs in to Vault through
-`auth/ldap/login/<uid>`, Vault issues a token carrying the `cloud-admin-aws`
-policy. The binding is idempotent and is verified by a read-back + audit line
-to `generated/vault_audit.log`.
-
-### 6.3 Bootstrap gate — superadmin JWT
+### 6.2 Bootstrap gate — superadmin JWT
 
 `vault_bootstrap.py` **refuses to initialize or configure Vault** unless
 `SUPERADMIN_JWT` is set and valid. That JWT is obtained by
-`scripts/superadmin_auth.sh` after a successful Dex login as the LLDAP
-`superadmin` user. This enforces: *the initial root token, the KV mount, the
-read policy, and the LDAP auth configuration can only be created by superadmin.*
-Without that gate, any host user with `generated/vault.env` could re-bootstrap
-Vault and re-issue the root token.
+`test_script/scripts/superadmin_auth.sh` after a successful Dex login as the
+LLDAP `superadmin` user. This enforces: *the initial root token, the KV mount,
+and the read policy can only be created by superadmin.* Without that gate, any
+host user with `generated/vault.env` could re-bootstrap Vault and re-issue the
+root token.
 
 ---
 
@@ -404,18 +368,19 @@ distinct:
 ### 7.1 The OpenFGA **server** (`openfga` container) — does not talk to Vault
 
 The OpenFGA server itself has **no** Vault client. It is started
-(see `../openfga_my/docker-compose.yml`) with OIDC authn pointed at Dex and a
-sqlite datastore; it validates caller JWTs against Dex's JWKS and evaluates
-tuples. It neither reads from nor writes to Vault. Authorization decisions are
-made purely from the OIDC `sub` + the tuple store.
+(see `../openfga_postgres/docker-compose.yml`) with OIDC authn pointed at Dex
+and a PostgreSQL datastore (`postgres:16`, volume `openfga-pg-data`); it
+validates caller JWTs against Dex's JWKS and evaluates tuples. It neither reads
+from nor writes to Vault. Authorization decisions are made purely from the
+OIDC `sub` + the tuple store.
 
-### 7.2 The **`openfga_my` admin tooling** — does talk to Vault
+### 7.2 The **`test_script/scripts` admin tooling** — does talk to Vault
 
-The orchestration project (`../openfga_my/scripts/`) contains the Vault admin
-scripts. They reach Vault over the HTTP API using `scripts/vault_common.sh`,
-which:
+The operator-script directory (`../test_script/scripts/`) contains the Vault
+admin scripts. They reach Vault over the HTTP API using
+`../test_script/scripts/vault_common.sh`, which:
 
-- loads `../vault/generated/vault.env` (and `../openfga_my/.env`) to resolve
+- loads `../vault/generated/vault.env` (and the repo-root `.env`) to resolve
   `VAULT_ADDR` and `VAULT_ROOT_TOKEN` (preferring the root token for admin
   operations, falling back to `VAULT_TOKEN` for read-only ones),
 - exposes `vault_get` / `vault_put` / `vault_post` / `vault_delete` /
@@ -435,7 +400,7 @@ network**: OpenFGA decides who may write to Vault. The flow
 
 ```
 caller (LLDAP user)
-  │  1. scripts/idp_login.py → Dex login (LLDAP password verified by LLDAP)
+  │  1. test_script/scripts/idp_login.py → Dex login (LLDAP password verified by LLDAP)
   │      └─ returns a Dex-issued JWT (sub = LLDAP uid, aud = libcloud-rest)
   │
   │  2. OpenFGA Check: user:<uid>  can_manage_credentials  tenant:<t>
@@ -485,9 +450,9 @@ layered:
 ### 8.1 Seal state + init gate
 
 - Vault starts **sealed** on every fresh boot. The unseal key is in
-  `generated/vault.env` (chmod `0600`, gitignored, host-side only). Without it,
-  the encrypted blob on the `vault-data` volume is opaque even if the volume is
-  exfiltrated.
+  `generated/vault.env` (chmod `0600`, host-side only — but committed to git;
+  see §8.5). Without it, the encrypted blob on the `vault-data` volume is
+  opaque even if the volume is exfiltrated.
 - `vault_bootstrap.py` refuses to initialize or re-issue the root token unless
   `SUPERADMIN_JWT` is present and valid (a real Dex login as the LLDAP
   `superadmin` user). So merely having host access is not enough to (re)create
@@ -499,13 +464,12 @@ layered:
 | --- | --- | --- | --- |
 | `VAULT_ROOT_TOKEN` | root | `generated/vault.env` (0600) | host admin scripts only |
 | `VAULT_TOKEN` (libcloud REST) | read/list `secret/libcloud/*` | synced into `../libcloud.rest/.env` | libcloud REST API container |
-| LDAP-issued tokens | per LLDAP group → bound policy | issued per login, short-lived | humans who `auth/ldap/login` |
 
 - The root token is **not** mounted into any long-running container; it is read
   from `generated/vault.env` only by host-side scripts at invocation time.
 - The REST API token is path-scoped to `secret/libcloud/*` and read-only — it
   cannot enumerate engines, write, delete, or reach `<mount>/config/root`.
-- `vault_require_root_token()` in `vault_common.sh` refuses to run
+- `vault_require_root_token()` in `test_script/scripts/vault_common.sh` refuses to run
   policy/engine/lease-revoke-prefix scripts if only the read-only token is
   available, so a mis-set `VAULT_TOKEN` cannot accidentally perform root ops.
 
@@ -519,16 +483,16 @@ layered:
   is OpenFGA's, evaluated from the caller's JWT (`sub` = LLDAP `uid`). A
   stolen root token alone is not enough to pass the gate *legitimately* — the
   audit trail (`generated/vault_audit.log`) records the actor, and the
-  OpenFGA tuple audit (`scripts/openfga-tuple-audit.py`) records who has the
+  OpenFGA tuple audit (`test_script/scripts/openfga-tuple-audit.py`) records who has the
   owner relation.
 
 ### 8.4 Network isolation
 
 - Vault is on `libcloud_net` (a dedicated Docker bridge), reachable by
   container DNS only from other containers on that network. It is **not**
-  exposed on a public interface; the host port `8200` is bound to `localhost`
-  by default (the `ports:` map can be tightened further or removed for
-  headless deployments).
+  exposed on a public interface; the host port `8200` is bound to `127.0.0.1`
+  (loopback) by default (the `ports:` map can be removed for headless
+  deployments).
 - In-cluster traffic to Vault is plain HTTP (TLS disabled, §3). This is
   acceptable **only** because `libcloud_net` is an isolated single-host bridge.
   For any multi-host or external exposure, enable TLS on the listener and put
@@ -536,9 +500,14 @@ layered:
 
 ### 8.5 Secret material handling
 
-- `generated/vault.env` is `chmod 0600`, owned by the host user, and
-  gitignored (`.gitignore`). It is written by `vault_bootstrap.py` and read by
-  the admin scripts; it is never baked into an image or mounted into
+- **`generated/vault.env` is committed to git** — it is **not** gitignored
+  (`git ls-files` lists `vault/generated/vault.env`), and it contains the Vault
+  root token and unseal key. Treat those values as **compromised**: rotate
+  them, run `git rm --cached vault/generated/vault.env`, and purge the file
+  from git history (and from any clone of the repo). The same applies to
+  `dex/generated/dex.env`. The file is `chmod 0600`, owned by the host user,
+  and read by the admin scripts, but that does not protect it once it is in
+  the repository; it is also never baked into an image or mounted into
   long-running containers.
 - Cloud root credentials supplied to `vault-secrets-engine-enable.sh` are read
   once from a caller-supplied file (never hardcoded, never logged), mapped to
@@ -554,31 +523,36 @@ layered:
   (timestamp, actor, action, target, result, HTTP code). Vault's own audit
   devices can be enabled in addition (`vault audit enable file ...`).
 - Rotation scripts:
-  - `scripts/vault-root-cred-rotate.sh` — rotates a cloud secrets engine's
-    root credentials.
-  - `scripts/vault-static-secret-rotate.sh` — rotates a static KV secret.
-  - `scripts/vault-lease-revoke.sh` / `vault-lease-revoke-prefix.sh` — revoke
-    dynamic-cred leases on offboard.
-  - `scripts/vault-token-lookup.sh` — inspect a token's capabilities + TTL.
-- `scripts/lldap-admin-cred-rotate.sh` rotates the LLDAP admin password; after
-  rotation, `auth/ldap/config` must be re-written with the new `bindpass` (the
-  service-account bind credential, §6.2).
+  - `test_script/scripts/vault-root-cred-rotate.sh` — rotates a cloud secrets
+    engine's root credentials.
+  - `test_script/scripts/vault-static-secret-rotate.sh` — rotates a static KV
+    secret.
+  - `test_script/scripts/vault-lease-revoke.sh` /
+    `vault-lease-revoke-prefix.sh` — revoke dynamic-cred leases on offboard.
+  - `test_script/scripts/vault-token-lookup.sh` — inspect a token's
+    capabilities + TTL.
+- `test_script/scripts/lldap-admin-cred-rotate.sh` rotates the LLDAP admin
+  password and persists the new value to Vault (`secret/lldap/admin`) and
+  `../lldap/.env` — there is no Vault `auth/ldap/config` to update, since
+  Vault has no LDAP auth method.
 
 ### 8.7 Break-glass
 
 `superadmin` is the break-glass identity: it is `owner` on every tenant in
 OpenFGA, so it can write any tenant's credentials and rotate any secret. Its
-Dex password is in `generated/dex.env` (gitignored). Use it only for recovery;
+Dex password is in `generated/dex.env` (committed to git — treat as
+compromised; see §8.5). Use it only for recovery;
 its actions are recorded in both the Vault and OpenFGA audit logs.
 
 ### 8.8 Hardening checklist for production
 
 1. Enable TLS on the Vault listener (`tls_disable = 0`, real cert + CA).
-2. Use `ldaps://` for the LLDAP auth bind (`insecure_tls = false`).
+2. Use `ldaps://` on Dex's LLDAP connector (Vault itself performs no LLDAP
+   bind).
 3. Switch storage to Raft and use an external KMS for auto-unseal (remove the
    `VAULT_UNSEAL_KEY` from disk).
-4. Replace the single root token with short-lived, renewable tokens issued via
-   the LDAP auth method (per-user, per-group-policy).
+4. Replace the single root token with short-lived, renewable Vault tokens
+   (token auth is the only auth method in this deployment).
 5. Re-enable `mlock` (remove `disable_mlock = true`) and keep `cap_add:
    IPC_LOCK`.
 6. Bind the host port to `127.0.0.1` only (or remove it and use a sidecar /

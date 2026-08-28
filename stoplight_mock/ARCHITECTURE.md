@@ -64,8 +64,10 @@ own host port:
 
 Each `prism*` service runs `stoplight/prism:5` with
 `mock -h 0.0.0.0 -p 4010 -m false /spec/openapi{,-v4.1,-v4.2,-v4.3}.json`
-(mounts `./spec:/spec:ro`; `-m false` serves static examples, not dynamic
-request mocking). Each `emulator*` service builds `./mock`, exposes internal
+(mounts `./spec:/spec:ro`). Prism serves static (example) responses because its
+dynamic-vs-static flag `-d`/`--dynamic` is **not** passed — `-m` is the
+multiprocess flag and has nothing to do with static-vs-dynamic mocking. Each
+`emulator*` service builds `./mock`, exposes internal
 port `9440`, and sets two env vars:
 
 * `PRISM_URL` — points at its matching Prism (e.g. `http://prism-41:4010`).
@@ -83,10 +85,16 @@ is now invoked from the host or via the helper scripts in `tmp/`.
 
 Source file: `spec/openapi.json` (≈ 12.6 MB, 487 paths, 2206 schemas, 109 tags).
 
-It is produced by `scripts/merge-specs.js`, which runs inside a throwaway
-`node:20-alpine` container (see `myrun.sh`) and reads the per-namespace YAML
-specs from `mock/v40/`, merges their `paths` (each prefixed with `/api`),
-`schemas`, and `tags`, and writes the combined OpenAPI 3.0.1 document.
+It is produced by `scripts/merge-specs.js`, which merges the per-namespace YAML
+specs (prefixed with `/api` for `paths`, plus `schemas` and `tags`) into the
+combined OpenAPI 3.0.1 document.
+
+> **Note:** `merge-specs.js:8` hardcodes `const V40_DIR = path.resolve('/work/mock/v40')`
+> and writes to `/work/spec/openapi.json`. The directory `mock/v40/` **does not exist**
+> (the `mock/` dir contains only `Dockerfile`, `entrypoint.sh`, `package.json`,
+> `server.js`), and no compose service mounts `/work/mock` — so the documented v4.0
+> build is **not runnable as written**. The v4.0 namespace YAMLs actually live in
+> `/home/ubuntu/libcloud_nutanix/nutanix_swagger/`.
 
 ### 3.1 Nutanix REST API namespaces included in the merged spec
 
@@ -121,15 +129,19 @@ responses.
 
 ### 3.2 Path version variants
 
-The emulator accepts three API-version path variants for every resource (set
-in `mock/server.js`, `API_VERSIONS`):
+For `v4.0`, `API_VERSIONS` is `['v4.0.a1', 'v4.0', 'v4.0/ahv']` and
+`pathVariants(ns, category, resource)` expands each route to all three, e.g.
+`/api/vmm/{v4.0.a1|v4.0|v4.0/ahv}/config/vms`:
 
 - `v4.0.a1` — legacy pre-release path
 - `v4.0`    — stable v4 path
 - `v4.0/ahv`— path used by the Nutanix Terraform provider v2.2.1
 
-`pathVariants(ns, category, resource)` expands each route to all three, e.g.
-`/api/vmm/{v4.0.a1|v4.0|v4.0/ahv}/config/vms`.
+This only applies to `pathVariants`-based routes. Three routes use a single
+`${API_VERSION}` path instead of the three variants: volume groups
+(`/api/volumes/${API_VERSION}/config/volume-groups`, server.js:890), recovery
+points (`/api/dataprotection/${API_VERSION}/config/recovery-points`, server.js:1043),
+and the images content path (`/api/vmm/${API_VERSION}/content/images`, server.js:822).
 
 ---
 
@@ -160,6 +172,7 @@ envelope; the task transitions `QUEUED → RUNNING → SUCCEEDED` over
 | **volumes** (`/api/volumes/v4.0/config`) | Volume Groups (`volume-groups`) | `POST`, `GET` (list + filter), `GET /:extId`, `DELETE /:extId`, `GET /:volumeGroupExtId/disks`, `GET /:volumeGroupExtId/vm-attachments`, `POST /:extId/$actions/attach-vm`, `POST /:extId/$actions/detach-vm` |
 | **dataprotection** (`/api/dataprotection/v4.0/config`) | Recovery Points (`recovery-points`) | `POST`, `GET` (list + `$filter=volumeGroupExtId eq '...'`), `GET /:extId`, `DELETE /:extId` |
 | (emulator-local) | Health (`/health`) | `GET` — returns counts of every in-memory store |
+| (emulator-local) | Session login (`/api/nutanix/v1/session`) | `POST` — reads the Basic `Authorization` header, mints a UUID token, stores it in an in-memory `sessions` Map, and returns `Set-Cookie: NTNX_IAM_SESSION=<token>; Path=/; HttpOnly` |
 
 ### 4.2 Seed reference data
 
@@ -215,9 +228,9 @@ endpoint the shim does not handle explicitly.
 | `docker-compose.yml`        | Defines 4 Prism + 4 emulator services (§2), one pair per v4 minor version |
 | `spec/openapi.json`         | Merged v4.0 spec consumed by `prism` (487 paths, 2206 schemas) |
 | `spec/openapi-v4.{1,2,3}.json` | Merged v4.1/v4.2/v4.3 specs consumed by `prism-41/42/43` |
-| `scripts/merge-specs.js`    | Builds `spec/openapi.json` from the per-namespace YAML in `mock/v40/` |
+| `scripts/merge-specs.js`    | Builds `spec/openapi.json` from per-namespace YAML (hardcoded to `/work/mock/v40`, which no compose service mounts — see §3) |
 | `scripts/merge_specs.py`    | Builds `spec/openapi-v4.{1,2,3}.json` from `nutanix_swagger/` |
-| `myrun.sh`                  | Helper that runs `merge-specs.js` in a `node:20-alpine` container and restarts Prism |
+| `scripts/myrun.sh`          | Test-runner snippet (`NUTANIX_HOST=... ./test_read.sh --version ...` plus a `curl --insecure` example). Not a build helper. |
 | `mock/Dockerfile`           | `node:20-alpine` + curl + openssl; copies `server.js`, exposes 9440, healthcheck |
 | `mock/entrypoint.sh`        | Waits for Prism readiness (version-aware probe), generates self-signed TLS cert, execs `node server.js` |
 | `mock/server.js`            | The stateful shim (all routes in §4) + Prism catch-all proxy; `API_VERSION` env selects the version |
@@ -232,6 +245,14 @@ endpoint the shim does not handle explicitly.
   container restart; nothing is persisted to disk or a volume.
 - **Auth is bypassed.** The shim accepts any credentials; security schemes
   are stripped from the merged spec so Prism also does not enforce auth.
+- **Session-cookie handshake** (`mock/server.js:351-365`). `POST /api/nutanix/v1/session`
+  reads the Basic `Authorization` header to extract the username, mints a UUID,
+  stores it in an in-memory `sessions` Map, and returns
+  `Set-Cookie: NTNX_IAM_SESSION=<token>; Path=/; HttpOnly`. This exists so the
+  libcloud driver can switch from per-request Basic auth to cookie reuse after
+  its first login. It is **not fidelity-accurate**: real Prism Central uses the
+  cookie name `NTNX_IGW_SESSION`, `/api/nutanix/v1/session` is not a real
+  endpoint, and the minted token is never validated on later requests.
 - **No real Nutanix semantics.** The shim validates the API contract shape,
   not business logic (no cluster capacity checks, no real task workflows,
   no UUID relationship enforcement beyond a few lookups like
@@ -244,6 +265,27 @@ endpoint the shim does not handle explicitly.
 - **`./terraform`** configuration referenced by `tmp/README.md` lives under
   `tmp/terraform/` and `tmp/terraform-network/`, not in the top-level
   `docker-compose.yml`.
+
+### Fidelity gaps (verified against source)
+
+- **No ETag / If-Match support** anywhere in `mock/server.js` — the driver's
+  optimistic-concurrency dance is silently skipped, so concurrency control is
+  **untested**.
+- **No real task engine.** `makeTask()` (server.js:123-139) transitions
+  `QUEUED → RUNNING → SUCCEEDED` via two `setTimeout` calls scheduled at task
+  creation: `RUNNING` fires at `TASK_TRANSITION_MS` (200 ms; server.js:20) and
+  `SUCCEEDED` at `TASK_TRANSITION_MS * 2` (400 ms). Every task therefore
+  succeeds 400 ms after creation. There are no failure states.
+- **`stop_node` returns a bogus success.** The libcloud driver sends power action
+  `shutdown`, but the shim's `powerMap` (server.js:455) only maps `power-on`,
+  `power-off`, `guest-shutdown`, `reset`, `guest-reboot` — so the VM's power state
+  is left unchanged while a `202` success task is still returned.
+- **Auth bypass is a no-op middleware** (`app.use((_req, _res, next) => next())`,
+  server.js:1124), and `merge-specs.js:93-117` strips `security` / `securitySchemes`
+  during merge so Prism never enforces auth.
+- **State is in-memory** — all `Map` stores are lost on restart.
+- **Network exposure** — emulators are published on `0.0.0.0:9440-9443` with a
+  self-signed certificate and no authentication.
 
 ---
 
