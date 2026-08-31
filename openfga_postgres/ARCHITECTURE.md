@@ -231,10 +231,10 @@ as fully privileged over the authorization data.
 
 ## 5. The authorization model
 
-The model is schema **1.1**, **8 types**, no conditions, no modules. It exists in
+The model is schema **1.1**, **9 types**, no conditions, no modules. It exists in
 two equivalent forms:
 
-1. **`LIBCLOUD_MODEL`** in `openfga_bootstrap.py:217-837` — the JSON actually
+1. **`LIBCLOUD_MODEL`** in `openfga_bootstrap.py:217-852` — the JSON actually
    **POSTed** to `/stores/{id}/authorization-models` by `ensure_model()`
    (`openfga_bootstrap.py:1076-1081`). This is the authoritative live form.
 2. **`model/libcloud.fga`** — the equivalent OpenFGA DSL, a *derived* artifact
@@ -317,6 +317,10 @@ type aws_region
 type nutanix_cluster
   relations
     # identical shape to aws_region (see model/libcloud.fga:68-79)
+
+type vault_user
+  relations
+    define parent: [tenant]
 ```
 
 (`aws_region` and `nutanix_cluster` are structurally identical — the two backend
@@ -395,12 +399,12 @@ The bootstrap is idempotent, stdlib-only (`urllib`, no `requests` dependency —
 
 ### Tuple count and split
 
-`INITIAL_TUPLES` (`openfga_bootstrap.py:855-931`) seeds **48 tuples**:
+`INITIAL_TUPLES` (`openfga_bootstrap.py:870-952`) seeds **50 tuples**:
 
-- **39 structural wiring** — `platform:main` parenting every object
+- **41 structural wiring** — `platform:main` parenting every object
   (tenants/api/providers/backends/resource_classes), tenant→provider/api parent
-  links, provider/tenant links onto backends, and the resource_class↔backend
-  bindings.
+  links, provider/tenant links onto backends, the resource_class↔backend
+  bindings, and the per-tenant `vault_user` parent mapping.
 - **9 role grants**:
 
   | Tuple | Meaning |
@@ -416,12 +420,12 @@ The bootstrap is idempotent, stdlib-only (`urllib`, no `requests` dependency —
   | `user:ntnx-compute-viewer` → `viewer` `resource_class:nutanix-compute` | OpenFGA-only per-class demo |
 
   Note: `README.md` still says "17 tuples" in a few places — that is **stale**;
-  the authoritative count is 48 (`INITIAL_TUPLES`). The live store carries more
-  (66 at last enumeration) because test runs add extra `int-*` principals.
+  the authoritative count is 50 (`INITIAL_TUPLES`). The live store carries more
+  (68 at last enumeration) because test runs add extra `int-*` principals.
 
 ### Validation
 
-`VALIDATION_CHECKS` (`openfga_bootstrap.py:934-1018`) holds **64**
+`VALIDATION_CHECKS` (`openfga_bootstrap.py:955-1039`) holds **64**
 `(user, relation, object, expected_allowed)` assertions — the README's "28" is
 also stale. `validate()` runs them all each attempt (up to 6 attempts with
 exponential backoff) and raises `FgaValidationError` if any still mismatches.
@@ -593,7 +597,7 @@ All three token resolvers use the same precedence order (`fga_auth.sh:10-15`,
 ### `model/` fixtures
 
 `model/store.fga.yaml` and `model/isolation.fga.yaml` are `fga model test`
-fixtures: the former replays 66 live-server decisions; the latter asserts
+fixtures: the former replays 112 store decisions (68 checks + 44 list-objects); the latter asserts
 cross-tenant isolation denials (derived, not replayed). Regenerate the DSL after
 a model change with the CLI (see `model/README.md:59-68`). A failing
 `isolation.fga.yaml` means a tenant boundary moved — a security regression.

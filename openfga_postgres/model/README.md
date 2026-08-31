@@ -7,8 +7,8 @@ the equivalent **DSL**, which is what `play.fga.dev`, the VS Code extension and
 
 | File | What it is |
 | --- | --- |
-| `libcloud.fga` | The model in DSL form. 8 types, schema 1.1, no conditions. |
-| `store.fga.yaml` | 66 live tuples + 108 assertions **replayed from the live server**. |
+| `libcloud.fga` | The model in DSL form. 9 types, schema 1.1, no conditions. |
+| `store.fga.yaml` | 68 tuples + 112 assertions (66/108 replayed from the live server; 2/4 added for `vault_user`). |
 | `isolation.fga.yaml` | Cross-tenant isolation properties (derived — see provenance below). |
 
 ## Provenance
@@ -41,7 +41,7 @@ Fidelity was verified two ways:
 
 ```
 $ fga model test --tests store.fga.yaml
-Tests 2/2 passing · Checks 66/66 passing · ListObjects 42/42 passing
+Tests 2/2 passing · Checks 68/68 passing · ListObjects 44/44 passing
 
 $ fga model test --tests isolation.fga.yaml
 Tests 7/7 passing · Checks 62/62 passing

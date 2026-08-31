@@ -138,6 +138,17 @@ def resolve_principal(payload: dict[str, Any]) -> str:
     if username in known:
         return username
 
+    # LLDAP uids are the stable principal slug (<uid>@libcloud.local, e.g.
+    # aws1-admin@libcloud.local). Tenants created after this map was written
+    # (aws1, aws2, ...) have no by_email entry, so fall back to the email local
+    # part when it carries a role suffix — mirroring principal_scopes() and
+    # principal_providers(), which already accept any <tenant>-owner/admin/viewer
+    # slug. Dex's LDAP connector only sets `sub` (a protobuf iss_sub, not the
+    # uid), so the email local part is the authoritative slug here.
+    local = email.split("@", 1)[0] if email else ""
+    if local and _role_suffix(local) is not None:
+        return local
+
     if username:
         return username
     if sub:

@@ -17,9 +17,11 @@ Idempotent and safe to re-run:
      and unseal key to generated/vault.env (gitignored, host-persistent).
   4. Unseal if sealed.
   5. Enable KV v2 at ``secret/`` if not already enabled.
-  6. Create a least-privilege read policy ``libcloud-rest-read`` and a token for
-     the libcloud REST API; write the token to generated/vault.env as
-     VAULT_TOKEN.
+  6. Enable AppRole auth and create one AppRole identity per seeded tenant
+     (role ``libcloud-<tenant>``, policy ``libcloud-read-<tenant>``) plus a
+     narrow orchestrator token (policy ``libcloud-vault-auth-read``) that can
+     only read the per-tenant AppRole auth material, never the cloud secrets.
+     Write the orchestrator token to generated/vault.env as VAULT_TOKEN.
   7. Per-tenant backend cloud credentials are NOT seeded here. They are
      written by the tenant owner via scripts/set_tenant_credentials.py, which
      gates the write on OpenFGA ``can_manage_credentials`` (owner-only). This
@@ -54,13 +56,34 @@ GENERATED_DIR = Path(os.environ.get("VAULT_OUTPUT_DIR", Path(__file__).resolve()
 VAULT_ENV = GENERATED_DIR / "vault.env"
 KV_MOUNT = os.environ.get("VAULT_KV_MOUNT", "secret")
 KV_PREFIX = os.environ.get("VAULT_KV_PREFIX", "libcloud")
-READ_POLICY_NAME = os.environ.get("VAULT_LIBCLOUD_POLICY", "libcloud-rest-read")
+AUTH_KV_PREFIX = os.environ.get("VAULT_APPROLE_AUTH_PREFIX", "libcloud-vault-auth")
+APPROLE_MOUNT = os.environ.get("VAULT_APPROLE_MOUNT", "approle")
+ORCH_POLICY_NAME = os.environ.get("VAULT_ORCHESTRATOR_POLICY", "libcloud-vault-auth-read")
+SEED_TENANTS = [
+    t.strip() for t in os.environ.get("VAULT_TENANTS", "aws,nutanix").split(",") if t.strip()
+]
 
-READ_POLICY = f"""# Read-only access to libcloud backend credentials (KV v2).
-path "{KV_MOUNT}/data/{KV_PREFIX}/*" {{
+# Orchestrator token: read only the per-tenant AppRole auth material (role_id +
+# secret_id), never the tenant cloud secrets themselves. The REST API uses this
+# to obtain each tenant's AppRole login material, then reads the tenant's cloud
+# secret with the short-lived per-tenant token that AppRole login returns.
+ORCHESTRATOR_POLICY = f"""# Read-only access to per-tenant AppRole auth material (KV v2).
+path "{KV_MOUNT}/data/{AUTH_KV_PREFIX}/*" {{
   capabilities = ["read"]
 }}
-path "{KV_MOUNT}/metadata/{KV_PREFIX}/*" {{
+path "{KV_MOUNT}/metadata/{AUTH_KV_PREFIX}/*" {{
+  capabilities = ["read", "list"]
+}}
+"""
+
+
+def _tenant_read_policy(tenant: str) -> str:
+    """ACL policy scoped to a single tenant's backend cloud credentials."""
+    return f"""# Read-only access to tenant '{tenant}' backend cloud credentials (KV v2).
+path "{KV_MOUNT}/data/{KV_PREFIX}/{tenant}" {{
+  capabilities = ["read"]
+}}
+path "{KV_MOUNT}/metadata/{KV_PREFIX}/{tenant}" {{
   capabilities = ["read", "list"]
 }}
 """
@@ -192,24 +215,93 @@ def enable_kv_v2(root_token: str) -> None:
         raise
 
 
-def ensure_read_token(root_token: str) -> str:
+def ensure_orchestrator_token(root_token: str) -> str:
+    """Issue the REST API's orchestrator token (auth-material read only)."""
     _request(
         "PUT",
-        f"/sys/policies/acl/{READ_POLICY_NAME}",
+        f"/sys/policies/acl/{ORCH_POLICY_NAME}",
         token=root_token,
-        body={"policy": READ_POLICY},
+        body={"policy": ORCHESTRATOR_POLICY},
     )
-    log.info("Ensured ACL policy %s", READ_POLICY_NAME)
+    log.info("Ensured orchestrator ACL policy %s", ORCH_POLICY_NAME)
 
     _, created = _request(
         "POST",
         "/auth/token/create",
         token=root_token,
-        body={"policies": [READ_POLICY_NAME], "ttl": "768h", "renewable": True},
+        body={"policies": [ORCH_POLICY_NAME], "ttl": "768h", "renewable": True},
     )
     token = created["auth"]["client_token"]
-    log.info("Issued libcloud REST API read token (policy=%s)", READ_POLICY_NAME)
+    log.info("Issued libcloud REST API orchestrator token (policy=%s)", ORCH_POLICY_NAME)
     return token
+
+
+def enable_approle(root_token: str) -> None:
+    _request(
+        "POST",
+        f"/sys/auth/{APPROLE_MOUNT}",
+        token=root_token,
+        body={"type": "approle"},
+        allow_statuses=(400,),
+    )
+    log.info("AppRole auth enabled at %s/", APPROLE_MOUNT)
+
+
+def ensure_tenant_approle(root_token: str, tenant: str) -> None:
+    """Create a per-tenant AppRole (role 'libcloud-<tenant>', policy
+    'libcloud-read-<tenant>') and store its role_id + secret_id at
+    secret/data/libcloud-vault-auth/libcloud-<tenant>."""
+    role = f"libcloud-{tenant}"
+    policy_name = f"libcloud-read-{tenant}"
+
+    _request(
+        "PUT",
+        f"/sys/policies/acl/{policy_name}",
+        token=root_token,
+        body={"policy": _tenant_read_policy(tenant)},
+    )
+    log.info("Ensured tenant ACL policy %s", policy_name)
+
+    _request(
+        "POST",
+        f"/auth/{APPROLE_MOUNT}/role/{role}",
+        token=root_token,
+        body={
+            "token_policies": [policy_name],
+            "token_ttl": "60m",
+            "token_max_ttl": "120m",
+        },
+    )
+    # Vault's create-role response does not carry the role_id; it is generated
+    # on role creation and must be read back from the role-id sub-endpoint.
+    _, rid_resp = _request(
+        "GET",
+        f"/auth/{APPROLE_MOUNT}/role/{role}/role-id",
+        token=root_token,
+    )
+    role_id = (rid_resp.get("data") or {}).get("role_id", "")
+    if not role_id:
+        raise RuntimeError(f"AppRole {role} returned no role_id")
+    log.info("Created AppRole %s (role_id=%s…)", role, role_id[:8])
+
+    _, sid_resp = _request(
+        "POST",
+        f"/auth/{APPROLE_MOUNT}/role/{role}/secret-id",
+        token=root_token,
+        body={},
+    )
+    secret_id = (sid_resp.get("data") or {}).get("secret_id", "")
+    if not secret_id:
+        raise RuntimeError(f"AppRole {role} returned no secret_id")
+    log.info("Minted secret_id for AppRole %s", role)
+
+    _request(
+        "POST",
+        f"/v1/{KV_MOUNT}/data/{AUTH_KV_PREFIX}/{role}",
+        token=root_token,
+        body={"data": {"role_id": role_id, "secret_id": secret_id}},
+    )
+    log.info("Stored AppRole auth material at %s/data/%s/%s", KV_MOUNT, AUTH_KV_PREFIX, role)
 
 
 def seed_secret(root_token: str, name: str, data: dict[str, str]) -> None:
@@ -244,18 +336,29 @@ def main() -> int:
     root_token, unseal_key = initialize_if_needed(existing)
     unseal_if_needed(unseal_key)
     enable_kv_v2(root_token)
-    libcloud_token = ensure_read_token(root_token)
+    enable_approle(root_token)
+    orchestrator_token = ensure_orchestrator_token(root_token)
+
+    # Per-tenant AppRole identities (role + scoped policy + secret_id). These
+    # are the "vault users": one per tenant, shared by that tenant's admin and
+    # viewer. The tenant -> vault_user mapping lives in OpenFGA
+    # (tenant:<t> parent vault_user:libcloud-<t>); the bootstrap creates the
+    # Vault side for the seeded tenants, and create_tenant.sh /
+    # vault_tenant_role.py do the same for tenants added later.
+    for tenant in SEED_TENANTS:
+        ensure_tenant_approle(root_token, tenant)
 
     # NOTE: backend cloud credentials are NOT seeded here. They are written
     # per-tenant by the tenant owner via scripts/set_tenant_credentials.py
-    # (gated on OpenFGA can_manage_credentials). This script only initializes
-    # Vault, enables KV v2, and issues the libcloud REST API read token.
+    # (gated on OpenFGA can_manage_credentials). This script initializes Vault,
+    # enables KV v2 + AppRole, and issues the per-tenant AppRoles + the
+    # orchestrator read token.
 
     public_addr = os.environ.get("VAULT_PUBLIC_ADDR", "http://localhost:8200").rstrip("/")
     _write_env(
         {
             "VAULT_ADDR": public_addr,
-            "VAULT_TOKEN": libcloud_token,
+            "VAULT_TOKEN": orchestrator_token,
             "VAULT_ROOT_TOKEN": root_token,
             "VAULT_UNSEAL_KEY": unseal_key,
         }
@@ -267,8 +370,10 @@ def main() -> int:
                 "vault_env": str(VAULT_ENV),
                 "vault_addr": public_addr,
                 "kv_path_prefix": f"{KV_MOUNT}/{KV_PREFIX}",
-                "read_policy": READ_POLICY_NAME,
-                "note": "per-tenant credentials are seeded by scripts/set_tenant_credentials.py (owner-gated)",
+                "approle_mount": APPROLE_MOUNT,
+                "orchestrator_policy": ORCH_POLICY_NAME,
+                "tenant_approles": [f"libcloud-{t}" for t in SEED_TENANTS],
+                "note": "per-tenant cloud credentials are seeded by scripts/set_tenant_credentials.py (owner-gated)",
             },
             indent=2,
         )

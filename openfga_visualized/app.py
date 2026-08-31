@@ -1048,7 +1048,7 @@ HTML_PAGE += r"""<script>
 const TYPE_COLORS = {
   platform: '#7c3aed', tenant: '#2563eb', libcloud_api: '#0891b2',
   provider: '#059669', resource_class: '#d97706', aws_region: '#dc2626',
-  nutanix_cluster: '#db2777', user: '#64748b'
+  nutanix_cluster: '#db2777', user: '#64748b', vault_user: '#eab308'
 };
 let GRAPH = null, MODEL = null, FOREST = null, OCCUR = {};
 const $ = id => document.getElementById(id);

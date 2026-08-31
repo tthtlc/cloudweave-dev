@@ -33,6 +33,9 @@ _load_env_file "${REPO_ROOT}/.env"
 # Dex OIDC env lives in the sibling dex project (self-contained compose).
 _load_env_file "${REPO_ROOT}/dex/generated/dex.env" 1
 _load_env_file "${REPO_ROOT}/openfga_postgres/generated/fga.env" 1
+# Per-tenant owner/admin/viewer passwords for tenants created after setup.sh
+# (aws1, aws2, ...) — appended here by create_tenant.sh / register_aws_tenants.sh.
+_load_env_file "${REPO_ROOT}/test_script/generated/dex.env" 1
 
 DEX_URL="${DEX_URL:-http://localhost:5556}"
 LIBCLOUD_REST_URL="${LIBCLOUD_REST_URL:-http://localhost:8765}"
@@ -72,6 +75,18 @@ else
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS_ADMIN:-}" ;;
     aws-viewer)
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS_VIEWER:-}" ;;
+    aws1-owner)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS1_OWNER:-}" ;;
+    aws1-admin)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS1_ADMIN:-}" ;;
+    aws1-viewer)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS1_VIEWER:-}" ;;
+    aws2-owner)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS2_OWNER:-}" ;;
+    aws2-admin)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS2_ADMIN:-}" ;;
+    aws2-viewer)
+      LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_AWS2_VIEWER:-}" ;;
     ntnx-owner)
       LIBCLOUD_PASSWORD="${LIBCLOUD_PASSWORD_NTNX_OWNER:-}" ;;
     ntnx-admin)

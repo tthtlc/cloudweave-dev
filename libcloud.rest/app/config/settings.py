@@ -108,6 +108,20 @@ class Settings(BaseSettings):
         default="libcloud",
         validation_alias=AliasChoices("VAULT_KV_PREFIX"),
     )
+    # Per-tenant Vault AppRole auth. Each tenant has its own "vault user" (an
+    # AppRole role named libcloud-<tenant>). The REST API resolves the tenant's
+    # vault_user from OpenFGA (tenant -> vault_user), reads its AppRole login
+    # material at {vault_mount}/data/{vault_approle_auth_prefix}/<vault_user>,
+    # logs in via auth/{vault_approle_mount}, and reads the tenant cloud secret
+    # with the resulting short-lived token.
+    vault_approle_mount: str = Field(
+        default="approle",
+        validation_alias=AliasChoices("VAULT_APPROLE_MOUNT"),
+    )
+    vault_approle_auth_prefix: str = Field(
+        default="libcloud-vault-auth",
+        validation_alias=AliasChoices("VAULT_APPROLE_AUTH_PREFIX"),
+    )
 
     oidc_enabled: bool = False
     oidc_issuer_url: str = ""

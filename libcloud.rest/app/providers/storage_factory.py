@@ -11,29 +11,35 @@ ProviderConnection. Backend credentials are resolved server-side from Vault
 """
 from __future__ import annotations
 
-from libcloud.storage.drivers.s3 import S3StorageDriver, S3USEast2StorageDriver  # noqa: F401
+from libcloud.storage.drivers.s3 import S3StorageDriver
 from libcloud.storage.drivers.nutanix import NutanixObjectsStorageDriver
 
 from app.common.errors import APIError
 from app.connections.credentials import effective_credentials
 from app.connections.models import ProviderConnection
 
-# Map AWS region -> libcloud S3 driver class (so buckets land in the right
-# region). Falls back to the generic S3StorageDriver for unmapped regions.
-_AWS_REGION_DRIVERS = {
-    "us-east-1": S3StorageDriver,
-    "us-east-2": S3USEast2StorageDriver,
-}
-
 
 def build_storage_driver(connection: ProviderConnection):
     creds = effective_credentials(connection)
     provider = connection.provider
     if provider == "aws":
+        # S3StorageDriver takes `region` and selects the matching S3 endpoint +
+        # SigV4 region from libcloud's REGION_TO_HOST_MAP, so buckets land in
+        # the tenant's region instead of silently defaulting to us-east-1.
         region = connection.config.region or "us-east-1"
-        cls = _AWS_REGION_DRIVERS.get(region, S3StorageDriver)
         secure = connection.config.secure if connection.config.secure is not None else True
-        return cls(creds.key, creds.secret, secure=secure)
+        try:
+            return S3StorageDriver(creds.key, creds.secret, secure=secure, region=region)
+        except ValueError as exc:
+            # S3StorageDriver raises ValueError for a region missing from
+            # REGION_TO_HOST_MAP (e.g. a typo in AWS_REGION); surface a clean
+            # 400 rather than a bare 500.
+            raise APIError(
+                code="provider_capability_unsupported",
+                message=f"Unsupported AWS region for object storage: {region}",
+                status_code=400,
+                details={"reason": str(exc)},
+            ) from exc
     if provider == "nutanix":
         # The standard Nutanix connection targets Prism Element (the compute
         # API), NOT a Nutanix Objects (S3-compatible) endpoint. Reusing that

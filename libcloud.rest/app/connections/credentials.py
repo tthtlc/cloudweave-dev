@@ -91,8 +91,11 @@ def resolve_server_credentials(connection: ProviderConnection) -> ConnectionCred
 
     vault = get_vault_client()
     if vault.enabled:
+        # The per-tenant Vault AppRole identity (resolved from OpenFGA by the
+        # policy engine, or the deterministic fallback name).
+        vault_user = connection.vault_user or f"libcloud-{binding}"
         try:
-            data = vault.read_secret(binding)
+            data = vault.read_secret(binding, vault_user=vault_user)
         except APIError as exc:
             # If Vault is reachable but the secret is missing/unavailable, do
             # NOT silently fall back to env — that would hide a misconfiguration

@@ -239,6 +239,41 @@ _AWS_CATEGORY_SPECS: list[dict[str, Any]] = [
 ]
 
 
+def _upstream_reason(exc: Exception) -> str | None:
+    """Pull the real upstream error out of a libcloud REST APIError.
+
+    ``_call`` raises ``APIError("rest_error", "libcloud REST ... failed", 502,
+    {"status": ..., "body": <upstream JSON>})``. That body carries the REST
+    API's own error object — e.g. ``{"error": {"message": "Failed to list
+    buckets", "details": {"reason": "AccessDenied: ... s3:ListAllMyBuckets"}}}``
+    — whose innermost ``reason`` is the actual cloud-provider error. The generic
+    "failed" message hides it, so surface it here to make a failing category
+    self-diagnosing instead of a dead end.
+    """
+    details = getattr(exc, "details", None)
+    if not isinstance(details, dict):
+        return None
+    body = details.get("body")
+    if not isinstance(body, str) or not body.strip():
+        return None
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return body[:240]
+    if not isinstance(parsed, dict):
+        return body[:240]
+    error = parsed.get("error")
+    if isinstance(error, dict):
+        inner = error.get("details")
+        reason = inner.get("reason") if isinstance(inner, dict) else None
+        if reason:
+            return str(reason)[:360]
+        message = error.get("message")
+        if message:
+            return str(message)[:240]
+    return body[:240]
+
+
 class LibcloudProxy:
     def __init__(self) -> None:
         self._settings = get_settings
@@ -248,13 +283,13 @@ class LibcloudProxy:
         return self._settings().libcloud_rest_url.rstrip("/")
 
     # --- connection descriptor (X-Provider-Connection header value) ----------
-    def _connection(self, cloud: str) -> dict[str, Any]:
+    def _connection(self, cloud: str, binding: str | None = None) -> dict[str, Any]:
         s = self._settings()
         if cloud == "aws":
             return {
                 "provider": "aws",
                 "config": {"region": s.aws_region, "secure": True},
-                "auth_binding": s.aws_auth_binding,
+                "auth_binding": binding or s.aws_auth_binding,
             }
         # Live-reload NUTANIX_* from the bind-mounted my.env (hot_config); the
         # cached settings values are the fallback when my.env is absent/unset.
@@ -273,7 +308,7 @@ class LibcloudProxy:
                 "api_version": ntnx_api_version,
                 "verify_ssl_cert": ntnx_verify_ssl,
             },
-            "auth_binding": s.ntnx_auth_binding,
+            "auth_binding": binding or s.ntnx_auth_binding,
         }
 
     def _headers(self, token: str, conn: dict[str, Any]) -> dict[str, str]:
@@ -312,9 +347,9 @@ class LibcloudProxy:
             return {}
 
     # --- public: list resources ---------------------------------------------
-    def list_nodes(self, cloud: str) -> dict[str, Any]:
-        token = self._auth.get_token(cloud)
-        conn = self._connection(cloud)
+    def list_nodes(self, cloud: str, binding: str | None = None) -> dict[str, Any]:
+        token = self._auth.get_token(cloud, binding)
+        conn = self._connection(cloud, binding)
         headers = self._headers(token, conn)
         specs = _AWS_CATEGORY_SPECS if cloud == "aws" else _NTNX_CATEGORY_SPECS
         with httpx.Client(timeout=30) as client:
@@ -326,14 +361,14 @@ class LibcloudProxy:
         return shaped
 
     # --- public: list physical hosts (Nutanix only) -------------------------
-    def list_hosts(self, cloud: str) -> dict[str, Any]:
+    def list_hosts(self, cloud: str, binding: str | None = None) -> dict[str, Any]:
         # Fans out to the libcloud REST /v1/compute/hosts endpoint, which in
         # turn calls the driver's ex_list_hosts (clustermgmt v4 Host API). The
         # result is the full hardware detail (CPU, memory, hypervisor, serial,
         # model) of every host in the cluster, mirroring the get_host_details
         # sample. No creds leave the server (same token/auth_binding pattern).
-        token = self._auth.get_token(cloud)
-        conn = self._connection(cloud)
+        token = self._auth.get_token(cloud, binding)
+        conn = self._connection(cloud, binding)
         headers = self._headers(token, conn)
         with httpx.Client(timeout=30) as client:
             data = self._call(client, "/v1/compute/hosts", headers, [])
@@ -375,6 +410,10 @@ class LibcloudProxy:
                     upstream_status = exc.details.get("status")
                 if upstream_status == 501:
                     msg = "Not supported by this provider"
+                else:
+                    reason = _upstream_reason(exc)
+                    if reason:
+                        msg = f"{msg}: {reason}"
                 log.warning("resource category %s failed: %s", spec["key"], msg)
                 cat["total"] = 0
                 cat["rows"] = []
@@ -402,12 +441,12 @@ class LibcloudProxy:
         return {"cluster": get_settings().ntnx_auth_binding, "nodes": shaped}
 
     # --- public: provision (replays provision_*.sh) -------------------------
-    def provision(self, cloud: str, vm_name: str) -> dict[str, Any]:
+    def provision(self, cloud: str, vm_name: str, binding: str | None = None) -> dict[str, Any]:
         steps: list[str] = []
         try:
-            token = self._auth.get_token(cloud)
+            token = self._auth.get_token(cloud, binding)
             steps.append("idp_login (Dex -> OIDC token, audience libcloud-rest)")
-            conn = self._connection(cloud)
+            conn = self._connection(cloud, binding)
             headers = self._headers(token, conn)
             steps.append(f"build_{cloud}_connection_param (auth_binding={conn['auth_binding']}, NO creds in client)")
             with httpx.Client(timeout=60) as client:
@@ -479,8 +518,7 @@ class LibcloudProxy:
             arch = "x86_64"
             image_id = aws_resolve.pick_image(images, arch)
             size_id = aws_resolve.pick_size(sizes, arch)
-            subnet_resp = self._call(client, "/v1/compute/subnets", headers, steps).get("data", [])
-            subnet_id = subnet_resp[0].get("id", "") if subnet_resp else ""
+            subnet_id = self._ensure_aws_subnet(client, headers, steps, locations)
             steps.append(f"resolve IMAGE_ID={image_id} SIZE_ID={size_id} SUBNET_ID={subnet_id} (arch={arch})")
             return image_id, size_id, subnet_id, ""
         # nutanix
@@ -491,6 +529,121 @@ class LibcloudProxy:
         subnet_id = subnet_resp[0].get("id", "") if subnet_resp else ""
         steps.append(f"resolve CLUSTER_ID={cluster_id} IMAGE_ID={image_id} SIZE_ID={size_id} SUBNET_ID={subnet_id}")
         return image_id, size_id, subnet_id, cluster_id
+
+    def _ensure_aws_subnet(
+        self,
+        client: httpx.Client,
+        headers: dict[str, str],
+        steps: list[str],
+        locations: list[dict[str, Any]],
+    ) -> str:
+        """Return an AWS subnet id to launch into, bootstrapping a minimal
+        public VPC (VPC + public subnet + internet gateway + default route)
+        when the account has none.
+
+        A greenfield account with no default VPC otherwise fails EC2
+        RunInstances with ``VPCIdNotSpecified: No default VPC for this user``:
+        without a subnet the driver falls back to EC2-Classic / the default VPC
+        and resolves the default security group by name. This mirrors the
+        find-or-create bootstrap in provision_aws_private.sh so the portal's
+        provision button works on a fresh account with no networking at all.
+        """
+        subnets = self._call(client, "/v1/compute/subnets", headers, steps).get("data", [])
+        if subnets:
+            return subnets[0].get("id", "")
+
+        az = (locations[0].get("name") or "") if locations else ""
+        if not az:
+            raise APIError(
+                "aws_no_availability_zone",
+                "No AWS availability zone available to bootstrap a subnet",
+                502,
+            )
+        steps.append("bootstrap AWS network (no subnets found)")
+
+        vpc_name, vpc_cidr = "libcloud-vpc", "10.0.0.0/16"
+        subnet_name, subnet_cidr = "libcloud-public-subnet", "10.0.0.0/24"
+        igw_name, rt_name = "libcloud-igw", "libcloud-public-rt"
+
+        # VPC (find-or-create)
+        networks = self._call(client, "/v1/compute/networks", headers, steps).get("data", [])
+        vpc_id = next((n.get("id", "") for n in networks if n.get("name") == vpc_name), "")
+        if not vpc_id:
+            vpc_id = (
+                self._call(
+                    client, "/v1/compute/networks", headers, steps, method="POST",
+                    json_body={"name": vpc_name, "cidr_block": vpc_cidr},
+                ).get("data", {}).get("id", "")
+            )
+        if not vpc_id:
+            raise APIError("aws_vpc_bootstrap_failed", "Failed to create AWS VPC", 502)
+
+        # Public subnet (find-or-create)
+        subnets = self._call(
+            client, "/v1/compute/subnets", headers, steps, params={"vpc_id": vpc_id}
+        ).get("data", [])
+        subnet_id = next((s.get("id", "") for s in subnets if s.get("name") == subnet_name), "")
+        if not subnet_id:
+            subnet_id = (
+                self._call(
+                    client, "/v1/compute/subnets", headers, steps, method="POST",
+                    json_body={
+                        "name": subnet_name,
+                        "vpc_id": vpc_id,
+                        "cidr_block": subnet_cidr,
+                        "availability_zone": az,
+                    },
+                ).get("data", {}).get("id", "")
+            )
+        if not subnet_id:
+            raise APIError("aws_subnet_bootstrap_failed", "Failed to create AWS subnet", 502)
+
+        # Internet gateway (find-or-create + attach)
+        igws = self._call(
+            client, "/v1/compute/internet-gateways", headers, steps, params={"vpc_id": vpc_id}
+        ).get("data", [])
+        igw_id = next((g.get("id", "") for g in igws), "")
+        if not igw_id:
+            igw_id = (
+                self._call(
+                    client, "/v1/compute/internet-gateways", headers, steps, method="POST",
+                    json_body={"name": igw_name, "vpc_id": vpc_id},
+                ).get("data", {}).get("id", "")
+            )
+        if not igw_id:
+            raise APIError("aws_igw_bootstrap_failed", "Failed to create AWS internet gateway", 502)
+
+        # Public route table (find-or-create) + default route + subnet association
+        rts = self._call(
+            client, "/v1/compute/route-tables", headers, steps, params={"vpc_id": vpc_id}
+        ).get("data", [])
+        rt_id = next((t.get("id", "") for t in rts if t.get("name") == rt_name), "")
+        if not rt_id:
+            rt_id = (
+                self._call(
+                    client, "/v1/compute/route-tables", headers, steps, method="POST",
+                    json_body={"name": rt_name, "vpc_id": vpc_id},
+                ).get("data", {}).get("id", "")
+            )
+        if not rt_id:
+            raise APIError("aws_route_table_bootstrap_failed", "Failed to create AWS route table", 502)
+
+        rt = self._call(
+            client, "/v1/compute/route-tables", headers, steps, params={"id": rt_id}
+        ).get("data", [])
+        rt = rt[0] if rt else {}
+        if not any(r.get("cidr") == "0.0.0.0/0" for r in (rt.get("routes") or [])):
+            self._call(
+                client, f"/v1/compute/route-tables/{rt_id}/routes", headers, steps, method="POST",
+                json_body={"cidr_block": "0.0.0.0/0", "internet_gateway_id": igw_id},
+            )
+        if not any(a.get("subnet_id") == subnet_id for a in (rt.get("subnet_associations") or [])):
+            self._call(
+                client, f"/v1/compute/route-tables/{rt_id}:associate", headers, steps, method="POST",
+                json_body={"subnet_id": subnet_id},
+            )
+
+        return subnet_id
 
     # --- public: deprovision (shells out to deprovision_<cloud>.sh) ----------
     # The portal's per-row Deprovision button calls this. We do NOT reimplement
@@ -504,7 +657,7 @@ class LibcloudProxy:
     # The script's require_token() reads a token cache file; we populate one
     # from our own ProvisionerAuth token so the script works without a
     # host-side generated/tokens/<user>.json having been written first.
-    def deprovision(self, cloud: str, vm_name: str | None, vm_id: str | None) -> dict[str, Any]:
+    def deprovision(self, cloud: str, vm_name: str | None, vm_id: str | None, binding: str | None = None) -> dict[str, Any]:
         if not vm_id and not vm_name:
             raise APIError("bad_request", "vmId or vmName is required", 400)
 
@@ -520,9 +673,9 @@ class LibcloudProxy:
 
         # Acquire a libcloud-rest-audience token (same one the script would
         # obtain via idp_login.py) and hand it to the script via a temp cache.
-        cache_dir, cache_path, user = self._token_cache(cloud)
+        cache_dir, cache_path, user = self._token_cache(cloud, binding)
 
-        env = self._script_env(cloud, user, cache_dir)
+        env = self._script_env(cloud, user, cache_dir, binding)
         if vm_id:
             env["VM_ID"] = vm_id
         if vm_name:
@@ -580,7 +733,7 @@ class LibcloudProxy:
     #              VLAN pair)
     # The tenant's cloud credentials are resolved server-side by the libcloud
     # REST API from Vault (secret/libcloud/<auth_binding>) — never handled here.
-    def provision_private(self, cloud: str, pair_name: str) -> dict[str, Any]:
+    def provision_private(self, cloud: str, pair_name: str, binding: str | None = None) -> dict[str, Any]:
         s = self._settings()
         script = self._provision_private_script(cloud)
         if not script or not os.path.isfile(script):
@@ -592,9 +745,9 @@ class LibcloudProxy:
             )
         script_name = os.path.basename(script)
 
-        cache_dir, cache_path, user = self._token_cache(cloud)
+        cache_dir, cache_path, user = self._token_cache(cloud, binding)
 
-        env = self._script_env(cloud, user, cache_dir)
+        env = self._script_env(cloud, user, cache_dir, binding)
         # Actually create the VMs (the script dry-runs unless PROVISION=1) and
         # pin both names so the response matches what the script creates.
         env["PROVISION"] = "1"
@@ -640,15 +793,15 @@ class LibcloudProxy:
         }
 
     # --- script shell-out helpers (shared by deprovision + private-pair) -----
-    def _token_cache(self, cloud: str) -> tuple[str, str, str]:
+    def _token_cache(self, cloud: str, binding: str | None = None) -> tuple[str, str, str]:
         """Acquire a libcloud-rest-audience token (same one the script would
         obtain via idp_login.py) and write it to a temp cache the script's
         require_token() can read, so the script works without a host-side
         generated/tokens/<user>.json having been written first.
         Returns (cache_dir, cache_path, user); the caller MUST _cleanup_cache()."""
-        token = self._auth.get_token_full(cloud)
+        token = self._auth.get_token_full(cloud, binding)
         cache_dir = tempfile.mkdtemp(prefix=f"script-{cloud}-tokens-")
-        user = self._script_user(cloud)
+        user = self._script_user(cloud, binding)
         cache_path = os.path.join(cache_dir, f"{user}.json")
         try:
             with open(cache_path, "w", encoding="utf-8") as fh:
@@ -683,8 +836,11 @@ class LibcloudProxy:
         return ""
 
     @staticmethod
-    def _script_user(cloud: str) -> str:
+    def _script_user(cloud: str, binding: str | None = None) -> str:
         s = get_settings()
+        if binding:
+            slug = "ntnx" if binding == "nutanix" else binding
+            return f"{slug}-admin"
         if cloud == "aws":
             return s.provisioner_aws_user or "aws-admin"
         if cloud == "nutanix":
@@ -692,7 +848,7 @@ class LibcloudProxy:
         return "cloud-admin"
 
     @staticmethod
-    def _script_env(cloud: str, user: str, cache_dir: str) -> dict[str, str]:
+    def _script_env(cloud: str, user: str, cache_dir: str, binding: str | None = None) -> dict[str, str]:
         # Common env shared by the shelled-out scripts: PATH/HOME, the libcloud
         # REST + Dex + FGA endpoints, and the temp token cache we just populated.
         s = get_settings()
@@ -717,12 +873,21 @@ class LibcloudProxy:
             # common.sh resolves the IdP password at SOURCE time and `:?`-aborts
             # if it's empty. We already hold a valid provisioner token, so hand
             # the password through to satisfy that check. The script never logs it.
+            # Per-tenant: LIBCLOUD_AWS_AUTH_BINDING points at the tenant's Vault
+            # secret (secret/libcloud/<binding>), and the provisioner is that
+            # tenant's admin (user above), so the script authorizes + resolves
+            # the right tenant's credentials.
+            slug = binding or "aws"
+            password = (
+                os.environ.get(f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN", "")
+                or s.provisioner_aws_password
+            )
             env.update(
                 {
-                    "LIBCLOUD_PASSWORD": s.provisioner_aws_password,
-                    "LIBCLOUD_PASSWORD_AWS_ADMIN": s.provisioner_aws_password,
+                    "LIBCLOUD_PASSWORD": password,
+                    f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN": password,
                     "AWS_REGION": s.aws_region,
-                    "LIBCLOUD_AWS_AUTH_BINDING": s.aws_auth_binding,
+                    "LIBCLOUD_AWS_AUTH_BINDING": binding or s.aws_auth_binding,
                 }
             )
         elif cloud == "nutanix":
@@ -730,7 +895,7 @@ class LibcloudProxy:
                 {
                     "LIBCLOUD_PASSWORD": s.provisioner_ntnx_password,
                     "LIBCLOUD_PASSWORD_NTNX_ADMIN": s.provisioner_ntnx_password,
-                    "LIBCLOUD_NTNX_AUTH_BINDING": s.ntnx_auth_binding,
+                    "LIBCLOUD_NTNX_AUTH_BINDING": binding or s.ntnx_auth_binding,
                     "NUTANIX_HOST": hot_config.get("NUTANIX_HOST") or s.ntnx_host,
                     "NUTANIX_PORT": hot_config.get("NUTANIX_PORT") or str(s.ntnx_port),
                     "NUTANIX_API_VERSION": hot_config.get("NUTANIX_API_VERSION") or s.ntnx_api_version,
@@ -748,7 +913,7 @@ class LibcloudProxy:
     # Cloud-agnostic: the libcloud REST compute service routes Nutanix PATCHes
     # through driver.ex_update_node and AWS through the standard update path
     # (libcloud.rest/app/compute/service.py), so one code path covers both.
-    def update_node(self, cloud: str, vm_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    def update_node(self, cloud: str, vm_id: str, updates: dict[str, Any], binding: str | None = None) -> dict[str, Any]:
         if not vm_id:
             raise APIError("bad_request", "vmId is required", 400)
 
@@ -771,8 +936,8 @@ class LibcloudProxy:
                 "message": "No editable fields supplied; nothing to update.",
             }
 
-        token = self._auth.get_token(cloud)
-        conn = self._connection(cloud)
+        token = self._auth.get_token(cloud, binding)
+        conn = self._connection(cloud, binding)
         headers = self._headers(token, conn)
         steps: list[str] = [f"idp_login (Dex -> OIDC token, audience libcloud-rest)"]
         try:

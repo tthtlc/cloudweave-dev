@@ -95,6 +95,25 @@ class PolicyEngine:
             if not fga.check(user, "can_read", backend, bearer=bearer):
                 fga.require(user, "can_provision", backend, bearer=bearer)
 
+    def _resolve_vault_user(self, claims: TokenClaims, connection: ProviderConnection) -> None:
+        """Resolve the tenant's Vault AppRole identity name from OpenFGA
+        (tenant:<binding> parent vault_user:*) and stash it on the connection.
+        Falls back to the deterministic 'libcloud-<binding>' name when OpenFGA
+        is disabled or returns no mapping."""
+        binding = connection.auth_binding or default_auth_binding(connection.provider)
+        fga = get_fga_client()
+        if fga.enabled:
+            objects = fga.list_objects(
+                "vault_user", "parent", f"tenant:{binding}", bearer=claims.access_token
+            )
+            if objects:
+                name = objects[0]
+                if name.startswith("vault_user:"):
+                    name = name[len("vault_user:"):]
+                connection.vault_user = name
+                return
+        connection.vault_user = f"libcloud-{binding}"
+
     def check_scopes(self, claims: TokenClaims, scopes_any_of: list[str]) -> None:
         """Scope-only gate for connection-less routes (e.g. GET /v1/jobs/{job_id}).
 
@@ -145,6 +164,7 @@ class PolicyEngine:
         enforce_credential_policy(connection)
 
         self._enforce_openfga(claims, connection, required_scope)
+        self._resolve_vault_user(claims, connection)
         return connection
 
     def check_driver_capability(self, connection: ProviderConnection, operation: str) -> None:

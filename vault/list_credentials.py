@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """List all credentials stored in the Vault KV v2 libcloud prefix.
 
-Reads VAULT_ADDR and VAULT_TOKEN from generated/vault.env by default
-(overridable by environment variables or CLI flags). Lists every secret
-path under secret/metadata/libcloud/ and prints each secret's keys
-(without values) plus metadata version/timestamps.
+Reads VAULT_ADDR and VAULT_ROOT_TOKEN (fallback VAULT_TOKEN) from
+generated/vault.env by default (overridable by environment variables or CLI
+flags). Lists every secret path under secret/metadata/libcloud/ and prints each
+secret's keys (without values) plus metadata version/timestamps.
 
 Usage:
     python3 list_credentials.py
@@ -89,7 +89,11 @@ def main() -> int:
 
     env = load_env(GENERATED_ENV)
     addr = args.addr or env.get("VAULT_ADDR") or os.environ.get("VAULT_ADDR")
-    token = args.token or env.get("VAULT_TOKEN") or os.environ.get("VAULT_TOKEN")
+    # Reads need a token that can read secret/data/libcloud/*; the orchestrator
+    # VAULT_TOKEN can only read the AppRole auth material, so prefer the root
+    # token (like add/delete_credential.py do).
+    token = (args.token or env.get("VAULT_ROOT_TOKEN")
+             or env.get("VAULT_TOKEN") or os.environ.get("VAULT_TOKEN"))
     if not addr or not token:
         print("ERROR: VAULT_ADDR/VAULT_TOKEN not found in generated/vault.env or env.", file=sys.stderr)
         return 1

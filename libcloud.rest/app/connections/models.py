@@ -74,6 +74,11 @@ class ProviderConnection(BaseModel):
     config: ConnectionConfig = Field(default_factory=ConnectionConfig)
     credentials: ConnectionCredentials | None = None
     auth_binding: str | None = None
+    # Resolved per-tenant Vault AppRole identity name (e.g. "libcloud-aws"),
+    # populated by the policy engine from OpenFGA (tenant -> vault_user) and
+    # consumed by the credential resolver. Not part of the client contract —
+    # excluded from serialization.
+    vault_user: str | None = Field(default=None, exclude=True)
 
     @field_validator("provider")
     @classmethod

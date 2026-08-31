@@ -37,8 +37,16 @@ ROLE_RELATION = {"owner": "owner", "admin": "admin", "viewer": "viewer"}
 # derived tenant before writing a tuple (a principal like "foo-admin" with an
 # unknown tenant prefix writes nothing rather than creating a phantom
 # tenant:foo).
-TENANT_BY_SLUG = {"aws": "aws", "ntnx": "nutanix"}
+TENANT_BY_SLUG = {"aws": "aws", "ntnx": "nutanix", "aws1": "aws1", "aws2": "aws2"}
 KNOWN_TENANTS = tuple(TENANT_BY_SLUG.values())
+
+
+_ROLE_STRENGTH = {"viewer": 0, "admin": 1, "owner": 2}
+
+
+def _stronger(a: str, b: str) -> bool:
+    """True when role `a` outranks role `b` (owner > admin > viewer)."""
+    return _ROLE_STRENGTH.get(a, -1) > _ROLE_STRENGTH.get(b, -1)
 
 
 def _tenant_for_principal(principal: str) -> str | None:
@@ -65,6 +73,18 @@ def _tenant_for_principal(principal: str) -> str | None:
 # operations on `can_provision`. (`can_use` is a provider:* gate the REST API
 # also enforces; the portal mirrors the backend-level read/provision check.)
 CLOUD_OBJECTS = {"aws": "aws_region:aws", "nutanix": "nutanix_cluster:nutanix"}
+
+# tenant id -> portal cloud (provider). Multiple tenants share a cloud: aws1 and
+# aws2 are distinct AWS companies under the single AWS provider. The per-tenant
+# credential binding is enforced downstream by libcloud REST via auth_binding;
+# the portal's cloud list is provider-level, so any of the user's AWS tenants
+# grants them the AWS dashboard.
+TENANT_CLOUD = {"aws": "aws", "aws1": "aws", "aws2": "aws", "nutanix": "nutanix"}
+
+# The seeded tenant per cloud. Preferred when a principal holds roles on several
+# tenants of the same cloud (e.g. superadmin, owner on every tenant) so its
+# provisioning keeps routing to the original tenant rather than an arbitrary one.
+DEFAULT_BINDING = {"aws": "aws", "nutanix": "nutanix"}
 VIEW_RELATION = "can_read"        # viewer+: enumerate / read resources
 PROVISION_RELATION = "can_provision"  # admin+: provision
 UPDATE_RELATION = "can_update"    # admin+: edit / update VM parameters (owner ∪ admin)
@@ -273,10 +293,7 @@ class FgaService:
                 tenant_id = obj[7:]  # strip "tenant:"
                 current = tenant_roles.get(tenant_id)
                 # Keep the strongest: owner > admin > viewer
-                if current is None or (
-                    rel == "owner"
-                    or (rel == "admin" and current == "viewer")
-                ):
+                if current is None or _stronger(rel, current):
                     tenant_roles[tenant_id] = rel
 
         # --- derive role (strongest across all tenants) --------------------
@@ -291,18 +308,27 @@ class FgaService:
 
         # --- derive per-cloud capabilities --------------------------------
         supported = ("aws", "nutanix")
-        cloud_tenant = {"aws": "aws", "nutanix": "nutanix"}
+        # Aggregate the user's strongest role per cloud across ALL their tenants
+        # (a cloud is a provider; aws1/aws2 are distinct AWS tenants under it).
+        cloud_roles: dict[str, str] = {}
+        for tenant_id, rel in tenant_roles.items():
+            cloud = TENANT_CLOUD.get(tenant_id)
+            if not cloud:
+                continue
+            current = cloud_roles.get(cloud)
+            if current is None or _stronger(rel, current):
+                cloud_roles[cloud] = rel
+
         clouds: list[dict[str, Any]] = []
         for cloud in supported:
-            tenant_id = cloud_tenant.get(cloud, cloud)
-            tenant_role = tenant_roles.get(tenant_id)
-            is_privileged = tenant_role in ("admin", "owner")
+            cloud_role = cloud_roles.get(cloud)
+            is_privileged = cloud_role in ("admin", "owner")
 
             clouds.append(
                 {
                     "cloud": cloud,
                     "canView": bool(
-                        is_privileged or tenant_role == "viewer" or is_superadmin
+                        is_privileged or cloud_role == "viewer" or is_superadmin
                     ),
                     "canProvision": is_privileged,
                     "canUpdate": is_privileged,
@@ -526,14 +552,52 @@ class FgaService:
         })
 
     # --- per-cloud authZ -----------------------------------------------------
+    def tenant_binding(self, principal: str, cloud: str) -> str | None:
+        """The tenant id (== the Vault auth_binding) the principal holds a role
+        on under `cloud`, or None. Reads the user's concrete tuples so it works
+        for both LLDAP uid principals (aws1-admin) and pending federated
+        principals keyed by their full internal id.
+
+        When the principal holds roles on several tenants of the same cloud
+        (e.g. superadmin, owner everywhere), the seeded default tenant for that
+        cloud is preferred so provisioning keeps routing to the original tenant
+        rather than an arbitrary one."""
+        found: dict[str, str] = {}  # tenant_id -> strongest relation
+        for t in self._read_user_tuples(f"user:{principal}"):
+            rel = t["relation"]
+            obj = t["object"]
+            if obj.startswith("tenant:") and rel in ("owner", "admin", "viewer"):
+                tenant_id = obj[len("tenant:"):]
+                if TENANT_CLOUD.get(tenant_id) == cloud and _stronger(rel, found.get(tenant_id, "")):
+                    found[tenant_id] = rel
+        if not found:
+            return None
+        default = DEFAULT_BINDING.get(cloud)
+        if default and default in found:
+            return default
+        # Otherwise pick the strongest tenant (owner > admin > viewer).
+        return max(found, key=lambda tid: _ROLE_STRENGTH.get(found[tid], -1))
+
+    def _backend_object(self, principal: str, cloud: str) -> str | None:
+        """The OpenFGA backend object the principal is actually bound to under
+        `cloud` (e.g. aws_region:aws1 for aws1-admin), falling back to the
+        seeded default tenant object when the principal has no tenant tuple."""
+        obj_type = {"aws": "aws_region", "nutanix": "nutanix_cluster"}.get(cloud)
+        if not obj_type:
+            return None
+        binding = self.tenant_binding(principal, cloud)
+        if binding:
+            return f"{obj_type}:{binding}"
+        return CLOUD_OBJECTS.get(cloud)
+
     def can_view(self, principal: str, cloud: str) -> bool:
-        obj = CLOUD_OBJECTS.get(cloud)
+        obj = self._backend_object(principal, cloud)
         if not obj:
             return False
         return self.check(f"user:{principal}", VIEW_RELATION, obj)
 
     def can_provision(self, principal: str, cloud: str) -> bool:
-        obj = CLOUD_OBJECTS.get(cloud)
+        obj = self._backend_object(principal, cloud)
         if not obj:
             return False
         return self.check(f"user:{principal}", PROVISION_RELATION, obj)
@@ -542,7 +606,7 @@ class FgaService:
         # Edit / update VM parameters. Owner ∪ Admin (and per-class Admin via the
         # resource_class arm on the backend). Viewer and SuperAdmin (by default)
         # cannot (rbac_design.md changelog #10).
-        obj = CLOUD_OBJECTS.get(cloud)
+        obj = self._backend_object(principal, cloud)
         if not obj:
             return False
         return self.check(f"user:{principal}", UPDATE_RELATION, obj)

@@ -102,9 +102,9 @@ Key facts that shape the design:
   is rejected with `401 {"code":"invalid_claims"}`. → The dashboard must sign
   users in through the existing `libcloud-rest` Dex client; it cannot have
   its own client id without also changing OpenFGA.
-- The store holds **48 tuples** (39 wiring + 9 grants), **8 types**
+- The store holds **68 tuples** (41 wiring + 27 grants), **9 types**
   (`user`, `platform`, `tenant`, `libcloud_api`, `provider`,
-  `resource_class`, `aws_region`, `nutanix_cluster`), model schema 1.1.
+  `resource_class`, `aws_region`, `nutanix_cluster`, `vault_user`), model schema 1.1.
 - The authorization model is immutable/versioned; the store contains 4
   historical models, only `01KXWWZY8424AMK2B443FH7TQ0` is pinned/active.
 - Dex static clients live in `dex/config.yaml` and are loaded **only at
@@ -244,14 +244,14 @@ Data pipeline:
    - collapsed nodes show `(+N)` descendant counts.
 4. Interaction:
    - click a node with children → toggles its `collapsed` flag and re-renders
-     (full re-render is fine at this size, ~26 objects + grants);
+     (full re-render is fine at this size, ~18 objects + grants);
    - pan/zoom via `d3.zoom()` (scale 0.25–3) applied to a wrapper `<g>`;
      the zoom behavior is attached **once** (guarded by a `__zoomInit` flag)
      — attaching it on every re-render stacked listeners and broke panning;
    - controls: grants toggle, "Expand all", "Collapse below depth 2"
      (`setCollapsed(d, depth, 2)`);
    - SVG height is recomputed per render from the tree's x-extent; a color
-     legend maps all 8 types.
+     legend maps all 9 types.
 
 ### 5.2 Permission Matrix tab
 

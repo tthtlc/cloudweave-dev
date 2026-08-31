@@ -25,6 +25,14 @@ services:
       - ../openfga_postgres/generated/fga.env
       # LLDAP_LDAP_USER_PASS, LLDAP_LDAP_BASE_DN, LLDAP_ADMIN_USER
       - ../lldap/.env
+      # Per-tenant provisioner passwords (LIBCLOUD_PASSWORD_AWS1_ADMIN /
+      # AWS2_ADMIN) written by create_tenant.sh / register_aws_tenants.sh. The
+      # identity service logs in as a tenant's admin to obtain the libcloud-rest
+      # token it forwards, so it needs these to provision/deprovision on behalf
+      # of aws1-admin / aws2-admin. Optional: a fresh setup with no extra tenants
+      # has no file here.
+      - path: ../test_script/generated/dex.env
+        required: false
     environment:
       # Override host-side URLs from the env_files with in-container forms.
       # NOTE: DEX_BASE_URL stays browser-facing (public hostname) because the

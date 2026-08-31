@@ -833,6 +833,21 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 }
             },
         },
+        {
+            # Per-tenant Vault AppRole identity. tenant:<t> is `parent` of
+            # vault_user:libcloud-<t>, i.e. the authoritative "which vault user
+            # serves this tenant" mapping consumed by libcloud.rest at
+            # credential-resolution time (see connections/vault_client.py).
+            "type": "vault_user",
+            "relations": {
+                "parent": {"this": {}},
+            },
+            "metadata": {
+                "relations": {
+                    "parent": {"directly_related_user_types": [{"type": "tenant"}]},
+                }
+            },
+        },
     ],
 }
 
@@ -894,6 +909,12 @@ INITIAL_TUPLES: List[Dict[str, str]] = [
     {"user": "tenant:aws", "relation": "tenant", "object": "aws_region:aws"},
     {"user": "provider:nutanix", "relation": "provider", "object": "nutanix_cluster:nutanix"},
     {"user": "tenant:nutanix", "relation": "tenant", "object": "nutanix_cluster:nutanix"},
+    # Per-tenant Vault identity mapping (authoritative source of truth for which
+    # AppRole "vault user" serves each tenant — shared by that tenant's admin and
+    # viewer). The matching AppRole roles/policies/secret_ids are created by
+    # vault_bootstrap.py / scripts/vault_tenant_role.py.
+    {"user": "tenant:aws", "relation": "parent", "object": "vault_user:libcloud-aws"},
+    {"user": "tenant:nutanix", "relation": "parent", "object": "vault_user:libcloud-nutanix"},
     # Resource classes (rbac_design.md:7-15). Each is a (tenant, class) pair.
     # platform:main parents each so SuperAdmin global_reader can read them.
     {"user": "tenant:aws", "relation": "tenant", "object": "resource_class:aws-compute"},

@@ -129,6 +129,20 @@ write_tuple "tenant:${TENANT}"        parent  "libcloud_api:main"
 write_tuple "tenant:${TENANT}"        parent  "${PROVIDER_OBJECT}"
 write_tuple "${PROVIDER_OBJECT}"      provider "${BACKEND_OBJECT}"
 write_tuple "tenant:${TENANT}"        tenant   "${BACKEND_OBJECT}"
+# Per-tenant Vault identity mapping (tenant -> vault_user). The matching
+# AppRole role/policy/secret_id is created by vault_tenant_role.py below.
+write_tuple "tenant:${TENANT}"        parent  "vault_user:libcloud-${TENANT}"
+
+# ---- 5. Vault AppRole identity (the tenant's per-tenant "vault user") ------
+# Non-fatal: a failure here leaves LLDAP + OpenFGA intact; retry manually.
+echo "Creating Vault AppRole identity for tenant:${TENANT} ..." >&2
+if TENANT="${TENANT}" python3 "${SCRIPT_DIR}/vault_tenant_role.py"; then
+  echo "Vault AppRole identity created for tenant:${TENANT}."
+else
+  echo "WARNING: Vault AppRole creation failed for tenant:${TENANT}." >&2
+  echo "  Retry manually:" >&2
+  echo "    TENANT=${TENANT} python3 test_script/scripts/vault_tenant_role.py" >&2
+fi
 
 echo
 echo "Tenant created: tenant:${TENANT} (cloud=${CLOUD}, binding=${TENANT})"

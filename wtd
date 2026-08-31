@@ -1,0 +1,574 @@
+Provisioning request — aws
+VM: libcloud-aws-1788072503915 — failed
+
+libcloud REST POST /v1/compute/nodes failed
+
+Backend orchestration contract (order preserved from script):
+
+=====>   allocation fialed..but aws2 and aws alone is worst.
+
+
+
+
+DUMP all the postgreq database  for clarity
+dump all the vault DB for clafrou
+
+
+
+
+aws2
+ACCESS_KEY=AKIAYHGEH2P7QJKE5UGO
+SECRET_KEY=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
+
+
+
+aws1
+ACCESS_KEY=AKIAYHGEH2P726TAT2PS
+SECRET_KEY=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
+
+
+
+CW/home/ubuntu/awscloud>./list_ec2_instances.sh 
+=== Running EC2 Instances (region: ap-southeast-1) ===
+
+aws: [ERROR]: An error occurred (UnauthorizedOperation) when calling the DescribeInstances operation: You are not authorized to perform this operation. User: arn:aws:iam::565199754239:user/aws2 is not authorized to perform: ec2:DescribeInstances because no identity-based policy allows the ec2:DescribeInstances action
+CW/home/ubuntu/awscloud>
+CW/home/ubuntu/awscloud>cd awscloud/
+
+
+
+CW/home/ubuntu/libcloud_nutanix/test_script/scripts>bash register_aws_tenants.sh 
+======================================================================
+tenant:aws1  (owner user: aws1-owner)
+======================================================================
+Creating tenant:aws1 (CLOUD=aws) ...
+SUPERADMIN_JWT not set — logging in as superadmin ...
+Logging in to Dex as superadmin ...
+Verifying superadmin JWT ...
+superadmin JWT verified (sub=CgpzdXBlcmFkbWluEgVsbGRhcA, email=superadmin@libcloud.local)
+SUPERADMIN_JWT exported (length=742).
+Creating LLDAP users for tenant:aws1 ...
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-7614e0282977 Creating 
+Container lldap-lldap-tools-run-7614e0282977 Created 
+Creating LLDAP user aws1-owner ...
+{
+  "id": "aws1-owner",
+  "displayName": "aws1 owner",
+  "email": "aws1-owner@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:34.416130078+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws1 owner"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws1-owner@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:34.416130078+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:34.416130078+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws1-owner"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "b12f8ea7-833c-35ac-b2e1-5407459ae1de"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws1"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws1 owner"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "owner"
+      ]
+    }
+  ]
+}
+Password set for aws1-owner (uid=aws1-owner,ou=people,dc=libcloud,dc=local)
+
+Username : aws1-owner
+Password : PW--IR-qck5cmnfkg3fB1dfQnjT
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-eb361b78b83a Creating 
+Container lldap-lldap-tools-run-eb361b78b83a Created 
+Creating LLDAP user aws1-admin ...
+{
+  "id": "aws1-admin",
+  "displayName": "aws1 admin",
+  "email": "aws1-admin@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:37.755188304+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws1 admin"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws1-admin@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:37.755188304+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:37.755188304+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws1-admin"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "d88f8c90-cb0a-3304-be55-dd9f7617e37c"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws1"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws1 admin"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "admin"
+      ]
+    }
+  ]
+}
+Password set for aws1-admin (uid=aws1-admin,ou=people,dc=libcloud,dc=local)
+
+Username : aws1-admin
+Password : PW-nPChEEqd8YPxjiFaCKlE-Bb0
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-c152d0ccf02f Creating 
+Container lldap-lldap-tools-run-c152d0ccf02f Created 
+Creating LLDAP user aws1-viewer ...
+{
+  "id": "aws1-viewer",
+  "displayName": "aws1 viewer",
+  "email": "aws1-viewer@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:40.602179811+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws1 viewer"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws1-viewer@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:40.602179811+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:40.602179811+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws1-viewer"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "59b2ffcc-4b28-3ea0-a992-e9edbdf6fec3"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws1"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws1 viewer"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "viewer"
+      ]
+    }
+  ]
+}
+Password set for aws1-viewer (uid=aws1-viewer,ou=people,dc=libcloud,dc=local)
+
+Username : aws1-viewer
+Password : PW-2c_7sSmvJeMCIfSVqwwGS23C
+Writing OpenFGA tuples for tenant:aws1 ...
+
+Tenant created: tenant:aws1 (cloud=aws, binding=aws1)
+  backend object : aws_region:aws1
+  Vault path     : secret/libcloud/aws1
+  owner          : aws1-owner  / PW--IR-qck5cmnfkg3fB1dfQnjT
+  admin          : aws1-admin  / PW-nPChEEqd8YPxjiFaCKlE-Bb0
+  viewer         : aws1-viewer / PW-2c_7sSmvJeMCIfSVqwwGS23C
+
+Set this tenant's backend credentials (owner only):
+  TENANT=aws1 CLOUD=aws LIBCLOUD_USER=aws1-owner LIBCLOUD_PASSWORD='PW--IR-qck5cmnfkg3fB1dfQnjT' \
+    LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \
+    python3 scripts/set_tenant_credentials.py
+
+Provision against this tenant:
+  LIBCLOUD_AWS_AUTH_BINDING=aws1 LIBCLOUD_USER=aws1-admin ./scripts/provision_aws.sh
+Authenticating aws1-owner against Dex ...
+OpenFGA Check user:aws1-owner can_manage_credentials tenant:aws1 ...
+Writing secret/libcloud/aws1 to Vault ...
+OK: credentials for tenant:aws1 updated by aws1-owner.
+tenant:aws1 registered (Vault path: secret/data/libcloud/aws1).
+
+======================================================================
+tenant:aws2  (owner user: aws2-owner)
+======================================================================
+Creating tenant:aws2 (CLOUD=aws) ...
+SUPERADMIN_JWT not set — logging in as superadmin ...
+Logging in to Dex as superadmin ...
+Verifying superadmin JWT ...
+superadmin JWT verified (sub=CgpzdXBlcmFkbWluEgVsbGRhcA, email=superadmin@libcloud.local)
+SUPERADMIN_JWT exported (length=742).
+Creating LLDAP users for tenant:aws2 ...
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-755882fb9e3a Creating 
+Container lldap-lldap-tools-run-755882fb9e3a Created 
+Creating LLDAP user aws2-owner ...
+{
+  "id": "aws2-owner",
+  "displayName": "aws2 owner",
+  "email": "aws2-owner@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:47.323794860+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws2 owner"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws2-owner@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:47.323794860+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:47.323794860+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws2-owner"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "d2459177-1941-3ef5-8ec9-27746fe478ca"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws2"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws2 owner"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "owner"
+      ]
+    }
+  ]
+}
+Password set for aws2-owner (uid=aws2-owner,ou=people,dc=libcloud,dc=local)
+
+Username : aws2-owner
+Password : PW-Q6Hf2fP3XznsEIBxvGvs6a1g
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-54c2aca72929 Creating 
+Container lldap-lldap-tools-run-54c2aca72929 Created 
+Creating LLDAP user aws2-admin ...
+{
+  "id": "aws2-admin",
+  "displayName": "aws2 admin",
+  "email": "aws2-admin@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:50.297262592+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws2 admin"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws2-admin@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:50.297262592+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:50.297262592+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws2-admin"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "d0d05856-14df-30fa-9f6f-3682eaaa93c0"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws2"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws2 admin"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "admin"
+      ]
+    }
+  ]
+}
+Password set for aws2-admin (uid=aws2-admin,ou=people,dc=libcloud,dc=local)
+
+Username : aws2-admin
+Password : PW--h2NLViALkegI6fbeYzdKhZT
+[+]  1/1t 1/11
+ ✔ Container lldap Running                                                  0.0s
+Container lldap Waiting 
+Container lldap Healthy 
+Container lldap-lldap-tools-run-633c8029139b Creating 
+Container lldap-lldap-tools-run-633c8029139b Created 
+Creating LLDAP user aws2-viewer ...
+{
+  "id": "aws2-viewer",
+  "displayName": "aws2 viewer",
+  "email": "aws2-viewer@libcloud.local",
+  "attributes": [
+    {
+      "name": "creation_date",
+      "value": [
+        "2026-08-28T07:48:53.069680204+00:00"
+      ]
+    },
+    {
+      "name": "display_name",
+      "value": [
+        "aws2 viewer"
+      ]
+    },
+    {
+      "name": "mail",
+      "value": [
+        "aws2-viewer@libcloud.local"
+      ]
+    },
+    {
+      "name": "modified_date",
+      "value": [
+        "2026-08-28T07:48:53.069680204+00:00"
+      ]
+    },
+    {
+      "name": "password_modified_date",
+      "value": [
+        "2026-08-28T07:48:53.069680204+00:00"
+      ]
+    },
+    {
+      "name": "user_id",
+      "value": [
+        "aws2-viewer"
+      ]
+    },
+    {
+      "name": "uuid",
+      "value": [
+        "9bea054e-924e-367b-9ddb-1dabb9af2d8b"
+      ]
+    },
+    {
+      "name": "department",
+      "value": [
+        "aws2"
+      ]
+    },
+    {
+      "name": "jobtitle",
+      "value": [
+        "aws2 viewer"
+      ]
+    },
+    {
+      "name": "role",
+      "value": [
+        "viewer"
+      ]
+    }
+  ]
+}
+Password set for aws2-viewer (uid=aws2-viewer,ou=people,dc=libcloud,dc=local)
+
+Username : aws2-viewer
+Password : PW-CbhmIE_NB3tEee8vOkdDqBGK
+Writing OpenFGA tuples for tenant:aws2 ...
+
+Tenant created: tenant:aws2 (cloud=aws, binding=aws2)
+  backend object : aws_region:aws2
+  Vault path     : secret/libcloud/aws2
+  owner          : aws2-owner  / PW-Q6Hf2fP3XznsEIBxvGvs6a1g
+  admin          : aws2-admin  / PW--h2NLViALkegI6fbeYzdKhZT
+  viewer         : aws2-viewer / PW-CbhmIE_NB3tEee8vOkdDqBGK
+
+Set this tenant's backend credentials (owner only):
+  TENANT=aws2 CLOUD=aws LIBCLOUD_USER=aws2-owner LIBCLOUD_PASSWORD='PW-Q6Hf2fP3XznsEIBxvGvs6a1g' \
+    LIBCLOUD_AWS_KEY=AKIA... LIBCLOUD_AWS_SECRET=... \
+    python3 scripts/set_tenant_credentials.py
+
+Provision against this tenant:
+  LIBCLOUD_AWS_AUTH_BINDING=aws2 LIBCLOUD_USER=aws2-admin ./scripts/provision_aws.sh
+Authenticating aws2-owner against Dex ...
+OpenFGA Check user:aws2-owner can_manage_credentials tenant:aws2 ...
+Writing secret/libcloud/aws2 to Vault ...
+OK: credentials for tenant:aws2 updated by aws2-owner.
+tenant:aws2 registered (Vault path: secret/data/libcloud/aws2).
+
+Done. Registered 2 AWS tenant(s).
+

@@ -57,17 +57,32 @@ MOCK_SECRET = "vaultsecret"
 
 
 class _MockVaultHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802
-        if not self.path.startswith("/v1/secret/data/libcloud/"):
-            self.send_response(404)
-            self.end_headers()
-            return
-        self.send_response(200)
+    # Serves the per-tenant AppRole flow now used by VaultClient.read_secret:
+    #   GET  /v1/secret/data/libcloud-vault-auth/<vault_user>  -> {role_id, secret_id}
+    #   POST /v1/auth/approle/login                            -> {client_token, lease_duration}
+    #   GET  /v1/secret/data/libcloud/<binding>                -> {key, secret}
+    def _json(self, code: int, payload: dict) -> None:
+        body = json.dumps(payload).encode()
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(
-            json.dumps({"data": {"data": {"key": MOCK_KEY, "secret": MOCK_SECRET}}}).encode()
-        )
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path.startswith("/v1/secret/data/libcloud-vault-auth/"):
+            self._json(200, {"data": {"data": {"role_id": "mock-role-id", "secret_id": "mock-secret-id"}}})
+            return
+        if self.path.startswith("/v1/secret/data/libcloud/"):
+            self._json(200, {"data": {"data": {"key": MOCK_KEY, "secret": MOCK_SECRET}}})
+            return
+        self._json(404, {"errors": ["not found"]})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path.startswith("/v1/auth/approle/login"):
+            self._json(200, {"auth": {"client_token": "mock-tenant-token", "lease_duration": 3600}})
+            return
+        self._json(404, {"errors": ["not found"]})
 
     def log_message(self, *_args) -> None:  # silence
         return

@@ -156,6 +156,44 @@ class FgaClient:
                 details={"user": user, "relation": relation, "object": obj},
             )
 
+    def list_objects(
+        self, type_: str, relation: str, user: str, bearer: str | None = None
+    ) -> list[str]:
+        """Return object ids of *type_* for which *user* holds *relation*.
+
+        Mirrors identity_service/app/fga.py::list_objects (OpenFGA /list-objects).
+        Used to resolve a tenant's vault_user (tenant:<t> parent vault_user:*)
+        at credential-resolution time. Returns [] (never raises) when OpenFGA is
+        disabled or the lookup fails, so callers can fall back to the
+        deterministic vault_user name.
+        """
+        if not self.enabled:
+            return []
+
+        payload = {
+            "authorization_model_id": self.model_id,
+            "type": type_,
+            "relation": relation,
+            "user": user,
+        }
+        url = f"{self.base_url}/stores/{self.store_id}/list-objects"
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8") or "{}")
+                return list(body.get("objects") or [])
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            log.warning("OpenFGA list-objects failed (%s %s): %s", type_, relation, exc)
+            return []
+
 
 _fga_client: Optional[FgaClient] = None
 

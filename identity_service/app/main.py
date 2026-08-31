@@ -374,7 +374,7 @@ def create_app() -> FastAPI:
         principal = _principal(claims)
         if not fga.can_view(principal, cloud):
             raise APIError("authz_forbidden", f"Cannot view {cloud} resources", 403)
-        return proxy.list_nodes(cloud)
+        return proxy.list_nodes(cloud, fga.tenant_binding(principal, cloud))
 
     @app.get("/api/hosts/{cloud}")
     def hosts_by_cloud(cloud: str, req: Request):
@@ -396,7 +396,7 @@ def create_app() -> FastAPI:
                 400,
                 {"cloud": cloud},
             )
-        return proxy.list_hosts(cloud)
+        return proxy.list_hosts(cloud, fga.tenant_binding(principal, cloud))
 
     @app.post("/api/provision/{cloud}")
     def provision_by_cloud(cloud: str, body: ProvisionRequest, req: Request):
@@ -405,7 +405,7 @@ def create_app() -> FastAPI:
         principal = _principal(claims)
         if not fga.can_provision(principal, cloud):
             raise APIError("authz_forbidden", f"Cannot provision {cloud}", 403)
-        return proxy.provision(cloud, body.vmName or f"libcloud-{'demo' if cloud == 'aws' else 'ntnx'}-{int(__import__('time').time())}")
+        return proxy.provision(cloud, body.vmName or f"libcloud-{'demo' if cloud == 'aws' else 'ntnx'}-{int(__import__('time').time())}", fga.tenant_binding(principal, cloud))
 
     @app.post("/api/provision-private/{cloud}")
     def provision_private_by_cloud(cloud: str, body: ProvisionRequest, req: Request):
@@ -424,7 +424,7 @@ def create_app() -> FastAPI:
         if not fga.can_provision(principal, cloud):
             raise APIError("authz_forbidden", f"Cannot provision private VM pair on {cloud}", 403)
         pair_prefix = "aws" if cloud == "aws" else "ntnx"
-        return proxy.provision_private(cloud, body.vmName or f"libcloud-{pair_prefix}-pair-{int(__import__('time').time())}")
+        return proxy.provision_private(cloud, body.vmName or f"libcloud-{pair_prefix}-pair-{int(__import__('time').time())}", fga.tenant_binding(principal, cloud))
 
     @app.post("/api/deprovision/{cloud}")
     def deprovision_by_cloud(cloud: str, body: DeprovisionRequest, req: Request):
@@ -438,7 +438,7 @@ def create_app() -> FastAPI:
         principal = _principal(claims)
         if not fga.can_provision(principal, cloud):
             raise APIError("authz_forbidden", f"Cannot deprovision {cloud}", 403)
-        return proxy.deprovision(cloud, body.vmName, body.vmId)
+        return proxy.deprovision(cloud, body.vmName, body.vmId, fga.tenant_binding(principal, cloud))
 
     @app.post("/api/update/{cloud}")
     def update_by_cloud(cloud: str, body: UpdateRequest, req: Request):
@@ -458,7 +458,7 @@ def create_app() -> FastAPI:
             "tag_key": body.tagKey,
             "tag_value": body.tagValue,
         }
-        return proxy.update_node(cloud, body.vmId, updates)
+        return proxy.update_node(cloud, body.vmId, updates, fga.tenant_binding(principal, cloud))
 
     # --- legacy per-cloud routes removed ------------------------------------
     # The cloud-parametric routes above (e.g. /api/resources/{cloud}) already

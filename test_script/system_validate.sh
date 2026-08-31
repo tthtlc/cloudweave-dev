@@ -111,6 +111,7 @@ _load_env_file "${REPO_ROOT}/openfga_postgres/generated/fga.env"
 _load_env_file "${VAULT_DIR}/generated/vault.env"
 _load_env_file "${LLDAP_DIR}/.env"
 _load_env_file "${REPO_ROOT}/.env"
+_load_env_file "${REPO_ROOT}/test_script/generated/dex.env"
 
 # Resolve a per-user Dex/LLDAP password from the generated dex.env (the same
 # mapping common.sh and openapi_rest_test.py use). Empty string if unknown.
@@ -120,6 +121,12 @@ password_for() {
     aws-owner)    printf '%s' "${LIBCLOUD_PASSWORD_AWS_OWNER:-}" ;;
     aws-admin)    printf '%s' "${LIBCLOUD_PASSWORD_AWS_ADMIN:-}" ;;
     aws-viewer)   printf '%s' "${LIBCLOUD_PASSWORD_AWS_VIEWER:-}" ;;
+    aws1-owner)   printf '%s' "${LIBCLOUD_PASSWORD_AWS1_OWNER:-}" ;;
+    aws1-admin)   printf '%s' "${LIBCLOUD_PASSWORD_AWS1_ADMIN:-}" ;;
+    aws1-viewer)  printf '%s' "${LIBCLOUD_PASSWORD_AWS1_VIEWER:-}" ;;
+    aws2-owner)   printf '%s' "${LIBCLOUD_PASSWORD_AWS2_OWNER:-}" ;;
+    aws2-admin)   printf '%s' "${LIBCLOUD_PASSWORD_AWS2_ADMIN:-}" ;;
+    aws2-viewer)  printf '%s' "${LIBCLOUD_PASSWORD_AWS2_VIEWER:-}" ;;
     ntnx-owner)   printf '%s' "${LIBCLOUD_PASSWORD_NTNX_OWNER:-}" ;;
     ntnx-admin)   printf '%s' "${LIBCLOUD_PASSWORD_NTNX_ADMIN:-}" ;;
     ntnx-viewer)  printf '%s' "${LIBCLOUD_PASSWORD_NTNX_VIEWER:-}" ;;

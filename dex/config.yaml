@@ -69,7 +69,7 @@ staticClients:
 
   - id: libcloud-portal
     name: libcloud Role Portal
-    secret: q-t-EdRp3BrsOxjcitlidjBk770rv18QSqj-QNB3DEM
+    secret: aEveWf_lExbeC_L7VLVHqOuS32CLpq-LKd_UWxrUtgc
     redirectURIs:
       - http://localhost:3000/auth/callback
       - http://rocky96:3000/auth/callback

@@ -1,5 +1,7 @@
 # GENERATED from openfga_postgres/generated/enumeration_report.json
-# Every assertion below is a decision the live OpenFGA server returned.
+# Every assertion below is a decision the live OpenFGA server returned,
+# except the vault_user tuples/assertions appended with the per-tenant
+# AppRole change (openfga_bootstrap.py INITIAL_TUPLES / vault_bootstrap.py).
 # store: 01KXFQ6JWFD2MZKFDFSHYNNNXE
 # model: 01KXWWZY8424AMK2B443FH7TQ0
 # recorded: 2026-07-25T05:05:19+00:00
@@ -7,7 +9,7 @@
 name: libcloud-rest-store
 model_file: ./libcloud.fga
 
-# --- the 66 tuples present in the live store ---
+# --- the 68 tuples in the store (66 replayed + 2 vault_user) ---
 tuples:
   - user: user:superadmin
     relation: superadmin
@@ -207,6 +209,12 @@ tuples:
   - user: user:ntnx-compute-viewer
     relation: viewer
     object: resource_class:nutanix-compute
+  - user: tenant:aws
+    relation: parent
+    object: vault_user:libcloud-aws
+  - user: tenant:nutanix
+    relation: parent
+    object: vault_user:libcloud-nutanix
 
 tests:
   - name: recorded-check-results
@@ -469,6 +477,14 @@ tests:
         object: resource_class:nutanix-compute
         assertions:
           viewer: true
+      - user: tenant:aws
+        object: vault_user:libcloud-aws
+        assertions:
+          parent: true
+      - user: tenant:nutanix
+        object: vault_user:libcloud-nutanix
+        assertions:
+          parent: true
 
   - name: recorded-list-objects-results
     list_objects:
@@ -703,3 +719,13 @@ tests:
         assertions:
           superadmin:
             - platform:main
+      - user: tenant:aws
+        type: vault_user
+        assertions:
+          parent:
+            - vault_user:libcloud-aws
+      - user: tenant:nutanix
+        type: vault_user
+        assertions:
+          parent:
+            - vault_user:libcloud-nutanix

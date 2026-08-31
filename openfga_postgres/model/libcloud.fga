@@ -78,3 +78,7 @@ type nutanix_cluster
     define tenant_owner: owner from tenant
     define tenant_viewer: viewer from tenant
 
+type vault_user
+  relations
+    define parent: [tenant]
+

@@ -3,8 +3,8 @@
 # PROVENANCE: unlike store.fga.yaml (whose assertions are replayed live-server
 # decisions), the assertions here are DERIVED — they state the security posture
 # the model is meant to enforce. They are trustworthy because the DSL is proven
-# equivalent to the live model (zero semantic diff on round-trip, 108/108
-# recorded decisions reproduced), so a pass here is what the live server does.
+# equivalent to the live model (zero semantic diff on round-trip, 112/112
+# store assertions reproduced), so a pass here is what the live server does.
 #
 # The recorded checks only ever re-check stored tuples, so every one of them is
 # positive. Nothing in that set proves a tenant boundary actually holds. These do.

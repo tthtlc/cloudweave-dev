@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -14,8 +15,14 @@ from app.errors import APIError
 
 log = logging.getLogger(__name__)
 
-# Per-cloud token cache: cloud -> {access_token, refresh_token, exp}
+# Per-cloud token cache: key -> {access_token, refresh_token, exp}. The key is
+# the cloud for the seeded per-cloud provisioners, or "cloud:binding" for a
+# per-tenant provisioner (so aws1-admin and aws2-admin never share a token).
 _token_cache: dict[str, dict[str, Any]] = {}
+
+
+def _cache_key(cloud: str, binding: str | None) -> str:
+    return cloud if not binding else f"{cloud}:{binding}"
 
 
 def _extract_code(location: str) -> str:
@@ -47,43 +54,54 @@ class ProvisionerAuth:
     def __init__(self) -> None:
         self._settings = get_settings
 
-    def _provisioner(self, cloud: str) -> tuple[str, str]:
+    def _provisioner(self, cloud: str, binding: str | None = None) -> tuple[str, str]:
         s = self._settings()
-        if cloud == "aws":
-            return s.provisioner_aws_user, s.provisioner_aws_password
-        return s.provisioner_ntnx_user, s.provisioner_ntnx_password
+        if not binding:
+            # Seeded per-cloud defaults (aws-admin / ntnx-admin).
+            if cloud == "aws":
+                return s.provisioner_aws_user, s.provisioner_aws_password
+            return s.provisioner_ntnx_user, s.provisioner_ntnx_password
+        # Per-tenant binding (aws1, aws2, ...): log in as that tenant's admin.
+        # The tenant id is the LLDAP slug prefix, except the seeded "nutanix"
+        # tenant whose users are "ntnx-*".
+        slug = "ntnx" if binding == "nutanix" else binding
+        user = f"{slug}-admin"
+        password = os.environ.get(f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN", "")
+        return user, password
 
-    def get_token(self, cloud: str) -> str:
-        cached = _token_cache.get(cloud)
+    def get_token(self, cloud: str, binding: str | None = None) -> str:
+        key = _cache_key(cloud, binding)
+        cached = _token_cache.get(key)
         now = time.time()
         if cached and cached.get("exp", 0) > now + 30:
             return cached["access_token"]
         if cached and cached.get("refresh_token"):
             try:
                 tok = self._refresh(cloud, cached["refresh_token"])
-                _token_cache[cloud] = tok
+                _token_cache[key] = tok
                 return tok["access_token"]
             except Exception:
-                log.warning("provisioner token refresh failed for %s; full login", cloud)
-        tok = self._full_login(cloud)
-        _token_cache[cloud] = tok
+                log.warning("provisioner token refresh failed for %s; full login", key)
+        tok = self._full_login(cloud, binding)
+        _token_cache[key] = tok
         return tok["access_token"]
 
-    def get_token_full(self, cloud: str) -> dict[str, Any]:
+    def get_token_full(self, cloud: str, binding: str | None = None) -> dict[str, Any]:
         """Same as get_token() but returns the full token dict
         ({access_token, refresh_token, exp}) so callers that hand the token to
         external processes (e.g. deprovision_aws.sh's token cache) get the
         refresh_token too."""
         # Ensure the cache is populated/refreshed.
-        access = self.get_token(cloud)
-        cached = _token_cache.get(cloud, {})
+        access = self.get_token(cloud, binding)
+        key = _cache_key(cloud, binding)
+        cached = _token_cache.get(key, {})
         if not cached.get("access_token"):
             cached = {"access_token": access, "refresh_token": "", "exp": 0}
         return cached
 
-    def _full_login(self, cloud: str) -> dict[str, Any]:
+    def _full_login(self, cloud: str, binding: str | None = None) -> dict[str, Any]:
         s = self._settings()
-        user, password = self._provisioner(cloud)
+        user, password = self._provisioner(cloud, binding)
         if not user or not password:
             raise APIError("provisioner_unconfigured", f"no provisioner credentials for {cloud}", 500)
         dex = s.dex_url.rstrip("/")
