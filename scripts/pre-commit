@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block commits that add Vault/Dex bootstrap secrets.
+#
+# Install:
+#   ln -s ../../scripts/pre-commit .git/hooks/pre-commit
+set -euo pipefail
+exec bash "$(dirname "$0")/git-secrets-check.sh"

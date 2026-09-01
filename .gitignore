@@ -182,6 +182,10 @@ generated/
 *_generated/
 **/generated/
 
+# Committed-by-mistake bootstrap secrets — never track these again
+vault/generated/
+dex/generated/
+
 # Logs and log directories
 log/
 logs/
