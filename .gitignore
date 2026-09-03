@@ -1,4 +1,6 @@
 my.env
+vault.env
+*.env
 
 libcloud/.asf.yaml
 libcloud/.codecov.yml

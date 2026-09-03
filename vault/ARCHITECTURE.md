@@ -8,12 +8,12 @@ is **not** a user password living in LLDAP. Concretely:
   under `secret/libcloud/<tenant>`, or registered with a cloud secrets engine.
 - Per-tenant backend credentials, written by the tenant **owner** only.
 - Vault-internal material: root token, unseal key, the libcloud REST API
-  read-only token (these are *outputs* of bootstrap, written to
+  orchestrator token (these are *outputs* of bootstrap, written to
   `generated/vault.env`, not stored *inside* Vault's KV).
 
 What Vault does **not** store: human login passwords. Those live in LLDAP
 (`../lldap`) and are verified by LLDAP/Dex at login time. Vault has **no LDAP
-auth method** — callers authenticate to Vault by token only (see §6), so it
+auth method** — callers authenticate to Vault by token or AppRole (see §6), so it
 never imports or replicates LLDAP passwords.
 
 This directory is a **standalone Docker Compose project** running the Vault
@@ -26,9 +26,9 @@ container named **`vault`** on the shared external `libcloud_net` network.
 ```
             ┌────────────────────────── libcloud_net ──────────────────────────────┐
             │                                                                      │
-            │   ┌─────────┐   read-only token    ┌─────────┐                       │
+            │   ┌─────────┐  per-tenant AppRole  ┌─────────┐                       │
             │   │libcloud │ ───────────────────► │ vault   │  (this project)       │
-            │   │ REST API│   GET /v1/secret/... │ :8200   │  KV v2 (token auth)   │
+            │   │ REST API│   GET /v1/secret/... │ :8200   │  KV v2 (token+AppRole)│
             │   └────┬────┘                      └─────────┘                       │
             │        │ JWT (Dex-issued)                                            │
             │        ▼                                                             │
@@ -47,15 +47,17 @@ container named **`vault`** on the shared external `libcloud_net` network.
   short-lived credentials.
 - **Identity / authentication (upstream):** LLDAP holds users + groups and is
   verified by Dex at login time. Vault itself has **no LDAP auth method** —
-  callers reach Vault by token only (root token for admin scripts, read-only
-  token for the libcloud REST API). LLDAP is not mapped to Vault ACL policies.
+  callers reach Vault by token or AppRole (root token for admin scripts, an
+  orchestrator token + per-tenant AppRole login for the libcloud REST API).
+  LLDAP is not mapped to Vault ACL policies.
 - **Authorization gate (sibling):** OpenFGA gates **writes** to Vault: a
   tenant's backend credentials can only be written by a caller who (a) logs in
   to Dex (i.e. is a real LLDAP user) and (b) holds the OpenFGA
   `can_manage_credentials` relation on that tenant (owner-only). The OpenFGA
   server itself does **not** talk to Vault at runtime (see §7).
 - **Runtime consumer:** the libcloud REST API reads credentials from Vault at
-  request time using a least-privilege read-only token issued during bootstrap.
+  request time via a per-tenant AppRole login (the tenant's "vault user"),
+  resolved from OpenFGA and yielding a short-lived tenant-scoped token.
 
 ---
 
@@ -69,7 +71,7 @@ container named **`vault`** on the shared external `libcloud_net` network.
 | `add_credential.py` | Insert / overwrite a KV v2 secret at `secret/libcloud/<name>` (root-token write). |
 | `delete_credential.py` | Delete a KV v2 secret (metadata + all versions, or destroy current version only). |
 | `list_credentials.py` | Enumerate every secret under `secret/libcloud/` (keys + metadata, optionally values). |
-| `generated/vault.env` | Emitted by `vault_bootstrap.py` (chmod `0600`). Contains `VAULT_ADDR`, `VAULT_TOKEN` (libcloud REST read token), `VAULT_ROOT_TOKEN`, `VAULT_UNSEAL_KEY`. **Committed to git — treat values as compromised; see §8.5.** |
+| `generated/vault.env` | Emitted by `vault_bootstrap.py` (chmod `0600`). Contains `VAULT_ADDR`, `VAULT_TOKEN` (orchestrator token — reads per-tenant AppRole auth material only), `VAULT_ROOT_TOKEN`, `VAULT_UNSEAL_KEY`. **Committed to git — treat values as compromised; see §8.5.** |
 | `vault.log` | Captured server log from a manual run (not used by the container; the compose project logs to Docker). |
 | `myrun.sh` | Developer convenience wrapper for a manual local run. |
 
@@ -171,7 +173,8 @@ Key points:
 ### Bootstrap container (`vault-bootstrap`)
 
 A one-shot `python:3.12-slim` container runs `../openfga_postgres/vault_bootstrap.py`
-to initialize, unseal, configure, and issue the libcloud REST API read token.
+to initialize, unseal, configure Vault, enable AppRole auth, and issue the
+per-tenant AppRoles plus the orchestrator token.
 It runs as the host UID/GID so `generated/vault.env` (chmod `0600`) is owned by
 the host user and readable by `setup.sh`. It is started by
 `../setup.sh`; compose `depends_on` waits only for `condition: service_started`
@@ -190,20 +193,24 @@ responds.
    - waits for the Vault API to be reachable,
    - initializes (1 key, threshold 1) if not yet initialized,
    - unseals,
-   - enables KV v2 at `secret/`,
-   - creates the `libcloud-rest-read` ACL policy (read/list on
-     `secret/data/libcloud/*` and `secret/metadata/libcloud/*`),
-   - issues a 768 h renewable token bound to that policy → written to
-     `generated/vault.env` as `VAULT_TOKEN`.
+   - enables KV v2 at `secret/` and AppRole auth at `approle/`,
+   - for each seeded tenant, creates the `libcloud-read-<tenant>` ACL policy
+     (read `secret/data/libcloud/<tenant>` + metadata) and the AppRole
+     `libcloud-<tenant>` bound to it, then stores its role_id + secret_id at
+     `secret/data/libcloud-vault-auth/libcloud-<tenant>`,
+   - issues a 768 h renewable *orchestrator* token bound to
+     `libcloud-vault-auth-read` (read only the AppRole auth material) → written
+     to `generated/vault.env` as `VAULT_TOKEN`.
 5. `setup.sh` syncs `VAULT_ADDR=http://vault:8200` + `VAULT_TOKEN` into
    `../libcloud.rest/.env` and recreates the libcloud REST API container so it
-   picks them up.
+   picks them up. Per-tenant backend credentials are written separately by the
+   tenant owner via `set_tenant_credentials.py`, not by bootstrap.
 
 Manual control (from this directory):
 
 ```bash
 docker compose up -d vault            # start (sealed on first boot)
-docker compose up   vault-bootstrap   # init + unseal + issue read token
+docker compose up   vault-bootstrap   # init + unseal + AppRole + orchestrator token
 docker compose logs -f vault          # server log
 docker compose restart vault          # restart (seal state survives on the volume)
 docker compose down                   # stop (keeps vault-data volume)
@@ -224,6 +231,10 @@ secret/data/libcloud/aws-dev     { key, secret }       tenant:aws-dev  (per-tena
 secret/data/libcloud/nutanix     { key, secret }       tenant:nutanix  backend creds
 secret/data/libcloud/<name>      { arbitrary k=v }     any ad-hoc secret
 ```
+
+A second prefix, `secret/data/libcloud-vault-auth/libcloud-<tenant>`, holds each
+tenant's AppRole login material (`role_id` + `secret_id`) and is readable by the
+orchestrator token only (§6).
 
 KV v2 is **versioned + append-only**: re-writing a key creates a new version
 (safe update), and old versions remain recoverable until metadata is deleted.
@@ -312,31 +323,41 @@ A typed-name confirmation guard prevents accidental full deletes.
 ### KV paths outside `libcloud/`
 
 Cloud secrets engines (§C above) live at their own mount paths (`aws/`,
-`azure/`, `gcp/`, `alic/`), not under `secret/libcloud/`. The
-`libcloud-rest-read` policy only grants read/list on `secret/libcloud/*`, so
-the libcloud REST API cannot reach engine-generated dynamic creds unless a
-dedicated policy is added (via `vault-policy-apply.sh`).
+`azure/`, `gcp/`, `alic/`), not under `secret/libcloud/`. The per-tenant
+`libcloud-read-<tenant>` policies only grant read on
+`secret/data/libcloud/<tenant>`, so the libcloud REST API cannot reach
+engine-generated dynamic creds unless a dedicated policy is added (via
+`vault-policy-apply.sh`).
 
 ---
 
-## 6. How Vault is authenticated (token-only; no LDAP)
+## 6. How Vault is authenticated (token + AppRole; no LDAP)
 
-Vault is reached **exclusively by Vault token** over the HTTP API
-(`X-Vault-Token`). There is **no LDAP auth method** in this deployment:
-`vault_bootstrap.py` never writes `auth/ldap/config`, never issues
-LDAP-issued tokens, and never maps LLDAP groups to Vault policies.
+Vault is reached **by Vault token and by AppRole** over the HTTP API. There is
+**no LDAP auth method** in this deployment: `vault_bootstrap.py` never writes
+`auth/ldap/config`, never issues LDAP-issued tokens, and never maps LLDAP groups
+to Vault policies.
 
-The only two tokens Vault uses are:
+The identities Vault uses are:
 
 - **`VAULT_ROOT_TOKEN`** — the root token from `vault operator init`, used by
   host admin scripts (`add_credential.py`, `delete_credential.py`, the
-  `vault-*.sh` operators) for writes, policy/engine management, and
-  credential seeding.
-- **`VAULT_TOKEN`** — the least-privilege read token (ttl 768h, renewable),
-  bound to the `libcloud-rest-read` policy, used by the libcloud REST API to
-  read `secret/libcloud/*` at request time.
+  `vault-*.sh` operators, `vault_tenant_role.py`, `materialize_vault_users.py`)
+  for writes, policy/engine management, AppRole creation, and credential
+  seeding.
+- **`VAULT_TOKEN`** — the orchestrator token (ttl 768h, renewable), bound to the
+  `libcloud-vault-auth-read` policy. It can read *only* the per-tenant AppRole
+  login material at `secret/data/libcloud-vault-auth/*` — never the cloud
+  secrets. The libcloud REST API uses it to fetch a tenant's AppRole login
+  material, then logs in via AppRole for a short-lived tenant-scoped token.
+- **Per-tenant AppRoles** — one AppRole `libcloud-<tenant>` per tenant, bound to
+  policy `libcloud-read-<tenant>` (read only `secret/data/libcloud/<tenant>`).
+  This is the tenant's "vault user"; the tenant → AppRole mapping lives in
+  OpenFGA (`tenant:<t> parent vault_user:libcloud-<t>`).
 
-Both are written to `generated/vault.env` by `vault_bootstrap.py` (§4).
+`VAULT_ROOT_TOKEN` and `VAULT_TOKEN` are written to `generated/vault.env` by
+`vault_bootstrap.py` (§4). The AppRole login material (role_id + secret_id) is
+stored in Vault's KV at `secret/data/libcloud-vault-auth/libcloud-<tenant>`.
 
 ### 6.1 LLDAP credentials do not reach Vault
 
@@ -422,22 +443,27 @@ network level (no OpenFGA→Vault calls) but coupled at the policy level
 
 ### 7.4 The libcloud REST API — the runtime reader
 
-At request time, the libcloud REST API reads the cloud credentials it needs
-from Vault using the **least-privilege read-only token** issued during
-bootstrap (`VAULT_TOKEN` in `generated/vault.env`, synced into
-`../libcloud.rest/.env` as `VAULT_ADDR=http://vault:8200` + `VAULT_TOKEN`).
-That token is bound to the `libcloud-rest-read` policy:
+At request time, the libcloud REST API reads a tenant's cloud credentials by
+logging in as that tenant's **per-tenant AppRole** (see
+`libcloud.rest/app/connections/vault_client.py` and `.../auth/policy.py`):
 
-```hcl
-path "secret/data/libcloud/*"     { capabilities = ["read"] }
-path "secret/metadata/libcloud/*" { capabilities = ["read", "list"] }
-```
+1. **Resolve the vault user** — the policy engine asks OpenFGA for the tenant's
+   `vault_user` (`tenant:<binding> parent vault_user:*`), falling back to the
+   deterministic name `libcloud-<binding>`.
+2. **Fetch AppRole login material** — using the orchestrator token
+   (`VAULT_TOKEN`), read `secret/data/libcloud-vault-auth/<vault_user>` to get
+   the `role_id` + `secret_id`.
+3. **AppRole login** — `POST /v1/auth/approle/login` with that role_id +
+   secret_id yields a short-lived (60 m) token bound to `libcloud-read-<tenant>`
+   (read only `secret/data/libcloud/<tenant>`).
+4. **Read the secret** — `GET /v1/secret/data/libcloud/<tenant>` with that
+   tenant-scoped token.
 
-It cannot write, delete, or reach any path outside `secret/libcloud/*`. The
-REST API first authorizes the caller via OpenFGA (`can_provision`, etc.), then
-fetches the tenant's backend creds from Vault and uses them to talk to AWS /
-Nutanix. The raw cloud credentials are never present in the REST API's env
-beyond the read token.
+The REST API first authorizes the caller via OpenFGA (`can_provision`, etc.),
+then resolves the vault user and reads the tenant's backend creds as above.
+Auth material, tokens, and secret values are cached in-process for 30 s. The raw
+cloud credentials never appear in the REST API's env beyond `VAULT_TOKEN`
+(which reads only AppRole material, not the secrets).
 
 ---
 
@@ -458,19 +484,23 @@ layered:
   `superadmin` user). So merely having host access is not enough to (re)create
   the root token — you must also be `superadmin` in LLDAP.
 
-### 8.2 Token hierarchy + scoped policies
+### 8.2 Identity hierarchy + scoped policies
 
-| Token | Capabilities | Where it lives | Who gets it |
+| Identity | Capabilities | Where it lives | Who gets it |
 | --- | --- | --- | --- |
 | `VAULT_ROOT_TOKEN` | root | `generated/vault.env` (0600) | host admin scripts only |
-| `VAULT_TOKEN` (libcloud REST) | read/list `secret/libcloud/*` | synced into `../libcloud.rest/.env` | libcloud REST API container |
+| `VAULT_TOKEN` (orchestrator) | read `secret/data/libcloud-vault-auth/*` | synced into `../libcloud.rest/.env` | libcloud REST API container |
+| AppRole `libcloud-<tenant>` | read `secret/data/libcloud/<tenant>` (via short-lived login token) | KV at `secret/data/libcloud-vault-auth/libcloud-<tenant>` | libcloud REST API, resolved per tenant |
 
 - The root token is **not** mounted into any long-running container; it is read
   from `generated/vault.env` only by host-side scripts at invocation time.
-- The REST API token is path-scoped to `secret/libcloud/*` and read-only — it
-  cannot enumerate engines, write, delete, or reach `<mount>/config/root`.
+- The orchestrator token is path-scoped to `secret/data/libcloud-vault-auth/*`
+  and read-only — it cannot read the cloud secrets, enumerate engines, write,
+  delete, or reach `<mount>/config/root`.
+- The per-tenant AppRole token is short-lived (60 m TTL) and tenant-scoped: a
+  leaked token for `libcloud-<tenant>` can read only that tenant's secret.
 - `vault_require_root_token()` in `test_script/scripts/vault_common.sh` refuses to run
-  policy/engine/lease-revoke-prefix scripts if only the read-only token is
+  policy/engine/lease-revoke-prefix scripts if only the orchestrator token is
   available, so a mis-set `VAULT_TOKEN` cannot accidentally perform root ops.
 
 ### 8.3 Authorization gate on writes

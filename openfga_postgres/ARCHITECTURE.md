@@ -18,7 +18,7 @@ are flagged inline below.
 | `.env` | Compose/script defaults (no secrets) |
 | `openfga_bootstrap.py` | Store + model + tuples + validation (§5, §6) |
 | `dex_bootstrap.py` | Renders `dex/config.yaml` + `dex/generated/dex.env` (§7) |
-| `vault_bootstrap.py` | Vault init/unseal/KV/read-token (§8) |
+| `vault_bootstrap.py` | Vault init/unseal/KV/AppRoles/orchestrator-token (§8) |
 | `enumerate_openfga.py` | Read-only full-surface enumeration (§9) |
 | `list_users.sh`, `fga_auth.sh` | Curl helpers for ListUsers (§9) |
 | `scripts/fga-test.sh` | Container + API smoke test (§9) |
@@ -49,8 +49,8 @@ renderers, the operator scripts — stayed here. That is why the directory does
    `../dex/generated/dex.env` (§7). It lives here because it is a *bootstrap
    script*, not a container, and the directory is the home of all bootstrap
    scripts after the `openfga_my` consolidation.
-3. **Vault bootstrap** — `vault_bootstrap.py` initialises/unseals Vault and
-   issues the libcloud REST API read token (§8).
+3. **Vault bootstrap** — `vault_bootstrap.py` initialises/unseals Vault, enables
+   AppRole auth, and issues per-tenant AppRoles + the orchestrator token (§8).
 
 This is the surprising part worth calling out: **`openfga_postgres` does not
 contain a Dex or Vault container.** Dex, Vault, and LLDAP are *sibling*
@@ -545,38 +545,49 @@ fetches JWKS from.
 
 `vault_bootstrap.py` initialises and configures the sibling `../vault` server.
 It is idempotent and **gated on `SUPERADMIN_JWT`** exactly like the OpenFGA
-bootstrap (`vault_bootstrap.py:233-240`, return code 3). Sequence in `main()`:
+bootstrap (`vault_bootstrap.py:324-333`, return code 3). Sequence in `main()`:
 
-1. `wait_for_vault()` — polls `GET /sys/init` up to 120s (`:100-110`).
+1. `wait_for_vault()` — polls `GET /sys/init` up to 120s (`:123-133`).
 2. `initialize_if_needed()` — `POST /sys/init` with **`secret_shares=1`,
-   `secret_threshold=1`** (`:159`), i.e. a single unseal key is enough. Persists
-   the root token + unseal key. On a re-run it reuses the stored values
-   (`:144-156`).
-3. `unseal_if_needed()` — unseals if sealed (`:166-173`).
-4. `enable_kv_v2()` — mounts KV **v2** at `secret/` (`:176-192`), idempotent
+   `secret_threshold=1`** (`:181-186`), i.e. a single unseal key is enough.
+   Persists the root token + unseal key. On a re-run it reuses the stored values
+   (`:167-179`).
+3. `unseal_if_needed()` — unseals if sealed (`:189-196`).
+4. `enable_kv_v2()` — mounts KV **v2** at `secret/` (`:199-215`), idempotent
    (tolerates an already-mounted path).
-5. `ensure_read_token()` — creates the **`libcloud-rest-read`** ACL policy
-   (`READ_POLICY`, `:59-66`: read on `secret/data/libcloud/*`, read+list on
-   `secret/metadata/libcloud/*`) and issues a token with
-   **`ttl=768h`, `renewable=true`** (`:204-211`).
-6. `_write_env()` — writes `vault/generated/vault.env` and `chmod 600`s it
-   (`:125-141`).
+5. `enable_approle()` — enables the AppRole auth method at `approle/`
+   (`:239-247`).
+6. `ensure_orchestrator_token()` — creates the **`libcloud-vault-auth-read`**
+   ACL policy (`ORCHESTRATOR_POLICY`, `:70-77`: read on
+   `secret/data/libcloud-vault-auth/*`, read+list on its metadata) and issues a
+   token with **`ttl=768h`, `renewable=true`** (`:218-236`) → `VAULT_TOKEN`.
+   This token reads only the per-tenant AppRole login material, never the cloud
+   secrets.
+7. `ensure_tenant_approle()` per seeded tenant (`SEED_TENANTS`, default
+   `aws,nutanix`) — creates the per-tenant `libcloud-read-<tenant>` ACL policy
+   (read `secret/data/libcloud/<tenant>` + metadata), the AppRole
+   `libcloud-<tenant>` bound to it (`token_ttl=60m`, `token_max_ttl=120m`), and
+   stores its role_id + secret_id at
+   `secret/data/libcloud-vault-auth/libcloud-<tenant>` (`:250-304`).
+8. `_write_env()` — writes `vault/generated/vault.env` and `chmod 600`s it
+   (`:148-164`).
 
 ### What is deliberately *not* here
 
 - **No per-tenant backend credentials are seeded here.** Those are written by the
   tenant *owner* via `test_script/scripts/set_tenant_credentials.py`, gated on
   OpenFGA `can_manage_credentials` (owner-only) — not on global env
-  (`vault_bootstrap.py:22-27, 249-252`).
-- **Only token auth is enabled.** The script never touches `/sys/auth`, so there
-  is **no LDAP/AppRole/userpass auth method** — the single read token is how
-  `libcloud.rest` reaches Vault.
+  (`vault_bootstrap.py:322-324, 350-353`).
+- **The tenant → vault-user mapping is not created here** — that is an OpenFGA
+  fact (`tenant:<t> parent vault_user:libcloud-<t>`), seeded by
+  `openfga_bootstrap.py` / `create_tenant.sh`. `vault_bootstrap.py` only creates
+  the Vault side (the AppRole + policy + login material).
 
 ### Output: `vault/generated/vault.env`
 
-Four keys (`vault_bootstrap.py:130-134`): `VAULT_ADDR` (host-facing),
-`VAULT_TOKEN` (the libcloud REST API read token), `VAULT_ROOT_TOKEN`,
-`VAULT_UNSEAL_KEY`.
+Four keys (`vault_bootstrap.py:150-158`): `VAULT_ADDR` (host-facing),
+`VAULT_TOKEN` (the orchestrator token — reads per-tenant AppRole auth material,
+not the cloud secrets), `VAULT_ROOT_TOKEN`, `VAULT_UNSEAL_KEY`.
 
 ---
 
@@ -651,7 +662,7 @@ Verified with `git ls-files` (2026-08-27):
 | File | Tracked? | Contents |
 | --- | --- | --- |
 | `dex/generated/dex.env` | **YES** | OAuth client secret, the portal client secret, and **all eight LLDAP user passwords** (superadmin + owners/admins/viewers/denied) |
-| `vault/generated/vault.env` | **YES** | The **Vault root token and unseal key**, plus the libcloud REST API read token |
+| `vault/generated/vault.env` | **YES** | The **Vault root token and unseal key**, plus the orchestrator token |
 | `openfga_postgres/generated/fga.env` | **no** | Store/model ids + URL (not secret) |
 | `openfga_postgres/generated/postgres.env` | **no** | Postgres credentials (auto-generated) |
 

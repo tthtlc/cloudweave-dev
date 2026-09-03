@@ -1,0 +1,305 @@
+<title>One Name, Five Layers</title>
+<style>
+  :root {
+    --bg: #F4F6F5;
+    --surface: #FFFFFF;
+    --ink: #1A2420;
+    --muted: #5F6D66;
+    --line: #DDE3DF;
+    --create: #0E7C66;
+    --create-ink: #FFFFFF;
+    --reuse: #6E7C75;
+    --reuse-ink: #47524C;
+    --gate: #B7791F;
+    --gate-bg: #FBF3E4;
+    --gate-ink: #6B450E;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1512;
+      --surface: #151E1A;
+      --ink: #E6ECE8;
+      --muted: #96A49C;
+      --line: #25302B;
+      --create: #2FBF9C;
+      --create-ink: #06211A;
+      --reuse: #8B9A92;
+      --reuse-ink: #AEBAB3;
+      --gate: #E0A64A;
+      --gate-bg: #2A2315;
+      --gate-ink: #F0C883;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1512;
+    --surface: #151E1A;
+    --ink: #E6ECE8;
+    --muted: #96A49C;
+    --line: #25302B;
+    --create: #2FBF9C;
+    --create-ink: #06211A;
+    --reuse: #8B9A92;
+    --reuse-ink: #AEBAB3;
+    --gate: #E0A64A;
+    --gate-bg: #2A2315;
+    --gate-ink: #F0C883;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 72px; }
+
+  /* header */
+  header { max-width: 40rem; margin-bottom: 44px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--create); font-weight: 500;
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 4.2vw, 2.7rem); line-height: 1.08;
+    font-weight: 600; letter-spacing: -0.02em; margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .thesis { color: var(--muted); font-size: 1.05rem; max-width: 38rem; margin: 0; }
+
+  h2 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+    margin: 48px 0 16px;
+  }
+
+  /* layer stack */
+  .stack { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .layer { display: grid; grid-template-columns: 168px 1fr; }
+  .layer + .layer { border-top: 1px solid var(--line); }
+  .layer-head { padding: 18px 20px; border-right: 1px solid var(--line); }
+  .layer-step {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    display: block; margin-bottom: 6px;
+  }
+  .layer-name { font-weight: 600; font-size: 15px; }
+  .layer-role { display: block; color: var(--muted); font-size: 12.5px; font-weight: 400; margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; padding: 18px 20px; }
+
+  .chip {
+    font-family: var(--mono); font-size: 12px; line-height: 1.35;
+    padding: 7px 11px; border-radius: 7px; border: 1px solid transparent;
+    display: inline-flex; flex-direction: column; gap: 2px;
+  }
+  .chip .tag {
+    font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 500;
+  }
+  .chip.create { background: var(--create); color: var(--create-ink); }
+  .chip.create .tag { opacity: .82; }
+  .chip.reuse { background: transparent; border-color: var(--line); color: var(--reuse-ink); }
+  .chip.reuse .tag { color: var(--reuse); }
+  .chip.gate { background: var(--gate-bg); border-color: var(--gate); color: var(--gate-ink); }
+  .chip.gate .tag { color: var(--gate); }
+
+  /* flow connector */
+  .flow { display: flex; justify-content: center; padding: 0 0 0 0; color: var(--muted); font-size: 14px; line-height: 1; }
+  .flow span { display: inline-block; margin: -1px 0 -1px; }
+
+  /* rule callout */
+  .rule {
+    margin-top: 32px; border: 1px solid var(--gate); border-left: 4px solid var(--gate);
+    background: var(--gate-bg); border-radius: 8px; padding: 16px 20px;
+  }
+  .rule-title { font-weight: 600; color: var(--gate-ink); margin: 0 0 6px; }
+  .rule code {
+    font-family: var(--mono); font-size: 12px; background: transparent;
+    border: 1px solid var(--gate); color: var(--gate-ink); padding: 1px 5px; border-radius: 4px;
+  }
+  .rule p { margin: 0; color: var(--gate-ink); font-size: 14px; }
+
+  /* naming table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 14px; vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line);
+  }
+  tbody tr + tr td { border-top: 1px solid var(--line); }
+  td code { font-family: var(--mono); font-size: 12.5px; }
+  .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+  .badge.create { color: var(--create); }
+  .badge.reuse { color: var(--reuse); }
+
+  /* runtime svg */
+  figure { margin: 0; }
+  svg { max-width: 100%; height: auto; display: block; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .runtime .box { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+  .runtime .title { fill: var(--ink); font-family: var(--mono); font-weight: 500; }
+  .runtime .sub { fill: var(--muted); font-family: var(--mono); }
+  .runtime .arrow { stroke: var(--create); stroke-width: 1.5; color: var(--create); }
+  .runtime .arrowlab { fill: var(--muted); font-family: var(--sans); }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  footer code { font-family: var(--mono); font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .layer { grid-template-columns: 1fr; }
+    .layer-head { border-right: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Runbook - Diagram</p>
+    <h1>One Name, Five Layers</h1>
+    <p class="thesis">Onboarding <code style="font-family:var(--mono)">aaaaaaaa</code> as an AWS and Nutanix
+    administrator is one string carried through five systems. Each layer either <strong>creates</strong>
+    a new name, <strong>reuses</strong> an existing one, or <strong>gates</strong> the handoff and a
+    mismatch in any one of them breaks the chain.</p>
+  </header>
+
+  <h2>The onboarding chain</h2>
+  <div class="stack">
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-step">LAYER 1</span>
+        <span class="layer-name">LLDAP</span>
+        <span class="layer-role">identity</span>
+      </div>
+      <div class="chips">
+        <span class="chip create"><span class="tag">create - uid</span>aaaaaaaa</span>
+        <span class="chip create"><span class="tag">create - mail</span>aaaaaaaa@libcloud.local</span>
+        <span class="chip create"><span class="tag">create - group</span>tenant-aws-admin</span>
+        <span class="chip create"><span class="tag">create - group</span>tenant-nutanix-admin</span>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-step">LAYER 2</span>
+        <span class="layer-name">Dex / JWT</span>
+        <span class="layer-role">authentication</span>
+      </div>
+      <div class="chips">
+        <span class="chip reuse"><span class="tag">derived</span>principal = aaaaaaaa</span>
+	<span class="chip gate"><span class="tag">gate - else 403</span>principal_scopes() <> 0</span>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-step">LAYER 3</span>
+        <span class="layer-name">OpenFGA</span>
+        <span class="layer-role">authorization</span>
+      </div>
+      <div class="chips">
+        <span class="chip create"><span class="tag">create</span>user:aaaaaaaa admin tenant:aws</span>
+        <span class="chip create"><span class="tag">create</span>user:aaaaaaaa admin tenant:nutanix</span>
+        <span class="chip reuse"><span class="tag">reuse</span>tenant:* - provider:* - vault_user:libcloud-*</span>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-step">LAYER 4</span>
+        <span class="layer-name">Vault</span>
+        <span class="layer-role">credentials</span>
+      </div>
+      <div class="chips">
+        <span class="chip reuse"><span class="tag">reuse - approle</span>libcloud-aws</span>
+        <span class="chip reuse"><span class="tag">reuse - approle</span>libcloud-nutanix</span>
+        <span class="chip reuse"><span class="tag">reuse - secret</span>secret/data/libcloud/aws</span>
+        <span class="chip reuse"><span class="tag">reuse - secret</span>secret/data/libcloud/nutanix</span>
+      </div>
+    </div>
+
+    <div class="layer">
+      <div class="layer-head">
+        <span class="layer-step">LAYER 5</span>
+        <span class="layer-name">Provider</span>
+        <span class="layer-role">cloud</span>
+      </div>
+      <div class="chips">
+        <span class="chip reuse"><span class="tag">reuse</span>AWS IAM key + secret</span>
+        <span class="chip reuse"><span class="tag">reuse</span>Nutanix Prism user + pass</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="rule">
+    <p class="rule-title">The one rule</p>
+    <p>The LLDAP uid, the resolved JWT principal, and the OpenFGA <code>user:&lt;slug&gt;</code> must be the
+    <strong>same string</strong> — and that string must earn non-empty scopes. A bare
+    <code>aaaaaaaa</code> has no <code>-owner/-admin/-viewer</code> suffix, so
+    <code>principal_scopes()</code> returns empty and the REST API answers
+    <code>auth_user_unknown</code> before OpenFGA is ever consulted. Fix it by renaming with a role
+    suffix, or by adding a <code>principal_map.json</code> entry.</p>
+  </div>
+
+  <h2>Naming map</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>Name</th><th>Action</th><th>Grants / notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>LLDAP</td><td><code>uid = aaaaaaaaa</code></td><td><span class="badge create">create</span></td><td>the canonical slug</td></tr>
+        <tr><td>LLDAP</td><td><code>mail = aaaaaaaaaa@libcloud.local</code></td><td><span class="badge create">create</span></td><td>Dex email; local part = slug</td></tr>
+        <tr><td>LLDAP</td><td><code>tenant-aws-admin</code>, <code>tenant-nutanix-admin</code></td><td><span class="badge create">create</span></td><td>must match reconciler convention</td></tr>
+        <tr><td>OpenFGA</td><td><code>user:aaaaaaaa admin tenant:aws</code></td><td><span class="badge create">create</span></td><td>can_provision / can_update on aws_region:aws</td></tr>
+        <tr><td>OpenFGA</td><td><code>user:aaaaaaaa admin tenant:nutanix</code></td><td><span class="badge create">create</span></td><td>can_provision / can_update on nutanix_cluster:nutanix</td></tr>
+        <tr><td>OpenFGA</td><td><code>tenant:*</code> - <code>provider:*</code> - <code>vault_user:libcloud-*</code></td><td><span class="badge reuse">reuse</span></td><td>seeded by openfga_bootstrap.py</td></tr>
+        <tr><td>Vault</td><td>AppRole <code>libcloud-aws</code>, <code>libcloud-nutanix</code></td><td><span class="badge reuse">reuse</span></td><td>per-tenant, shared by all members</td></tr>
+        <tr><td>Vault</td><td><code>secret/data/libcloud/aws</code> - <code>/nutanix</code></td><td><span class="badge reuse">reuse</span></td><td>backend credentials (not per-user)</td></tr>
+        <tr><td>Provider</td><td>AWS IAM key / Nutanix Prism account</td><td><span class="badge reuse">reuse</span></td><td>the tenant's cloud accounts</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>At request time</h2>
+  <figure>
+    <svg class="runtime" viewBox="0 0 1120 150" role="img" aria-label="Runtime resolution: a Dex JWT is checked by OpenFGA, which resolves the tenant's vault_user; Vault performs an AppRole login and reads the tenant secret, which the provider call uses.">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <rect class="box" x="20" y="44" width="150" height="66" rx="7"/>
+      <rect class="box" x="320" y="44" width="170" height="66" rx="7"/>
+      <rect class="box" x="620" y="44" width="170" height="66" rx="7"/>
+      <rect class="box" x="920" y="44" width="180" height="66" rx="7"/>
+      <text class="title" x="95" y="72" text-anchor="middle" font-size="12.5">Dex JWT</text>
+      <text class="sub" x="95" y="90" text-anchor="middle" font-size="10.5">principal - scopes</text>
+      <text class="title" x="405" y="72" text-anchor="middle" font-size="12.5">OpenFGA</text>
+      <text class="sub" x="405" y="90" text-anchor="middle" font-size="10.5">can_connect - can_use - read</text>
+      <text class="title" x="705" y="72" text-anchor="middle" font-size="12.5">Vault</text>
+      <text class="sub" x="705" y="90" text-anchor="middle" font-size="10.5">AppRole login - read secret</text>
+      <text class="title" x="1010" y="72" text-anchor="middle" font-size="12.5">AWS / Nutanix</text>
+      <text class="sub" x="1010" y="90" text-anchor="middle" font-size="10.5">EC2 - Prism</text>
+      <line class="arrow" x1="170" y1="77" x2="314" y2="77" marker-end="url(#arr)"/>
+      <line class="arrow" x1="490" y1="77" x2="614" y2="77" marker-end="url(#arr)"/>
+      <line class="arrow" x1="790" y1="77" x2="914" y2="77" marker-end="url(#arr)"/>
+      <text class="arrowlab" x="242" y="66" text-anchor="middle" font-size="11">check + resolve</text>
+      <text class="arrowlab" x="242" y="80" text-anchor="middle" font-size="11">vault_user</text>
+      <text class="arrowlab" x="552" y="73" text-anchor="middle" font-size="11">AppRole login</text>
+      <text class="arrowlab" x="852" y="73" text-anchor="middle" font-size="11">tenant credentials</text>
+    </svg>
+    <figcaption>A request is authorized by OpenFGA (which also resolves the tenant's <code>vault_user</code>),
+    then Vault mints a short-lived token via AppRole login and reads the tenant's secret — the provider call uses
+    the tenant's shared credentials, never the user's own.</figcaption>
+  </figure>
+
+  <footer>
+    Full step-by-step runbook and exact commands: <code>onboard-user-runbook.md</code> in the repo.
+    <br>Generated from <code>openfga_bootstrap.py</code>, <code>vault_bootstrap.py</code>, and
+    <code>libcloud.rest/app/auth/*</code>.
+  </footer>
+</div>

@@ -231,9 +231,9 @@
           <tr><td><svc>identity-service</svc> <span class="port">:8766</span></td><td class="role">FastAPI authZ orchestrator; routes every portal action</td><td class="role">verifies session JWT; queries OpenFGA; mints provisioner token</td></tr>
           <tr><td><svc>Dex</svc> <span class="port">:5556</span></td><td class="role">OIDC identity provider</td><td class="role">issues ID / access / refresh tokens; backs onto LLDAP</td></tr>
           <tr><td><svc>LLDAP</svc> <span class="port">:3890</span></td><td class="role">LDAP user directory</td><td class="role">username / password</td></tr>
-          <tr><td><svc>OpenFGA</svc> <span class="port">:8080</span></td><td class="role">Zanzibar-style authorization</td><td class="role">relation tuples; the bearer JWT is the principal; holds the tenant&rarr;vault_user mapping</td></tr>
+          <tr><td><svc>OpenFGA</svc> <span class="port">:8080</span></td><td class="role">Zanzibar-style authorization</td><td class="role">relation tuples; the bearer JWT is forwarded as the principal</td></tr>
           <tr><td><svc>libcloud.rest</svc> <span class="port">:8765</span></td><td class="role">FastAPI wrapper over the Libcloud drivers</td><td class="role">verifies bearer JWT (JWKS from Dex); policy engine + OpenFGA</td></tr>
-          <tr><td><svc>Vault</svc> <span class="port">:8200</span></td><td class="role">secret store; one AppRole identity per tenant</td><td class="role">cloud credentials keyed by <code>auth_binding</code>; a short-lived tenant token is minted per read</td></tr>
+          <tr><td><svc>Vault</svc> <span class="port">:8200</span></td><td class="role">secret store</td><td class="role">cloud credentials keyed by <code>auth_binding</code></td></tr>
           <tr><td><svc>Nutanix Prism / AWS</svc></td><td class="role">the target cloud</td><td class="role">Basic-auth login &rarr; session cookie (cached, replayed)</td></tr>
         </tbody>
       </table>
@@ -316,7 +316,7 @@ sequenceDiagram
 
   B->>IS: GET /api/resources/nutanix<br/>Cookie: libcloud_portal_sid
   IS->>IS: verify session JWT (HS256)
-  IS->>F: Check can_read(principal, nutanix)
+  IS->>F: Check can_view(principal, nutanix)
   F-->>IS: allowed
   IS->>D: provisioner OIDC token (aud: libcloud-rest)
   D-->>IS: bearer JWT
@@ -324,13 +324,7 @@ sequenceDiagram
   LR->>LR: verify JWT (JWKS) + policies.json
   LR->>F: Check relation (scope / principal)
   F-->>LR: allowed
-  LR->>F: resolve vault_user (tenant parent vault_user)
-  F-->>LR: libcloud-nutanix
-  LR->>V: read AppRole material (orchestrator token)
-  V-->>LR: role_id + secret_id
-  LR->>V: POST /auth/approle/login
-  V-->>LR: tenant token (60 m TTL)
-  LR->>V: GET secret/libcloud/nutanix (tenant token)
+  LR->>V: fetch cloud creds (auth_binding)
   V-->>LR: Prism credentials
   LR->>P: POST login (Basic auth)
   P-->>LR: Set-Cookie: session
@@ -340,7 +334,7 @@ sequenceDiagram
   IS-->>B: 200 JSON (shaped resources)
 </pre>
       </div>
-      <figcaption><b>The full request path.</b> One browser call fans out into three OpenFGA calls, one Dex token issue, a per-tenant AppRole login, and a Prism login&rarr;session-cookie&rarr;request cycle. The response then retraces the chain (dashed) back to the browser.</figcaption>
+      <figcaption><b>The full request path.</b> One browser call fans out into two OpenFGA checks, one Dex token issue, one Vault lookup, and a Prism login&rarr;session-cookie&rarr;request cycle. The response then retraces the chain (dashed) back to the browser.</figcaption>
     </figure>
   </section>
 
@@ -363,8 +357,7 @@ sequenceDiagram
           <li>Portal session cookie &mdash; <b>8 h</b>, no jti check</li>
           <li>libcloud.rest bearer JWT &mdash; <b>~15 min&ndash;24 h</b></li>
           <li>Prism session cookie &mdash; cached <b>1 h</b></li>
-          <li>Vault orchestrator token &mdash; <b>32 days</b> (reads AppRole auth material only)</li>
-          <li>Vault tenant AppRole token &mdash; <b>60 min</b>, tenant-scoped</li>
+          <li>Vault token &mdash; <b>32 days</b></li>
         </ul>
       </div>
     </div>
