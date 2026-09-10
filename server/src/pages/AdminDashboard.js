@@ -336,8 +336,8 @@ export function CloudDashboard({ role, readOnly = false }) {
             replay the exact orchestration order from{" "}
             <code>test_script/scripts/provision_aws.sh</code> and{" "}
             <code>test_script/scripts/provision_nutanix.sh</code>. The{" "}
-            <strong>Provision Private VM Machine</strong> button (the tenant's
-            owner/admin only) executes{" "}
+            <strong>Private AWS Machine</strong> / <strong>Private Nutanix Machine</strong>{" "}
+            button (the tenant's owner/admin only) executes{" "}
             <code>test_script/scripts/provision_aws_private.sh</code> (AWS) or{" "}
             <code>test_script/scripts/provision_nutanix_bastion_private.sh</code>{" "}
             (Nutanix) to create a bastion host plus an internal private server.
@@ -376,7 +376,7 @@ export function CloudDashboard({ role, readOnly = false }) {
                 title={`Bastion host + internal private server on ${CLOUD_META[c.cloud].label}`}
                 onClick={() => provisionPrivatePair(c.cloud)}
               >
-                {busy === `${c.cloud}Private` ? "Provisioning…" : "Provision Private VM Machine"}
+                {busy === `${c.cloud}Private` ? "Provisioning…" : `Private ${CLOUD_META[c.cloud].label} Machine`}
               </button>
             </React.Fragment>
           ))}
