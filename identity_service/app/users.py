@@ -82,13 +82,16 @@ class UserService:
     def _find_by_internal_id(self, internal_user_id: str) -> dict[str, Any] | None:
         if internal_user_id in _pending_users:
             return _pending_users[internal_user_id]
-        # Fall back to LLDAP by uid (internalUserId is "int-<uid>").
-        if internal_user_id.startswith("int-"):
-            uid = internal_user_id[4:]
-            for u in self.lldap.list_users():
-                if u["internalUserId"] == internal_user_id:
-                    u["role"] = self.fga.role_for(uid)
-                    return u
+        # Accept either "int-<uid>" (internalUserId) or "<uid>" (OpenFGA
+        # principal). Department members and company admins are surfaced as raw
+        # principals by list_companies()/list_department_members(), so callers
+        # may pass either form; both resolve to the same LLDAP user.
+        uid = internal_user_id[4:] if internal_user_id.startswith("int-") else internal_user_id
+        expected = f"int-{uid}"
+        for u in self.lldap.list_users():
+            if u["internalUserId"] == expected:
+                u["role"] = self.fga.role_for(uid)
+                return u
         return None
 
     # --- exchange resolution -------------------------------------------------

@@ -13,6 +13,21 @@ const TENANTS = ["aws", "nutanix"];
 // need a tenant assignment; LLDAP users derive theirs from the principal slug.
 const isFederatedUser = (u) => u.internalUserId?.startsWith("int-pending-");
 
+// Company admins are stored as OpenFGA principals (raw uid, e.g. "user01"),
+// while the user select is keyed by internalUserId ("int-user01"). Normalize
+// the admin value to internalUserId form so the select shows the current admin.
+const adminInternalId = (admin, users) => {
+  if (!admin) return "";
+  if (admin.startsWith("int-")) return admin;
+  const match = users.find((u) => u.internalUserId === `int-${admin}` || u.internalUserId === admin);
+  return match ? match.internalUserId : `int-${admin}`;
+};
+const adminDisplay = (admin, users) => {
+  if (!admin) return "—";
+  const match = users.find((u) => u.internalUserId === `int-${admin}` || u.internalUserId === admin);
+  return match ? match.email || match.internalUserId : admin;
+};
+
 export default function SuperAdminDashboard() {
   const { session, updateRole } = useAuth();
   const [users, setUsers] = useState([]);
@@ -143,7 +158,7 @@ export default function SuperAdminDashboard() {
 
   function startEditCompany(c) {
     setEditingCompany(c.id);
-    setCompanyDraft({ name: c.id, adminUserId: c.admin || "" });
+    setCompanyDraft({ name: c.id, adminUserId: adminInternalId(c.admin, users) });
     setMsg(null); setErr(null);
   }
 
@@ -372,7 +387,7 @@ export default function SuperAdminDashboard() {
                         ))}
                       </select>
                     ) : (
-                      c.admin || "—"
+                      adminDisplay(c.admin, users)
                     )}
                   </td>
                   <td>

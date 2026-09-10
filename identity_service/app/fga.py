@@ -425,8 +425,22 @@ class FgaService:
         return self._derive_authz(principal)["role"]
 
     # --- writes --------------------------------------------------------------
+    @staticmethod
+    def _key(t: dict[str, str]) -> tuple[str, str, str]:
+        return (t.get("user", ""), t.get("relation", ""), t.get("object", ""))
+
     def _write(self, writes: list[dict[str, str]], deletes: list[dict[str, str]] = None) -> None:
         if not self.enabled:
+            return
+        # OpenFGA rejects a request that (a) lists the same tuple twice in
+        # writes or deletes, or (b) lists a tuple in BOTH writes and deletes.
+        # Deduplicate each side and drop any delete that is also a write (a
+        # no-op change: e.g. re-selecting the same admin/role).
+        writes = list({self._key(t): t for t in (writes or [])}.values())
+        deletes = list({self._key(t): t for t in (deletes or [])}.values())
+        write_keys = {self._key(t) for t in writes}
+        deletes = [t for t in deletes if self._key(t) not in write_keys]
+        if not writes and not deletes:
             return
         payload: dict[str, Any] = {"authorization_model_id": self.model_id, "writes": {"tuple_keys": writes}}
         if deletes:
@@ -465,6 +479,11 @@ class FgaService:
 
     def _delete(self, triples: list[dict[str, str]]) -> None:
         if not self.enabled or not triples:
+            return
+        # Deduplicate before sending: OpenFGA rejects a delete list with the
+        # same tuple twice (e.g. overlapping filters in a cascade delete).
+        triples = list({self._key(t): t for t in triples}.values())
+        if not triples:
             return
         self._post("/write", {
             "authorization_model_id": self.model_id,

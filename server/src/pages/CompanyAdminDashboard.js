@@ -10,6 +10,21 @@ const PROVIDERS = [
 
 const MEMBER_ROLES = ["owner", "admin", "viewer"];
 
+// Department owners and members are stored as OpenFGA principals (raw uid,
+// e.g. "user01"); the user selects are keyed by internalUserId ("int-user01").
+// Normalize principal -> internalUserId and principal -> display label.
+const internalIdFor = (principal, users) => {
+  if (!principal) return "";
+  if (principal.startsWith("int-")) return principal;
+  const match = users.find((u) => u.internalUserId === `int-${principal}` || u.internalUserId === principal);
+  return match ? match.internalUserId : `int-${principal}`;
+};
+const displayFor = (principal, users) => {
+  if (!principal) return "—";
+  const match = users.find((u) => u.internalUserId === `int-${principal}` || u.internalUserId === principal);
+  return match ? match.email || match.internalUserId : principal;
+};
+
 // Company administrator: create departments (one or more providers each, via a
 // checkbox list), manage departments (edit providers/owner, delete), and manage
 // the department users (members) across the company (edit role + department,
@@ -134,7 +149,7 @@ export default function CompanyAdminDashboard() {
   // --- department edit / delete ---
   function startEditDept(d) {
     setEditingDept(d.id);
-    setDeptDraft({ ownerUserId: d.owner || "", clouds: d.clouds || [] });
+    setDeptDraft({ ownerUserId: internalIdFor(d.owner, users), clouds: d.clouds || [] });
     setMsg(null); setErr(null);
   }
   function toggleDeptCloud(id) {
@@ -405,7 +420,7 @@ export default function CompanyAdminDashboard() {
                             ))}
                           </select>
                         ) : (
-                          d.owner || "—"
+                          displayFor(d.owner, users)
                         )}
                       </td>
                       <td>
@@ -493,7 +508,7 @@ export default function CompanyAdminDashboard() {
                   const editing = editingMember === key;
                   return (
                     <tr key={key}>
-                      <td><code>{m.user}</code></td>
+                      <td><code>{displayFor(m.user, users)}</code></td>
                       <td>
                         {editing ? (
                           <select
