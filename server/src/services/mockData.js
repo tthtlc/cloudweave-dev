@@ -72,6 +72,38 @@ export const MOCK_USERS = [
     linkedIdentities: ["github:33333"],
     createdAt: "2025-05-03T00:00:00Z",
   },
+  {
+    internalUserId: "int-company-admin-0007",
+    email: "company-admin@libcloud.local",
+    displayName: "Acme Company Admin",
+    role: "company_admin",
+    company: "acme",
+    linkedIdentities: ["google:108214000000000000006"],
+    createdAt: "2025-06-01T00:00:00Z",
+  },
+];
+
+// Seed company / department / member data for the superadmin + company-admin
+// management screens in mock mode. Mirrors the OpenFGA-derived shapes returned
+// by the backend (list_companies / list_department_members), including the
+// multi-provider `clouds` array a department may carry.
+export const MOCK_COMPANIES = [
+  {
+    id: "acme",
+    admin: "int-company-admin-0007",
+    departments: [
+      { id: "engineering", clouds: ["aws"], owner: "int-owner-0001" },
+      { id: "platform", clouds: ["aws", "nutanix"], owner: "int-owner-ntnx-0004" },
+    ],
+  },
+];
+
+export const MOCK_MEMBERS = [
+  { user: "int-owner-0001", department: "engineering", role: "owner", clouds: ["aws"] },
+  { user: "int-admin-0002", department: "engineering", role: "admin", clouds: ["aws"] },
+  { user: "int-viewer-0003", department: "engineering", role: "viewer", clouds: ["aws"] },
+  { user: "int-owner-ntnx-0004", department: "platform", role: "owner", clouds: ["aws", "nutanix"] },
+  { user: "int-admin-ntnx-0005", department: "platform", role: "admin", clouds: ["aws", "nutanix"] },
 ];
 
 // Seed OpenFGA tuples for the superadmin tuples screen in mock mode.

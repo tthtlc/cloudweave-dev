@@ -17,11 +17,18 @@ import {
   MOCK_OPENFGA_ASSERTIONS,
   MOCK_OPENFGA_CHANGES,
   MOCK_REST_API_POLICIES,
+  MOCK_COMPANIES,
+  MOCK_MEMBERS,
 } from "./mockData";
 
 // Clone so mock mutations don't leak across HMR reloads.
 let users = MOCK_USERS.map((u) => ({ ...u, linkedIdentities: [...u.linkedIdentities] }));
 let mockTuples = MOCK_TUPLES.map((t) => ({ ...t }));
+let companies = MOCK_COMPANIES.map((c) => ({
+  ...c,
+  departments: c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })),
+}));
+let members = MOCK_MEMBERS.map((m) => ({ ...m, clouds: [...m.clouds] }));
 // Mutable copy of each cloud's resource list so the Deprovision/Edit buttons
 // can mutate rows in mock mode (mirrors the backend: deprovision_<cloud>.sh
 // DELETE /v1/compute/nodes/{id}, PATCH /v1/compute/nodes/{id}).
@@ -100,6 +107,7 @@ export const mockApi = {
       role: target.role,
       linkedIdentities: [...target.linkedIdentities],
       email: target.email,
+      company: target.company || null,
       clouds: mockClouds(target),
     };
     return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
@@ -126,6 +134,7 @@ export const mockApi = {
         role: target.role,
         linkedIdentities: [...target.linkedIdentities, "lldap:superadmin"],
         email: target.email,
+        company: target.company || null,
         clouds: mockClouds(target),
       };
       return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
@@ -140,7 +149,7 @@ export const mockApi = {
     // First login: no existing user has this external identity.
     const existing = users.find((u) => u.linkedIdentities.includes(subject));
     if (existing) {
-      currentSession = { internalUserId: existing.internalUserId, role: existing.role, linkedIdentities: existing.linkedIdentities, email: existing.email, clouds: mockClouds(existing) };
+      currentSession = { internalUserId: existing.internalUserId, role: existing.role, linkedIdentities: existing.linkedIdentities, email: existing.email, company: existing.company || null, clouds: mockClouds(existing) };
       return { ...currentSession, needsIdentityCollapse: false, collapseCandidates: [] };
     }
 
@@ -517,5 +526,144 @@ export const mockApi = {
       if (n.id === vmId) Object.assign(n, fields);
     }
     return MOCK_UPDATE_RESULT(cloud, vmId, fields);
+  },
+
+  // --- company / department / member management (mock) ---
+  async listCompanies() {
+    await delay();
+    return {
+      companies: companies.map((c) => ({
+        ...c,
+        departments: c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })),
+      })),
+    };
+  },
+
+  async createCompany({ name, adminUserId }) {
+    await delay();
+    const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!id) throw new Error("400 company name required");
+    if (companies.some((c) => c.id === id)) throw new Error(`409 company "${id}" already exists`);
+    companies.push({ id, admin: adminUserId, departments: [] });
+    return { id, adminUserId };
+  },
+
+  async updateCompany(companyId, { name, adminUserId }) {
+    await delay();
+    const c = companies.find((x) => x.id === companyId);
+    if (!c) throw new Error("404 company not found");
+    const newId = name
+      ? name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+      : companyId;
+    if (newId && newId !== companyId && companies.some((x) => x.id === newId)) {
+      throw new Error(`409 company "${newId}" already exists`);
+    }
+    c.id = newId;
+    if (adminUserId) c.admin = adminUserId;
+    return { id: newId, updated: true };
+  },
+
+  async deleteCompany(companyId) {
+    await delay();
+    const idx = companies.findIndex((x) => x.id === companyId);
+    if (idx < 0) throw new Error("404 company not found");
+    const deptIds = new Set(companies[idx].departments.map((d) => d.id));
+    companies.splice(idx, 1);
+    members = members.filter((m) => !deptIds.has(m.department));
+    return { id: companyId, deleted: true };
+  },
+
+  async listAssignableUsers() {
+    await delay();
+    return { users };
+  },
+
+  async listDepartments(companyId) {
+    await delay();
+    const c = companies.find((x) => x.id === companyId);
+    return {
+      company: companyId,
+      departments: c ? c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })) : [],
+    };
+  },
+
+  async createDepartment(companyId, { name, clouds, ownerUserId }) {
+    await delay();
+    const c = companies.find((x) => x.id === companyId);
+    if (!c) throw new Error("404 company not found");
+    const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!id) throw new Error("400 department name required");
+    if (companies.flatMap((x) => x.departments).some((d) => d.id === id)) {
+      throw new Error(`409 department "${id}" already exists`);
+    }
+    const deptClouds = [...(clouds || [])];
+    c.departments.push({ id, clouds: deptClouds, owner: ownerUserId });
+    if (ownerUserId) {
+      members.push({ user: ownerUserId, department: id, role: "owner", clouds: deptClouds });
+    }
+    return { id, clouds: deptClouds, ownerUserId };
+  },
+
+  async updateDepartment(dept, { ownerUserId, clouds }) {
+    await delay();
+    const found = companies.flatMap((x) => x.departments).find((d) => d.id === dept);
+    if (!found) throw new Error("404 department not found");
+    if (ownerUserId) found.owner = ownerUserId;
+    if (clouds) found.clouds = [...clouds];
+    members.forEach((m) => { if (m.department === dept) m.clouds = [...found.clouds]; });
+    return { id: dept, updated: true };
+  },
+
+  async deleteDepartment(dept) {
+    await delay();
+    for (const c of companies) {
+      const i = c.departments.findIndex((x) => x.id === dept);
+      if (i >= 0) { c.departments.splice(i, 1); break; }
+    }
+    members = members.filter((m) => m.department !== dept);
+    return { id: dept, deleted: true };
+  },
+
+  async listMembers(companyId) {
+    await delay();
+    const c = companies.find((x) => x.id === companyId);
+    const deptIds = new Set(c ? c.departments.map((d) => d.id) : []);
+    return {
+      company: companyId,
+      members: members
+        .filter((m) => deptIds.has(m.department))
+        .map((m) => ({ ...m, clouds: [...m.clouds] })),
+    };
+  },
+
+  async updateDepartmentUser(deptId, uid, { role, department }) {
+    await delay();
+    const targetDept = department || deptId;
+    const dept = companies.flatMap((x) => x.departments).find((d) => d.id === targetDept);
+    if (!dept) throw new Error("404 department not found");
+    const existing = members.find((m) => m.user === uid && m.department === targetDept);
+    if (existing) {
+      existing.role = role;
+      existing.clouds = [...dept.clouds];
+    } else {
+      members.push({ user: uid, department: targetDept, role, clouds: [...dept.clouds] });
+    }
+    return { user: uid, department: targetDept, role };
+  },
+
+  async deleteDepartmentUser(deptId, uid) {
+    await delay();
+    members = members.filter((m) => !(m.user === uid && m.department === deptId));
+    return { user: uid, department: deptId, removed: true };
+  },
+
+  async getDepartmentCredential(dept) {
+    await delay();
+    return { key: `AKIA${dept.toUpperCase()}MOCKKEY`, secret: "••••••••mock-secret" };
+  },
+
+  async rotateDepartmentCredential(dept) {
+    await delay();
+    return { department: dept, rotated: true };
   },
 };

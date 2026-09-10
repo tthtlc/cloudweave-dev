@@ -15,6 +15,10 @@ from app.libcloud_proxy import LibcloudProxy
 from app.lldap import LldapService
 from app.models import (
     CollapseRequest,
+    CreateCompanyRequest,
+    CreateDepartmentRequest,
+    CredentialUpdateRequest,
+    DepartmentUserUpdateRequest,
     DeprovisionRequest,
     EmailUpdateRequest,
     ExchangeRequest,
@@ -26,10 +30,13 @@ from app.models import (
     RoleUpdateRequest,
     SessionResponse,
     TupleWriteRequest,
+    UpdateCompanyRequest,
+    UpdateDepartmentRequest,
     UpdateRequest,
 )
 from app.session import SessionService
 from app.users import UserService
+from app.vault import get_vault_service
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -110,6 +117,7 @@ def create_app() -> FastAPI:
             linkedIdentities=claims["linkedIdentities"],
             email=claims["email"],
             clouds=_clouds_for(claims["internalUserId"]),
+            company=fga.company_for(users._fga_principal(claims["internalUserId"])),
         )
 
     @app.get("/api/auth/begin")
@@ -177,6 +185,7 @@ def create_app() -> FastAPI:
             id_token=tokens.get("id_token"),
         )
         outcome["clouds"] = _clouds_for(outcome["internalUserId"])
+        outcome["company"] = fga.company_for(users._fga_principal(outcome["internalUserId"]))
         return ExchangeResponse(**outcome)
 
     @app.post("/api/auth/collapse")
@@ -202,6 +211,7 @@ def create_app() -> FastAPI:
             linkedIdentities=user["linkedIdentities"],
             email=user["email"],
             clouds=_clouds_for(user["internalUserId"]),
+            company=fga.company_for(users._fga_principal(user["internalUserId"])),
         )
 
     @app.post("/api/logout")
@@ -466,6 +476,205 @@ def create_app() -> FastAPI:
     # aliases would be unreachable dead code. Older portal builds that still
     # POST to /api/provision/aws etc. keep working because {cloud} captures
     # "aws" | "nutanix".
+
+    # --- company / department management (design_company_department.md §6) ---
+    import re as _re
+
+    def _slug(name: str) -> str:
+        s = name.strip().lower()
+        return _re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+    @app.post("/api/companies")
+    def create_company(body: CreateCompanyRequest, req: Request):
+        _require_role(req, "superadmin")
+        company_id = _slug(body.name)
+        if not company_id:
+            raise APIError("bad_company", "company name required", 400)
+        admin_principal = users._fga_principal(body.adminUserId)
+        if not users._find_by_internal_id(body.adminUserId):
+            raise APIError("user_not_found", "company admin user not found", 404)
+        fga.create_company(company_id, admin_principal)
+        return {"id": company_id, "adminUserId": body.adminUserId}
+
+    @app.get("/api/companies")
+    def list_companies(req: Request):
+        _require_role(req, "superadmin")
+        return {"companies": fga.list_companies()}
+
+    @app.get("/api/users/assignable")
+    def list_assignable_users(req: Request):
+        # Company admins need to pick a department owner from the pool of LLDAP
+        # users. Same list as /api/users but gated on the company_admin role
+        # (superadmin also passes via the _require_role superadmin shortcut).
+        _require_role(req, "company_admin")
+        return {"users": users.list_all()}
+
+    @app.get("/api/companies/{company_id}/departments")
+    def list_departments(company_id: str, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_view", f"company:{company_id}"):
+            raise APIError("authz_forbidden", "Cannot view this company", 403)
+        for c in fga.list_companies():
+            if c["id"] == company_id:
+                return {"company": company_id, "departments": c["departments"]}
+        return {"company": company_id, "departments": []}
+
+    @app.post("/api/companies/{company_id}/departments")
+    def create_department(company_id: str, body: CreateDepartmentRequest, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        # 1. AuthZ: the caller must be able to create departments in this company
+        #    (company admin, or platform superadmin).
+        if not fga.check(f"user:{principal}", "can_create_department", f"company:{company_id}"):
+            raise APIError("authz_forbidden", "Cannot create a department in this company", 403)
+        # 2. Resolve the provider set (multi-provider) + owner + name.
+        clouds = [c for c in (body.clouds or []) if c in SUPPORTED_CLOUDS]
+        if body.cloud:
+            if body.cloud not in SUPPORTED_CLOUDS:
+                raise APIError("not_supported", f"unsupported cloud: {body.cloud}", 400)
+            if body.cloud not in clouds:
+                clouds.append(body.cloud)
+        if not clouds:
+            raise APIError("not_supported", "at least one supported provider (aws|nutanix) is required", 400)
+        owner_principal = users._fga_principal(body.ownerUserId)
+        if not users._find_by_internal_id(body.ownerUserId):
+            raise APIError("user_not_found", "department owner user not found", 404)
+        dept = _slug(body.name)
+        if not dept:
+            raise APIError("bad_department", "department name required", 400)
+        # Reject a department id that collides with an existing tenant/department.
+        if fga.clouds_for_tenant(dept):
+            raise APIError("department_exists", f"tenant/department '{dept}' already exists", 409)
+        # 3. Vault: per-provider credentials + the department's AppRole identity
+        #    (role_id/secret_id are never returned — invisible to the company
+        #    admin). Fire-and-forget.
+        vault = get_vault_service()
+        creds = dict(body.credentials or {})
+        if body.credential and (body.credential.key or body.credential.secret):
+            creds.setdefault(clouds[0], body.credential)
+        # Primary credential -> secret/data/libcloud/<dept> (the path the
+        # provisioning flow reads); each provider's credential is ALSO stored
+        # per-provider at libcloud/<dept>-<cloud> for the view/rotate UI.
+        primary = creds.get(clouds[0])
+        if primary and (primary.key or primary.secret):
+            vault.write_department_credential(dept, primary.key, primary.secret, host=primary.host)
+        for cloud, c in creds.items():
+            if c.key or c.secret:
+                vault.write_department_provider_credential(dept, cloud, c.key, c.secret, host=c.host)
+        vault.create_department_identity(dept)
+        # 4. OpenFGA: per-department wiring tuples (multi-provider).
+        fga.create_department(company_id, dept, clouds, owner_principal)
+        return {"id": dept, "clouds": clouds, "ownerUserId": body.ownerUserId}
+
+    @app.get("/api/departments/{dept}/credential")
+    def get_department_credential(dept: str, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_manage_credentials", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot view this department's credential", 403)
+        return get_vault_service().read_department_credential(dept)
+
+    @app.put("/api/departments/{dept}/credential")
+    def rotate_department_credential(dept: str, body: CredentialUpdateRequest, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_manage_credentials", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot rotate this department's credential", 403)
+        get_vault_service().write_department_credential(dept, body.key, body.secret)
+        return {"department": dept, "rotated": True}
+
+    # --- company lifecycle (superadmin) -------------------------------------
+    @app.put("/api/companies/{company_id}")
+    def update_company(company_id: str, body: UpdateCompanyRequest, req: Request):
+        _require_role(req, "superadmin")
+        new_id = None
+        if body.name:
+            new_id = _slug(body.name)
+            if not new_id:
+                raise APIError("bad_company", "company name required", 400)
+            if new_id != company_id and any(c["id"] == new_id for c in fga.list_companies()):
+                raise APIError("company_exists", f"company '{new_id}' already exists", 409)
+        admin_principal = None
+        if body.adminUserId:
+            if not users._find_by_internal_id(body.adminUserId):
+                raise APIError("user_not_found", "company admin user not found", 404)
+            admin_principal = users._fga_principal(body.adminUserId)
+        fga.update_company(company_id, new_id=new_id, admin_principal=admin_principal)
+        return {"id": new_id or company_id, "updated": True}
+
+    @app.delete("/api/companies/{company_id}")
+    def delete_company(company_id: str, req: Request):
+        _require_role(req, "superadmin")
+        fga.delete_company(company_id)
+        return {"id": company_id, "deleted": True}
+
+    # --- department lifecycle (company admin) --------------------------------
+    @app.put("/api/departments/{dept}")
+    def update_department(dept: str, body: UpdateDepartmentRequest, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_manage_credentials", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot edit this department", 403)
+        clouds = None
+        if body.clouds is not None:
+            clouds = [c for c in body.clouds if c in SUPPORTED_CLOUDS]
+            if not clouds:
+                raise APIError("not_supported", "at least one supported provider (aws|nutanix) is required", 400)
+        owner_principal = None
+        if body.ownerUserId:
+            if not users._find_by_internal_id(body.ownerUserId):
+                raise APIError("user_not_found", "department owner user not found", 404)
+            owner_principal = users._fga_principal(body.ownerUserId)
+        fga.update_department(dept, clouds=clouds, owner_principal=owner_principal)
+        return {"id": dept, "updated": True}
+
+    @app.delete("/api/departments/{dept}")
+    def delete_department(dept: str, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_manage_credentials", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot delete this department", 403)
+        fga.delete_department(dept)
+        return {"id": dept, "deleted": True}
+
+    # --- department users (company admin) ------------------------------------
+    @app.get("/api/companies/{company_id}/members")
+    def list_members(company_id: str, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_view", f"company:{company_id}"):
+            raise APIError("authz_forbidden", "Cannot view this company", 403)
+        return {"company": company_id, "members": fga.list_department_members(company_id)}
+
+    @app.put("/api/departments/{dept}/users/{uid}")
+    def update_department_user(dept: str, uid: str, body: DepartmentUserUpdateRequest, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if body.role not in ("owner", "admin", "viewer"):
+            raise APIError("auth_bad_role", "role must be owner|admin|viewer", 400)
+        if not fga.check(f"user:{principal}", "can_assign_admin", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot assign roles in this department", 403)
+        user_principal = users._fga_principal(uid)
+        if not users._find_by_internal_id(uid):
+            raise APIError("user_not_found", "user not found", 404)
+        target_dept = dept
+        if body.department and body.department != dept:
+            # Move the user to another department (provider set follows the dept).
+            target_dept = body.department
+            fga.remove_department_user(dept, user_principal)
+        fga.assign_department_user(target_dept, user_principal, body.role)
+        return {"user": uid, "department": target_dept, "role": body.role}
+
+    @app.delete("/api/departments/{dept}/users/{uid}")
+    def delete_department_user(dept: str, uid: str, req: Request):
+        claims = _require_session(req)
+        principal = _principal(claims)
+        if not fga.check(f"user:{principal}", "can_assign_admin", f"tenant:{dept}"):
+            raise APIError("authz_forbidden", "Cannot remove users from this department", 403)
+        user_principal = users._fga_principal(uid)
+        fga.remove_department_user(dept, user_principal)
+        return {"user": uid, "department": dept, "removed": True}
 
     return app
 

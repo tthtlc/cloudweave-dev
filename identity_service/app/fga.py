@@ -74,17 +74,33 @@ def _tenant_for_principal(principal: str) -> str | None:
 # also enforces; the portal mirrors the backend-level read/provision check.)
 CLOUD_OBJECTS = {"aws": "aws_region:aws", "nutanix": "nutanix_cluster:nutanix"}
 
-# tenant id -> portal cloud (provider). Multiple tenants share a cloud: aws1 and
-# aws2 are distinct AWS companies under the single AWS provider. The per-tenant
-# credential binding is enforced downstream by libcloud REST via auth_binding;
-# the portal's cloud list is provider-level, so any of the user's AWS tenants
-# grants them the AWS dashboard.
-TENANT_CLOUD = {"aws": "aws", "aws1": "aws", "aws2": "aws", "nutanix": "nutanix"}
+# tenant id -> portal cloud (provider) is now DERIVED from OpenFGA rather than
+# hard-coded (design_company_department.md §2/§3.6). The authoritative mapping is
+# the structural tuple `tenant:<tid> parent provider:<aws|nutanix>`; departments
+# created at runtime resolve without a code change. _cloud_map_from() below is
+# the pure helper consumed by _derive_from_tuples() and tenant_binding().
 
 # The seeded tenant per cloud. Preferred when a principal holds roles on several
 # tenants of the same cloud (e.g. superadmin, owner on every tenant) so its
 # provisioning keeps routing to the original tenant rather than an arbitrary one.
 DEFAULT_BINDING = {"aws": "aws", "nutanix": "nutanix"}
+
+
+def _cloud_map_from(tuples: list[dict[str, str]]) -> dict[str, list[str]]:
+    """Derive ``{tenant_id: [cloud, ...]}`` from the structural tuples
+    ``tenant:<tid> parent provider:<cloud>``. A department may be parented to
+    several providers, so the value is a list (multi-provider departments)."""
+    out: dict[str, list[str]] = {}
+    for t in tuples:
+        if (
+            t.get("relation") == "parent"
+            and t.get("object", "").startswith("provider:")
+            and t.get("user", "").startswith("tenant:")
+        ):
+            out.setdefault(t["user"][len("tenant:"):], []).append(
+                t["object"][len("provider:"):]
+            )
+    return out
 VIEW_RELATION = "can_read"        # viewer+: enumerate / read resources
 PROVISION_RELATION = "can_provision"  # admin+: provision
 UPDATE_RELATION = "can_update"    # admin+: edit / update VM parameters (owner ∪ admin)
@@ -271,6 +287,7 @@ class FgaService:
     @staticmethod
     def _derive_from_tuples(
         tuples: list[dict[str, str]],
+        tenant_cloud: dict[str, str],
     ) -> dict[str, Any]:
         """Derive portal role + per-cloud capabilities from a set of concrete
         OpenFGA tuples for a single user.  Pure function — does no I/O.
@@ -279,9 +296,14 @@ class FgaService:
         does NOT evaluate computed relations that depend on provider-level
         ``can_use`` or resource-class grants (neither is seeded in the current
         bootstrap), so it is equivalent for the running store.
+
+        ``tenant_cloud`` maps tenant id -> cloud (derived from the structural
+        ``tenant:<tid> parent provider:<cloud>`` tuples) and replaces the former
+        hard-coded TENANT_CLOUD map.
         """
         tenant_roles: dict[str, str] = {}  # tenant_id -> strongest relation
         is_superadmin = False
+        is_company_admin = False
 
         for t in tuples:
             rel = t["relation"]
@@ -289,6 +311,8 @@ class FgaService:
 
             if rel == "superadmin" and obj == "platform:main":
                 is_superadmin = True
+            elif rel == "admin" and obj.startswith("company:"):
+                is_company_admin = True
             elif obj.startswith("tenant:") and rel in ("owner", "admin", "viewer"):
                 tenant_id = obj[7:]  # strip "tenant:"
                 current = tenant_roles.get(tenant_id)
@@ -297,8 +321,12 @@ class FgaService:
                     tenant_roles[tenant_id] = rel
 
         # --- derive role (strongest across all tenants) --------------------
+        # company_admin sits above tenant owner/admin (a company admin may also
+        # hold a department role, but the company dashboard is their primary).
         if is_superadmin:
             role = "superadmin"
+        elif is_company_admin:
+            role = "company_admin"
         elif "owner" in tenant_roles.values():
             role = "owner"
         elif "admin" in tenant_roles.values():
@@ -310,14 +338,15 @@ class FgaService:
         supported = ("aws", "nutanix")
         # Aggregate the user's strongest role per cloud across ALL their tenants
         # (a cloud is a provider; aws1/aws2 are distinct AWS tenants under it).
+        # A multi-provider tenant contributes its role to every cloud it is
+        # parented to, so an admin on a department bound to both aws + nutanix
+        # derives capabilities on both.
         cloud_roles: dict[str, str] = {}
         for tenant_id, rel in tenant_roles.items():
-            cloud = TENANT_CLOUD.get(tenant_id)
-            if not cloud:
-                continue
-            current = cloud_roles.get(cloud)
-            if current is None or _stronger(rel, current):
-                cloud_roles[cloud] = rel
+            for cloud in tenant_cloud.get(tenant_id, []):
+                current = cloud_roles.get(cloud)
+                if current is None or _stronger(rel, current):
+                    cloud_roles[cloud] = rel
 
         clouds: list[dict[str, Any]] = []
         for cloud in supported:
@@ -347,9 +376,10 @@ class FgaService:
                     for c in self.SUPPORTED_CLOUDS
                 ],
             }
-        return self._derive_from_tuples(
-            self._read_user_tuples(f"user:{principal}")
-        )
+        all_tuples = self.list_tuples()
+        tenant_cloud = _cloud_map_from(all_tuples)
+        user_tuples = [t for t in all_tuples if t["user"] == f"user:{principal}"]
+        return self._derive_from_tuples(user_tuples, tenant_cloud)
 
     def batch_derive(
         self, principals: list[str]
@@ -373,6 +403,7 @@ class FgaService:
             return {p: fallback for p in principals}
 
         all_tuples = self.list_tuples()
+        tenant_cloud = _cloud_map_from(all_tuples)
 
         # Index by user: prefix so we can look up by f"user:{principal}"
         by_user: dict[str, list[dict[str, str]]] = {}
@@ -384,7 +415,7 @@ class FgaService:
         result: dict[str, dict[str, Any]] = {}
         for p in principals:
             result[p] = self._derive_from_tuples(
-                by_user.get(f"user:{p}", [])
+                by_user.get(f"user:{p}", []), tenant_cloud
             )
         return result
 
@@ -563,12 +594,16 @@ class FgaService:
         cloud is preferred so provisioning keeps routing to the original tenant
         rather than an arbitrary one."""
         found: dict[str, str] = {}  # tenant_id -> strongest relation
-        for t in self._read_user_tuples(f"user:{principal}"):
+        all_tuples = self.list_tuples()
+        tenant_cloud = _cloud_map_from(all_tuples)
+        for t in all_tuples:
+            if t.get("user") != f"user:{principal}":
+                continue
             rel = t["relation"]
             obj = t["object"]
             if obj.startswith("tenant:") and rel in ("owner", "admin", "viewer"):
                 tenant_id = obj[len("tenant:"):]
-                if TENANT_CLOUD.get(tenant_id) == cloud and _stronger(rel, found.get(tenant_id, "")):
+                if cloud in tenant_cloud.get(tenant_id, []) and _stronger(rel, found.get(tenant_id, "")):
                     found[tenant_id] = rel
         if not found:
             return None
@@ -589,6 +624,307 @@ class FgaService:
         if binding:
             return f"{obj_type}:{binding}"
         return CLOUD_OBJECTS.get(cloud)
+
+    def clouds_for_tenant(self, tenant_id: str) -> list[str]:
+        """The cloud(s) (aws|nutanix) a tenant is bound to, derived from the
+        structural ``tenant:<tid> parent provider:<cloud>`` tuples. Empty for an
+        unknown/tenant-less id. One /read, no /check fan-out."""
+        if not self.enabled:
+            return []
+        return _cloud_map_from(self.list_tuples()).get(tenant_id, [])
+
+    def cloud_for_tenant(self, tenant_id: str) -> str | None:
+        """Back-compat single-cloud view of :meth:`clouds_for_tenant`."""
+        clouds = self.clouds_for_tenant(tenant_id)
+        return clouds[0] if clouds else None
+
+    # --- company / department management (design_company_department.md §7) ---
+
+    def create_company(self, name: str, admin_principal: str) -> None:
+        """Create a company and assign its main administrator.
+        company:<name> is parented to platform:main; user:<admin> is its admin."""
+        self._write([
+            {"user": "platform:main", "relation": "platform", "object": f"company:{name}"},
+            {"user": f"user:{admin_principal}", "relation": "admin", "object": f"company:{name}"},
+        ])
+
+    def create_department(
+        self, company_id: str, dept: str, clouds: list[str], owner_principal: str
+    ) -> None:
+        """Create a department (a tenant parented to a company) with its full
+        per-department wiring. ``clouds`` may hold one or more providers, so a
+        department can be bound to AWS and/or Nutanix. For each provider we
+        write the structural ``tenant parent provider`` tuple plus the backend
+        object (aws_region / nutanix_cluster) wiring; the tenant/vault_user/
+        owner/company links are written once. Mirrors create_tenant.sh's tuple
+        set, plus the company parent link and multi-provider support."""
+        backend = {"aws": "aws_region", "nutanix": "nutanix_cluster"}
+        writes: list[dict[str, str]] = [
+            {"user": f"company:{company_id}", "relation": "parent", "object": f"tenant:{dept}"},
+            {"user": f"tenant:{dept}", "relation": "parent", "object": "libcloud_api:main"},
+            {"user": f"tenant:{dept}", "relation": "parent", "object": f"vault_user:libcloud-{dept}"},
+            {"user": f"user:{owner_principal}", "relation": "owner", "object": f"tenant:{dept}"},
+        ]
+        for cloud in clouds:
+            writes.extend([
+                {"user": f"tenant:{dept}", "relation": "parent", "object": f"provider:{cloud}"},
+                {"user": f"provider:{cloud}", "relation": "provider", "object": f"{backend[cloud]}:{dept}"},
+                {"user": f"tenant:{dept}", "relation": "tenant", "object": f"{backend[cloud]}:{dept}"},
+                {"user": "platform:main", "relation": "platform", "object": f"{backend[cloud]}:{dept}"},
+            ])
+        self._write(writes)
+
+    def list_companies(self) -> list[dict[str, Any]]:
+        """Return [{id, admin, departments: [{id, clouds, owner}]}] derived from
+        the concrete tuples. One /read."""
+        tuples = self.list_tuples()
+        company_admin: dict[str, str] = {}
+        dept_company: dict[str, str] = {}
+        dept_clouds: dict[str, list[str]] = {}
+        dept_owner: dict[str, str] = {}
+        for t in tuples:
+            rel, obj, user = t["relation"], t["object"], t["user"]
+            if rel == "admin" and obj.startswith("company:"):
+                company_admin[obj.split(":", 1)[1]] = (
+                    user.split(":", 1)[1] if user.startswith("user:") else user
+                )
+            elif rel == "parent" and user.startswith("company:") and obj.startswith("tenant:"):
+                dept_company[obj.split(":", 1)[1]] = user.split(":", 1)[1]
+            elif rel == "parent" and user.startswith("tenant:") and obj.startswith("provider:"):
+                dept_clouds.setdefault(user.split(":", 1)[1], []).append(obj.split(":", 1)[1])
+            elif rel == "owner" and obj.startswith("tenant:"):
+                dept_owner[obj.split(":", 1)[1]] = (
+                    user.split(":", 1)[1] if user.startswith("user:") else user
+                )
+
+        companies: dict[str, dict[str, Any]] = {}
+        for dept, company in dept_company.items():
+            c = companies.setdefault(
+                company, {"id": company, "admin": company_admin.get(company, ""), "departments": []}
+            )
+            c["departments"].append({
+                "id": dept,
+                "clouds": dept_clouds.get(dept, []),
+                "owner": dept_owner.get(dept, ""),
+            })
+        for company, admin in company_admin.items():
+            companies.setdefault(company, {"id": company, "admin": admin, "departments": []})
+        return list(companies.values())
+
+    def company_for(self, principal: str) -> str | None:
+        """The company the principal is the main admin of (or None)."""
+        if not self.enabled:
+            return None
+        for t in self.list_tuples():
+            if (
+                t["relation"] == "admin"
+                and t["object"].startswith("company:")
+                and t["user"] == f"user:{principal}"
+            ):
+                return t["object"].split(":", 1)[1]
+        return None
+
+    # --- company / department lifecycle (edit + delete) ----------------------
+
+    @staticmethod
+    def _department_objects(dept: str) -> set[str]:
+        """Object ids owned by one department (its tenant + derived backend and
+        vault objects). Shared objects (provider, libcloud_api, platform) are
+        NOT included — those are never deleted wholesale."""
+        return {
+            f"tenant:{dept}",
+            f"vault_user:libcloud-{dept}",
+            f"aws_region:{dept}",
+            f"nutanix_cluster:{dept}",
+        }
+
+    def update_company(
+        self, company_id: str, *, new_id: str | None = None, admin_principal: str | None = None
+    ) -> None:
+        """Rename a company (re-key ``company:<old>`` -> ``company:<new>`` in
+        every tuple that references it) and/or replace its admin."""
+        if not new_id and not admin_principal:
+            return
+        target = new_id or company_id
+        tuples = self.list_tuples()
+        writes: list[dict[str, str]] = []
+        deletes: list[dict[str, str]] = []
+
+        # 1. Admin change: drop existing admin tuple(s) on the old id, add new.
+        if admin_principal:
+            for t in tuples:
+                if t["relation"] == "admin" and t["object"] == f"company:{company_id}":
+                    deletes.append(t)
+            writes.append({
+                "user": f"user:{admin_principal}",
+                "relation": "admin",
+                "object": f"company:{target}",
+            })
+
+        # 2. Rename: re-key the company object in user/object position. Admin
+        #    tuples are skipped here only when step 1 is replacing them.
+        if new_id and new_id != company_id:
+            for t in tuples:
+                if t["object"] != f"company:{company_id}" and t["user"] != f"company:{company_id}":
+                    continue
+                if admin_principal and t["relation"] == "admin" and t["object"] == f"company:{company_id}":
+                    continue
+                nt = dict(t)
+                if nt["object"] == f"company:{company_id}":
+                    nt["object"] = f"company:{new_id}"
+                if nt["user"] == f"company:{company_id}":
+                    nt["user"] = f"company:{new_id}"
+                deletes.append(t)
+                writes.append(nt)
+
+        if writes or deletes:
+            self._write(writes, deletes)
+
+    def delete_company(self, company_id: str) -> None:
+        """Delete a company and every department under it: the company object,
+        its admin link, each department's tenant + backend + vault objects, and
+        the tenant's outgoing parent links. Shared objects are left alone."""
+        tuples = self.list_tuples()
+        depts = {
+            t["object"].split(":", 1)[1]
+            for t in tuples
+            if t["relation"] == "parent"
+            and t["user"] == f"company:{company_id}"
+            and t["object"].startswith("tenant:")
+        }
+        objects = {f"company:{company_id}"}
+        for d in depts:
+            objects |= self._department_objects(d)
+        extra_users = {f"company:{company_id}"} | {f"tenant:{d}" for d in depts}
+        deletes = [
+            t for t in tuples if t["object"] in objects or t["user"] in extra_users
+        ]
+        self._delete(deletes)
+
+    def update_department(
+        self,
+        dept: str,
+        *,
+        clouds: list[str] | None = None,
+        owner_principal: str | None = None,
+    ) -> None:
+        """Edit a department: replace its owner and/or change the set of bound
+        providers. Adding a provider writes its backend-object wiring; removing
+        one deletes that wiring. Rename is intentionally out of scope (the
+        department id is a stable slug)."""
+        backend = {"aws": "aws_region", "nutanix": "nutanix_cluster"}
+        tuples = self.list_tuples()
+        writes: list[dict[str, str]] = []
+        deletes: list[dict[str, str]] = []
+
+        if owner_principal:
+            for t in tuples:
+                if t["relation"] == "owner" and t["object"] == f"tenant:{dept}":
+                    deletes.append(t)
+            writes.append({
+                "user": f"user:{owner_principal}",
+                "relation": "owner",
+                "object": f"tenant:{dept}",
+            })
+
+        if clouds is not None:
+            current = [
+                t["object"].split(":", 1)[1]
+                for t in tuples
+                if t["relation"] == "parent"
+                and t["user"] == f"tenant:{dept}"
+                and t["object"].startswith("provider:")
+            ]
+            add = [c for c in clouds if c not in current]
+            remove = [c for c in current if c not in clouds]
+            for c in add:
+                writes.extend([
+                    {"user": f"tenant:{dept}", "relation": "parent", "object": f"provider:{c}"},
+                    {"user": f"provider:{c}", "relation": "provider", "object": f"{backend[c]}:{dept}"},
+                    {"user": f"tenant:{dept}", "relation": "tenant", "object": f"{backend[c]}:{dept}"},
+                    {"user": "platform:main", "relation": "platform", "object": f"{backend[c]}:{dept}"},
+                ])
+            for c in remove:
+                for t in tuples:
+                    if t["object"] == f"{backend[c]}:{dept}":
+                        deletes.append(t)
+                    elif (
+                        t["user"] == f"tenant:{dept}"
+                        and t["relation"] == "parent"
+                        and t["object"] == f"provider:{c}"
+                    ):
+                        deletes.append(t)
+
+        if writes or deletes:
+            self._write(writes, deletes)
+
+    def delete_department(self, dept: str) -> None:
+        """Delete a department (tenant + backend + vault objects, its outgoing
+        parent links, and every member role tuple)."""
+        objects = self._department_objects(dept)
+        extra_users = {f"tenant:{dept}"}
+        deletes = [
+            t for t in self.list_tuples()
+            if t["object"] in objects or t["user"] in extra_users
+        ]
+        self._delete(deletes)
+
+    # --- department members (company admin manages users within departments) --
+
+    def list_department_members(self, company_id: str) -> list[dict[str, Any]]:
+        """Return [{user, department, role, clouds}] for every user holding a
+        role (owner/admin/viewer) in one of the company's departments."""
+        tuples = self.list_tuples()
+        tenant_cloud = _cloud_map_from(tuples)
+        depts = {
+            t["object"].split(":", 1)[1]
+            for t in tuples
+            if t["relation"] == "parent"
+            and t["user"] == f"company:{company_id}"
+            and t["object"].startswith("tenant:")
+        }
+        members: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for t in tuples:
+            if not (t["object"].startswith("tenant:") and t["relation"] in ("owner", "admin", "viewer") and t["user"].startswith("user:")):
+                continue
+            dept = t["object"].split(":", 1)[1]
+            if dept not in depts:
+                continue
+            principal = t["user"].split(":", 1)[1]
+            key = (principal, dept)
+            if key in seen:
+                continue
+            seen.add(key)
+            members.append({
+                "user": principal,
+                "department": dept,
+                "role": t["relation"],
+                "clouds": tenant_cloud.get(dept, []),
+            })
+        return members
+
+    def assign_department_user(self, dept: str, principal: str, role: str) -> None:
+        """Set a user's role on a department, replacing any existing role tuple
+        on that tenant (owner/admin/viewer)."""
+        relation = ROLE_RELATION.get(role)
+        if not relation:
+            return
+        user = f"user:{principal}"
+        deletes = [
+            t for t in self.list_tuples()
+            if t["user"] == user and t["object"] == f"tenant:{dept}" and t["relation"] in MANAGED_RELATIONS
+        ]
+        self._write([{"user": user, "relation": relation, "object": f"tenant:{dept}"}], deletes)
+
+    def remove_department_user(self, dept: str, principal: str) -> None:
+        """Revoke a user's role tuple(s) on a department."""
+        user = f"user:{principal}"
+        deletes = [
+            t for t in self.list_tuples()
+            if t["user"] == user and t["object"] == f"tenant:{dept}" and t["relation"] in MANAGED_RELATIONS
+        ]
+        self._delete(deletes)
 
     def can_view(self, principal: str, cloud: str) -> bool:
         obj = self._backend_object(principal, cloud)

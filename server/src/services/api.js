@@ -101,6 +101,30 @@ export const api = config.mockMode
       listOpenFgaObjects: (payload) => http("/api/openfga/list-objects", body("POST", payload)),
       expandOpenFga: (payload) => http("/api/openfga/expand", body("POST", payload)),
       getRestApiPolicies: () => http("/api/openfga/rest-api-policies"),
+
+      // --- company / department management (design_company_department.md §6) ---
+      listCompanies: () => http("/api/companies"),
+      createCompany: (payload) => http("/api/companies", body("POST", payload)),
+      updateCompany: (companyId, payload) =>
+        http(`/api/companies/${encodeURIComponent(companyId)}`, body("PUT", payload)),
+      deleteCompany: (companyId) =>
+        http(`/api/companies/${encodeURIComponent(companyId)}`, body("DELETE", {})),
+      listAssignableUsers: () => http("/api/users/assignable"),
+      listDepartments: (companyId) => http(`/api/companies/${encodeURIComponent(companyId)}/departments`),
+      createDepartment: (companyId, payload) =>
+        http(`/api/companies/${encodeURIComponent(companyId)}/departments`, body("POST", payload)),
+      updateDepartment: (dept, payload) =>
+        http(`/api/departments/${encodeURIComponent(dept)}`, body("PUT", payload)),
+      deleteDepartment: (dept) =>
+        http(`/api/departments/${encodeURIComponent(dept)}`, body("DELETE", {})),
+      listMembers: (companyId) => http(`/api/companies/${encodeURIComponent(companyId)}/members`),
+      updateDepartmentUser: (dept, uid, payload) =>
+        http(`/api/departments/${encodeURIComponent(dept)}/users/${encodeURIComponent(uid)}`, body("PUT", payload)),
+      deleteDepartmentUser: (dept, uid) =>
+        http(`/api/departments/${encodeURIComponent(dept)}/users/${encodeURIComponent(uid)}`, body("DELETE", {})),
+      getDepartmentCredential: (dept) => http(`/api/departments/${encodeURIComponent(dept)}/credential`),
+      rotateDepartmentCredential: (dept, payload) =>
+        http(`/api/departments/${encodeURIComponent(dept)}/credential`, body("PUT", payload)),
     };
 
 export default api;

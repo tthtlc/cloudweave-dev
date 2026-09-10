@@ -21,6 +21,11 @@ export default function SuperAdminDashboard() {
   const [query, setQuery] = useState("");
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [companyName, setCompanyName] = useState("");
+  const [companyAdminId, setCompanyAdminId] = useState("");
+  const [editingCompany, setEditingCompany] = useState(null);
+  const [companyDraft, setCompanyDraft] = useState({ name: "", adminUserId: "" });
 
   async function refresh() {
     setLoading(true);
@@ -64,7 +69,6 @@ export default function SuperAdminDashboard() {
     const draft = drafts[user.internalUserId] || {};
     const role = draft.role ?? user.role;
     const tenant = draft.tenant ?? user.tenant;
-    const federated = isFederatedUser(user);
     // "disabled" needs no tenant; federated users always require a tenant.
     if (role === user.role && tenant === (user.tenant || undefined)) return;
     if (role === "disabled" && user.role === "disabled") return; // nothing to save
@@ -105,6 +109,75 @@ export default function SuperAdminDashboard() {
       const updated = await api.setEmail(user.internalUserId, email);
       setUsers((prev) => prev.map((u) => (u.internalUserId === updated.internalUserId ? updated : u)));
       setMsg(`Email saved for ${user.internalUserId}`);
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  }
+
+  async function refreshCompanies() {
+    try {
+      const { companies: list } = await api.listCompanies();
+      setCompanies(list);
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  }
+
+  useEffect(() => { refreshCompanies(); }, []);
+
+  async function createCompany() {
+    if (!companyName.trim() || !companyAdminId) {
+      setErr("A company name and an admin user are required.");
+      return;
+    }
+    setMsg(null); setErr(null);
+    try {
+      const r = await api.createCompany({ name: companyName.trim(), adminUserId: companyAdminId });
+      setCompanyName(""); setCompanyAdminId("");
+      setMsg(`Company "${r.id}" created with admin ${r.adminUserId}`);
+      await refreshCompanies();
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  }
+
+  function startEditCompany(c) {
+    setEditingCompany(c.id);
+    setCompanyDraft({ name: c.id, adminUserId: c.admin || "" });
+    setMsg(null); setErr(null);
+  }
+
+  function cancelEditCompany() {
+    setEditingCompany(null);
+    setCompanyDraft({ name: "", adminUserId: "" });
+  }
+
+  async function saveCompany(c) {
+    const name = companyDraft.name.trim();
+    const adminUserId = companyDraft.adminUserId;
+    if (!name) { setErr("A company name is required."); return; }
+    if (!adminUserId) { setErr("A company admin is required."); return; }
+    setMsg(null); setErr(null);
+    try {
+      const r = await api.updateCompany(c.id, { name, adminUserId });
+      setMsg(`Company "${c.id}" updated${r.id !== c.id ? ` → renamed to "${r.id}"` : ""}`);
+      setEditingCompany(null);
+      setCompanyDraft({ name: "", adminUserId: "" });
+      await refreshCompanies();
+    } catch (e) {
+      setErr(e.message || String(e));
+    }
+  }
+
+  async function deleteCompany(c) {
+    const n = (c.departments || []).length;
+    const warn = `Delete company "${c.id}"?` + (n ? `\nThis also deletes its ${n} department(s) and all their members.` : "");
+    if (!window.confirm(warn)) return;
+    setMsg(null); setErr(null);
+    try {
+      await api.deleteCompany(c.id);
+      setMsg(`Company "${c.id}" deleted.`);
+      await refreshCompanies();
     } catch (e) {
       setErr(e.message || String(e));
     }
@@ -234,6 +307,95 @@ export default function SuperAdminDashboard() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ marginBottom: "0.75rem" }}>
+          <h2 style={{ margin: 0 }}>Companies</h2>
+          <div className="spacer" />
+          <button onClick={refreshCompanies}>Refresh</button>
+        </div>
+        <form
+          className="row"
+          style={{ gap: "0.5rem", marginBottom: "0.75rem" }}
+          onSubmit={(e) => { e.preventDefault(); createCompany(); }}
+        >
+          <input
+            placeholder="Company name (e.g. Acme)"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            style={{ minWidth: 200 }}
+          />
+          <select value={companyAdminId} onChange={(e) => setCompanyAdminId(e.target.value)}>
+            <option value="">-- assign company admin --</option>
+            {users.filter((u) => !u.internalUserId?.startsWith("int-pending-")).map((u) => (
+              <option key={u.internalUserId} value={u.internalUserId}>
+                {u.email || u.internalUserId}
+              </option>
+            ))}
+          </select>
+          <button className="primary" type="submit">Create company</button>
+        </form>
+        <table>
+          <thead>
+            <tr><th>Company</th><th>Admin</th><th>Departments</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {companies.length === 0 && (
+              <tr><td colSpan={4} className="muted">No companies yet.</td></tr>
+            )}
+            {companies.map((c) => {
+              const editing = editingCompany === c.id;
+              return (
+                <tr key={c.id}>
+                  <td>
+                    {editing ? (
+                      <input
+                        value={companyDraft.name}
+                        onChange={(e) => setCompanyDraft({ ...companyDraft, name: e.target.value })}
+                      />
+                    ) : (
+                      <code>{c.id}</code>
+                    )}
+                  </td>
+                  <td>
+                    {editing ? (
+                      <select
+                        value={companyDraft.adminUserId}
+                        onChange={(e) => setCompanyDraft({ ...companyDraft, adminUserId: e.target.value })}
+                      >
+                        <option value="">-- assign company admin --</option>
+                        {users.filter((u) => !u.internalUserId?.startsWith("int-pending-")).map((u) => (
+                          <option key={u.internalUserId} value={u.internalUserId}>
+                            {u.email || u.internalUserId}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      c.admin || "—"
+                    )}
+                  </td>
+                  <td>
+                    {(c.departments || []).map((d) => `${d.id} (${(d.clouds || []).join(", ")})`).join(", ") || "—"}
+                  </td>
+                  <td>
+                    {editing ? (
+                      <span className="row-actions">
+                        <button className="primary" onClick={() => saveCompany(c)}>Save</button>
+                        <button onClick={cancelEditCompany}>Cancel</button>
+                      </span>
+                    ) : (
+                      <span className="row-actions">
+                        <button onClick={() => startEditCompany(c)}>Edit</button>
+                        <button className="danger" onClick={() => deleteCompany(c)}>Delete</button>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

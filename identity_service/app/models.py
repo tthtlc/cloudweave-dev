@@ -46,6 +46,10 @@ class ExchangeResponse(BaseModel):
     pendingToken: str | None = None
     # Per-cloud capabilities for the resolved user (empty during collapse flow).
     clouds: list[CloudCapability] = []
+    # The company the user is the main admin of (company_admin only). Mirrors
+    # /api/session so the SPA can route to the company dashboard without an
+    # extra round-trip after login.
+    company: str | None = None
 
 
 # --- /api/auth/collapse -----------------------------------------------------
@@ -114,6 +118,56 @@ class UpdateRequest(BaseModel):
     tagValue: str | None = None
 
 
+# --- /api/companies / departments (design_company_department.md §6) ---------
+class CreateCompanyRequest(BaseModel):
+    name: str
+    adminUserId: str
+
+
+class CredentialInput(BaseModel):
+    # key/secret are the generic AWS/Nutanix credential pair (AWS access key +
+    # secret, or Nutanix admin username + password). `host` is the Nutanix Prism
+    # Central URL (empty for AWS), stored alongside in Vault.
+    key: str = ""
+    secret: str = ""
+    host: str = ""
+
+
+class CreateDepartmentRequest(BaseModel):
+    name: str
+    # A department may bind to one or more providers (aws, nutanix). `clouds` is
+    # the primary multi-provider field; `cloud` is kept for back-compat with
+    # single-provider callers and is folded into `clouds` by the route.
+    clouds: list[str] = []
+    ownerUserId: str
+    # Per-provider backend credentials, keyed by cloud id ("aws" | "nutanix").
+    # `credential` (single) is back-compat; it maps to the first cloud.
+    credentials: dict[str, CredentialInput] = {}
+    cloud: str | None = None
+    credential: CredentialInput | None = None
+
+
+class CredentialUpdateRequest(BaseModel):
+    key: str
+    secret: str
+
+
+class UpdateCompanyRequest(BaseModel):
+    name: str | None = None
+    adminUserId: str | None = None
+
+
+class UpdateDepartmentRequest(BaseModel):
+    name: str | None = None
+    clouds: list[str] | None = None
+    ownerUserId: str | None = None
+
+
+class DepartmentUserUpdateRequest(BaseModel):
+    role: str  # owner | admin | viewer
+    department: str | None = None  # move the member to another department
+
+
 # --- /api/session -----------------------------------------------------------
 class SessionResponse(BaseModel):
     internalUserId: str
@@ -121,6 +175,7 @@ class SessionResponse(BaseModel):
     linkedIdentities: list[str]
     email: str
     clouds: list[CloudCapability] = []
+    company: str | None = None
 
 
 # Generic OK envelope used by several endpoints.

@@ -155,3 +155,72 @@ tr.edit-row td { background: var(--bg-elev, #f8fafc); }
 .muted { color: var(--muted); }
 .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
+
+/* --- form composition ------------------------------------------------ */
+.stack { display: flex; flex-direction: column; }
+
+fieldset.checkbox-group,
+fieldset.cred-block {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem 0.9rem;
+  margin: 0;
+}
+fieldset.checkbox-group legend,
+fieldset.cred-block legend {
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.checkbox-group { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  user-select: none;
+}
+.checkbox input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.checkbox-inline { display: inline-flex; gap: 0.9rem; flex-wrap: wrap; }
+.cred-block .row { margin-top: 0.25rem; }
+
+/* --- code & tabular data -------------------------------------------- */
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  color: #334155;
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+}
+td, th { font-variant-numeric: tabular-nums; }
+
+/* --- browser surfaces (the parts a page does not draw) --------------- */
+::selection { background: var(--accent-weak); color: var(--ink); }
+:root { caret-color: var(--accent); }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+/* --- empty-state rows ------------------------------------------------ */
+td.muted[colSpan], p.muted { color: var(--muted); }
+
