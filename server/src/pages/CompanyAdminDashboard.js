@@ -59,7 +59,11 @@ export default function CompanyAdminDashboard() {
 
   // department inline edit state
   const [editingDept, setEditingDept] = useState(null);
-  const [deptDraft, setDeptDraft] = useState({ ownerUserId: "", clouds: [] });
+  const [deptDraft, setDeptDraft] = useState({
+    ownerUserId: "",
+    clouds: [],
+    credentials: { aws: { key: "", secret: "" }, nutanix: { host: "", key: "", secret: "" } },
+  });
 
   // member inline edit state (key = `${dept}:${user}`)
   const [editingMember, setEditingMember] = useState(null);
@@ -147,9 +151,16 @@ export default function CompanyAdminDashboard() {
   }
 
   // --- department edit / delete ---
+  function emptyDeptCredentials() {
+    return { aws: { key: "", secret: "" }, nutanix: { host: "", key: "", secret: "" } };
+  }
   function startEditDept(d) {
     setEditingDept(d.id);
-    setDeptDraft({ ownerUserId: internalIdFor(d.owner, users), clouds: d.clouds || [] });
+    setDeptDraft({
+      ownerUserId: internalIdFor(d.owner, users),
+      clouds: d.clouds || [],
+      credentials: emptyDeptCredentials(),
+    });
     setMsg(null); setErr(null);
   }
   function toggleDeptCloud(id) {
@@ -160,18 +171,47 @@ export default function CompanyAdminDashboard() {
         : [...prev.clouds, id],
     }));
   }
-  function cancelEditDept() { setEditingDept(null); setDeptDraft({ ownerUserId: "", clouds: [] }); }
+  function setDeptCredField(cloud, field, value) {
+    setDeptDraft((prev) => ({
+      ...prev,
+      credentials: {
+        ...prev.credentials,
+        [cloud]: { ...(prev.credentials?.[cloud] || {}), [field]: value },
+      },
+    }));
+  }
+  function cancelEditDept() {
+    setEditingDept(null);
+    setDeptDraft({ ownerUserId: "", clouds: [], credentials: emptyDeptCredentials() });
+  }
 
   async function saveDept(d) {
     if (deptDraft.clouds.length === 0) { setErr("A department needs at least one provider."); return; }
     if (!deptDraft.ownerUserId) { setErr("A department needs an owner."); return; }
     setMsg(null); setErr(null);
     try {
-      await api.updateDepartment(d.id, {
+      // Only forward credentials the admin actually typed; blank fields keep
+      // the provider's existing secret in Vault.
+      const cred = deptDraft.credentials || {};
+      const credentials = {};
+      if (deptDraft.clouds.includes("aws") && (cred.aws?.key || cred.aws?.secret)) {
+        credentials.aws = { key: cred.aws.key, secret: cred.aws.secret };
+      }
+      if (
+        deptDraft.clouds.includes("nutanix") &&
+        (cred.nutanix?.key || cred.nutanix?.secret || cred.nutanix?.host)
+      ) {
+        credentials.nutanix = {
+          key: cred.nutanix.key, secret: cred.nutanix.secret, host: cred.nutanix.host,
+        };
+      }
+      const payload = {
         ownerUserId: deptDraft.ownerUserId,
         clouds: deptDraft.clouds,
-      });
-      setMsg(`Department "${d.id}" updated.`);
+      };
+      if (Object.keys(credentials).length) payload.credentials = credentials;
+      await api.updateDepartment(d.id, payload);
+      setMsg(`Department "${d.id}" updated${Object.keys(credentials).length ? " (credentials saved)" : ""}.`);
       cancelEditDept();
       await refresh();
     } catch (e2) {
@@ -424,18 +464,63 @@ export default function CompanyAdminDashboard() {
                         )}
                       </td>
                       <td>
-                        {r?.shown ? (
-                          <span>
-                            {r.data?.host ? <><code>host={r.data.host}</code>{" "}</> : null}
-                            <code>key={r.data?.key || "—"}</code>{" "}
-                            <code>secret={r.data?.secret || "—"}</code>{" "}
-                            <button onClick={() => hideCredential(d.id)}>Hide</button>{" "}
-                            <button onClick={() => rotateCredential(d.id)}>Rotate</button>
+                        {editing ? (
+                          <span className="stack" style={{ gap: "0.35rem", minWidth: 230 }}>
+                            {deptDraft.clouds.includes("aws") && (
+                              <div className="row" style={{ gap: "0.25rem" }}>
+                                <input
+                                  placeholder="AWS access key"
+                                  value={deptDraft.credentials?.aws?.key || ""}
+                                  onChange={(e) => setDeptCredField("aws", "key", e.target.value)}
+                                />
+                                <input
+                                  type="password"
+                                  placeholder="AWS secret key"
+                                  value={deptDraft.credentials?.aws?.secret || ""}
+                                  onChange={(e) => setDeptCredField("aws", "secret", e.target.value)}
+                                />
+                              </div>
+                            )}
+                            {deptDraft.clouds.includes("nutanix") && (
+                              <div className="stack" style={{ gap: "0.25rem" }}>
+                                <input
+                                  placeholder="Prism Central URL"
+                                  value={deptDraft.credentials?.nutanix?.host || ""}
+                                  onChange={(e) => setDeptCredField("nutanix", "host", e.target.value)}
+                                />
+                                <input
+                                  placeholder="Admin username"
+                                  value={deptDraft.credentials?.nutanix?.key || ""}
+                                  onChange={(e) => setDeptCredField("nutanix", "key", e.target.value)}
+                                />
+                                <input
+                                  type="password"
+                                  placeholder="Admin password"
+                                  value={deptDraft.credentials?.nutanix?.secret || ""}
+                                  onChange={(e) => setDeptCredField("nutanix", "secret", e.target.value)}
+                                />
+                              </div>
+                            )}
+                            <div className="muted" style={{ fontSize: "0.85em" }}>
+                              Leave blank to keep existing credentials.
+                            </div>
                           </span>
                         ) : (
                           <span>
-                            <button onClick={() => revealCredential(d.id)}>Reveal credential</button>{" "}
-                            <button onClick={() => rotateCredential(d.id)}>Rotate</button>
+                            {r?.shown ? (
+                              <span>
+                                {r.data?.host ? <><code>host={r.data.host}</code>{" "}</> : null}
+                                <code>key={r.data?.key || "—"}</code>{" "}
+                                <code>secret={r.data?.secret || "—"}</code>{" "}
+                                <button onClick={() => hideCredential(d.id)}>Hide</button>{" "}
+                                <button onClick={() => rotateCredential(d.id)}>Rotate</button>
+                              </span>
+                            ) : (
+                              <span>
+                                <button onClick={() => revealCredential(d.id)}>Reveal credential</button>{" "}
+                                <button onClick={() => rotateCredential(d.id)}>Rotate</button>
+                              </span>
+                            )}
                           </span>
                         )}
                       </td>

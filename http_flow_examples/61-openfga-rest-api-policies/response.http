@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 420
+Date: Wed, 23 Jul 2026 14:29:09 GMT
+
+{
+  "GET /v1/compute/locations": {
+    "scopes_any_of": ["compute:location:read", "compute:read"],
+    "authz_scope": "compute:location:read"
+  },
+  "GET /v1/compute/nodes": {
+    "scopes_any_of": ["compute:read"]
+  },
+  "POST /v1/compute/nodes": {
+    "scopes_any_of": ["compute:node:create"]
+  }
+}

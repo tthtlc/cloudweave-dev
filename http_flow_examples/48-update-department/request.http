@@ -1,0 +1,17 @@
+PUT /api/departments/eng HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...company_admin_session...
+
+{
+  "clouds": ["aws", "nutanix"],
+  "ownerUserId": "int-eng-owner-2",
+  "credentials": {
+    "nutanix": {
+      "key": "admin",
+      "secret": "admin",
+      "host": "host.docker.internal:9442"
+    }
+  }
+}

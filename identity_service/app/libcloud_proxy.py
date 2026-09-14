@@ -837,10 +837,11 @@ class LibcloudProxy:
 
     @staticmethod
     def _script_user(cloud: str, binding: str | None = None) -> str:
+        # The machine provisioner is the per-cloud service account (aws-admin /
+        # ntnx-admin), independent of the department binding
+        # (design_company_department.md §2/§4). `binding` stays in the signature
+        # for call-site clarity.
         s = get_settings()
-        if binding:
-            slug = "ntnx" if binding == "nutanix" else binding
-            return f"{slug}-admin"
         if cloud == "aws":
             return s.provisioner_aws_user or "aws-admin"
         if cloud == "nutanix":
@@ -873,19 +874,14 @@ class LibcloudProxy:
             # common.sh resolves the IdP password at SOURCE time and `:?`-aborts
             # if it's empty. We already hold a valid provisioner token, so hand
             # the password through to satisfy that check. The script never logs it.
-            # Per-tenant: LIBCLOUD_AWS_AUTH_BINDING points at the tenant's Vault
-            # secret (secret/libcloud/<binding>), and the provisioner is that
-            # tenant's admin (user above), so the script authorizes + resolves
-            # the right tenant's credentials.
-            slug = binding or "aws"
-            password = (
-                os.environ.get(f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN", "")
-                or s.provisioner_aws_password
-            )
+            # The provisioner is the per-cloud service account (aws-admin); the
+            # per-department credential is selected by LIBCLOUD_AWS_AUTH_BINDING
+            # (the department's Vault secret at secret/libcloud/<binding>).
+            password = s.provisioner_aws_password
             env.update(
                 {
                     "LIBCLOUD_PASSWORD": password,
-                    f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN": password,
+                    "LIBCLOUD_PASSWORD_AWS_ADMIN": password,
                     "AWS_REGION": s.aws_region,
                     "LIBCLOUD_AWS_AUTH_BINDING": binding or s.aws_auth_binding,
                 }

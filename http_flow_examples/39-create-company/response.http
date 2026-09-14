@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 68
+Date: Wed, 23 Jul 2026 14:28:01 GMT
+
+{
+  "id": "acme",
+  "adminUserId": "int-acme-admin"
+}

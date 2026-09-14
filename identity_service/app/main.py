@@ -627,6 +627,20 @@ def create_app() -> FastAPI:
                 raise APIError("user_not_found", "department owner user not found", 404)
             owner_principal = users._fga_principal(body.ownerUserId)
         fga.update_department(dept, clouds=clouds, owner_principal=owner_principal)
+        # 3. Vault: persist any newly supplied per-provider credentials (the
+        #    company admin adds a provider to an existing department). Only the
+        #    providers that end up bound to the department are written; blank
+        #    credential inputs are skipped so existing secrets are left intact.
+        creds = dict(body.credentials or {})
+        if creds:
+            final_clouds = clouds if clouds is not None else fga.clouds_for_tenant(dept)
+            vault = get_vault_service()
+            primary = creds.get(final_clouds[0]) if final_clouds else None
+            if primary and (primary.key or primary.secret):
+                vault.write_department_credential(dept, primary.key, primary.secret, host=primary.host)
+            for cloud, c in creds.items():
+                if cloud in final_clouds and (c.key or c.secret):
+                    vault.write_department_provider_credential(dept, cloud, c.key, c.secret, host=c.host)
         return {"id": dept, "updated": True}
 
     @app.delete("/api/departments/{dept}")

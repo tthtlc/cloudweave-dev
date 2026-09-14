@@ -1,0 +1,27 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 356
+Date: Wed, 23 Jul 2026 14:22:13 GMT
+
+{
+  "data": [
+    {
+      "id": "ap-southeast-1a",
+      "name": "ap-southeast-1a",
+      "country": "Singapore",
+      "available": true
+    },
+    {
+      "id": "ap-southeast-1b",
+      "name": "ap-southeast-1b",
+      "country": "Singapore",
+      "available": true
+    },
+    {
+      "id": "ap-southeast-1c",
+      "name": "ap-southeast-1c",
+      "country": "Singapore",
+      "available": true
+    }
+  ]
+}

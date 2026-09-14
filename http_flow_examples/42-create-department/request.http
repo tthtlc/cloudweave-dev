@@ -1,0 +1,22 @@
+POST /api/companies/acme/departments HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...company_admin_session...
+
+{
+  "name": "Engineering",
+  "clouds": ["aws", "nutanix"],
+  "ownerUserId": "int-eng-owner",
+  "credentials": {
+    "aws": {
+      "key": "AKIAYHGEH2P75YEO4GGY",
+      "secret": "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"
+    },
+    "nutanix": {
+      "key": "admin",
+      "secret": "admin",
+      "host": "host.docker.internal:9442"
+    }
+  }
+}

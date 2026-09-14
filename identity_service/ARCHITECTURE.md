@@ -138,6 +138,22 @@ REST API's `policies.json`, path from `rest_api_policies_path`, default
 > of the 302 `Location` header instead (§5.4). The comment is misleading; the
 > flow is correct.
 
+### Company / department management (v2)
+
+| Method | Path | Authorization |
+|---|---|---|
+| GET | `/api/companies` | superadmin |
+| POST | `/api/companies` | superadmin (create company + assign admin) |
+| GET | `/api/companies/{id}/departments` | `can_view` on `company:{id}` |
+| POST | `/api/companies/{id}/departments` | `can_create_department` on `company:{id}` |
+| GET | `/api/departments/{id}/credential` | `can_manage_credentials` on `tenant:{id}` |
+| PUT | `/api/departments/{id}/credential` | `can_manage_credentials` on `tenant:{id}` |
+| GET | `/api/users/assignable` | `company_admin` role (dept-owner picker) |
+
+Creating a department mints a per-department Vault AppRole via the
+`department-orchestrator` token (`app/vault.py`) and writes the backend credential;
+`role_id`/`secret_id` are never returned. See `design_company_department.md`.
+
 ---
 
 ## 5. Authentication

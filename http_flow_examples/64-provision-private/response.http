@@ -1,0 +1,16 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 260
+Date: Wed, 23 Jul 2026 14:30:03 GMT
+
+{
+  "provider": "aws",
+  "vmName": "libcloud-aws-pair-1753486921",
+  "bastionName": "libcloud-aws-pair-1753486921-bastion",
+  "internalName": "libcloud-aws-pair-1753486921-internal",
+  "status": "provisioned",
+  "message": "provision_aws_private.sh exit=0",
+  "exitCode": 0,
+  "stdout": "",
+  "stderr": ""
+}

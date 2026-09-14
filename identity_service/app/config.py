@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     # Default is the in-container URL on the shared libcloud_net network.
     lldap_http_url: str = "http://lldap:17170"
 
+    # --- Vault (per-department secrets + AppRoles) ---
+    # The identity service creates per-department Vault AppRoles and reads/writes
+    # per-department backend credentials on behalf of the company admin
+    # (design_company_department.md §3). It uses the narrow department-orchestrator
+    # token (NOT root), minted by vault_bootstrap.py, so it cannot read any
+    # AppRole secret_id back or touch non-libcloud paths.
+    vault_addr: str = "http://vault:8200"
+    vault_dept_orchestrator_token: str = ""
+
     @model_validator(mode="after")
     def _derive_lldap_bind(self) -> "Settings":
         if not self.lldap_bind_dn:

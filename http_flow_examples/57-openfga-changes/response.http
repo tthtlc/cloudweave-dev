@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 330
+Date: Wed, 23 Jul 2026 14:29:05 GMT
+
+{
+  "changes": [
+    {
+      "tuple_key": {
+        "user": "company:acme",
+        "relation": "parent",
+        "object": "tenant:eng"
+      },
+      "operation": "TUPLE_OPERATION_WRITE",
+      "timestamp": "2026-07-23T14:28:04Z"
+    }
+  ],
+  "continuation_token": ""
+}

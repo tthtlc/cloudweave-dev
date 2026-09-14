@@ -10,6 +10,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import OpenFgaTuplesPage from "./pages/OpenFgaTuplesPage";
 import OpenFgaExplorerPage from "./pages/OpenFgaExplorerPage";
 import AdminDashboard from "./pages/AdminDashboard";
+import CompanyAdminDashboard from "./pages/CompanyAdminDashboard";
 import OwnerDashboard from "./pages/OwnerDashboard";
 import ViewerDashboard from "./pages/ViewerDashboard";
 import PendingApprovalPage from "./pages/PendingApprovalPage";
@@ -100,6 +101,16 @@ export default function App() {
           <RequireRole roles={["admin"]}>
             <Layout>
               <AdminDashboard />
+            </Layout>
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/company"
+        element={
+          <RequireRole roles={["company_admin"]}>
+            <Layout>
+              <CompanyAdminDashboard />
             </Layout>
           </RequireRole>
         }

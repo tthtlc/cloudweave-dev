@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 290
+Date: Wed, 23 Jul 2026 14:29:03 GMT
+
+{
+  "authorization_model": {
+    "id": "01M1ZZEQE73M3NSSK0JQ837BF0",
+    "schema_version": "1.1",
+    "type_definitions": [
+      {"type": "user"},
+      {"type": "company"},
+      {"type": "tenant"},
+      {"type": "platform"}
+    ]
+  }
+}

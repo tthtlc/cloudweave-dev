@@ -231,8 +231,12 @@ as fully privileged over the authorization data.
 
 ## 5. The authorization model
 
-The model is schema **1.1**, **9 types**, no conditions, no modules. It exists in
-two equivalent forms:
+The model is schema **1.1**, **10 types**, no conditions, no modules. It exists in
+two equivalent forms. (v2 added the **`company`** type — `tenant.parent → company`
+makes a department a tenant under a company — plus the **`platform.provisioner`**
+role for the `aws-admin`/`ntnx-admin` machine provisioners, threaded *inside* the
+backend objects' `and can_use from provider` intersection; see the top-level
+`ARCHITECTURE.md` §1 and `design_company_department.md`.)
 
 1. **`LIBCLOUD_MODEL`** in `openfga_bootstrap.py:217-852` — the JSON actually
    **POSTed** to `/stores/{id}/authorization-models` by `ensure_model()`

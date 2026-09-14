@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 72
+Date: Wed, 23 Jul 2026 14:28:04 GMT
+
+{
+  "id": "eng",
+  "clouds": ["aws", "nutanix"],
+  "ownerUserId": "int-eng-owner"
+}

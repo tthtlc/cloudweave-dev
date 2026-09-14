@@ -1,0 +1,20 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 330
+Date: Wed, 23 Jul 2026 14:28:02 GMT
+
+{
+  "companies": [
+    {
+      "id": "acme",
+      "admin": "acme-admin",
+      "departments": [
+        {
+          "id": "eng",
+          "clouds": ["aws", "nutanix"],
+          "owner": "eng-owner"
+        }
+      ]
+    }
+  ]
+}

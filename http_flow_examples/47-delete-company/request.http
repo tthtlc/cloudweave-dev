@@ -1,0 +1,6 @@
+DELETE /api/companies/acme-corp-international HTTP/1.1
+Host: localhost:8766
+Accept: application/json
+Cookie: libcloud_portal_sid=...superadmin_session...
+
+(empty body — DELETE request)

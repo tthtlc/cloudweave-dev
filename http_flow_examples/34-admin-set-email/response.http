@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 204
+Date: Wed, 23 Jul 2026 14:27:00 GMT
+
+{
+  "internalUserId": "int-aws-admin",
+  "email": "new-aws-admin@libcloud.local",
+  "displayName": "AWS Admin",
+  "role": "admin",
+  "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+  "createdAt": "2026-07-01T00:00:00Z"
+}

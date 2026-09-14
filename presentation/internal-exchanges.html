@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Internal HTTP Exchanges — libcloud_nutanix</title>
+<style>
+  :root {
+    --bg: #F4F6F5; --surface: #FFFFFF; --ink: #1A2420; --muted: #5F6D66;
+    --line: #DDE3DF; --accent: #0E7C66; --accent-ink: #FFFFFF;
+    --auth: #B7791F; --auth-bg: #FBF3E4; --auth-ink: #6B450E;
+    --codebg: #EEF2F0; --codeselect: #D6E9E2;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1512; --surface: #151E1A; --ink: #E6ECE8; --muted: #96A49C;
+      --line: #25302B; --accent: #2FBF9C; --accent-ink: #06211A;
+      --auth: #E0A64A; --auth-bg: #2A2315; --auth-ink: #F0C883;
+      --codebg: #0C1210; --codeselect: #1B2A24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 56px 28px 96px; }
+  header { max-width: 46rem; margin-bottom: 32px; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 500; margin: 0 0 14px; }
+  h1 { font-size: clamp(1.9rem, 4.2vw, 2.6rem); line-height: 1.08; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 16px; text-wrap: balance; }
+  .thesis { color: var(--muted); font-size: 1.05rem; max-width: 40rem; margin: 0; }
+  code.inline { font-family: var(--mono); font-size: 12.5px; }
+
+  nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 0 0 8px; }
+  nav.toc a { color: var(--accent); text-decoration: none; font-family: var(--mono); font-size: 13px; }
+  nav.toc a:hover { text-decoration: underline; }
+  nav.toc .sep { color: var(--muted); margin: 0 10px; }
+
+  .part { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 56px 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+
+  h2.flow { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin: 40px 0 8px; }
+  .flow-desc { color: var(--muted); margin: 0 0 16px; font-size: .95rem; }
+
+  ol.hops { list-style: none; margin: 0; padding: 0; counter-reset: hop; }
+  li.hop {
+    counter-increment: hop; position: relative; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px 12px 52px;
+    margin: 0 0 12px;
+  }
+  li.hop::before {
+    content: counter(hop); position: absolute; left: 16px; top: 14px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 6px; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .edge { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .from, .to { font-weight: 600; }
+  .from { color: var(--muted); }
+  .arrow { color: var(--accent); font-family: var(--mono); }
+  .auth { font-family: var(--mono); font-size: 11px; color: var(--auth-ink); background: var(--auth-bg); border: 1px solid var(--auth); border-radius: 999px; padding: 1px 8px; }
+  code.call { display: block; font-family: var(--mono); font-size: 13.5px; margin: 6px 0 2px; color: var(--ink); }
+  code.call .m { color: var(--accent); font-weight: 600; }
+
+  .purpose { margin: 4px 0 0; font-size: 13.5px; }
+  .purpose .why { color: var(--ink); font-weight: 600; }
+  .purpose .rest { color: var(--muted); }
+
+  .wire { margin: 8px 0 0; display: grid; gap: 5px; }
+  .wire > div { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; }
+  .wire .tag { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 600; margin-right: 8px; }
+  .wire code { font-family: var(--mono); font-size: 12px; }
+  .wire b { color: var(--ink); }
+  .wire .res { color: var(--muted); }
+  .wire .res b { color: var(--ink); }
+
+  details.src { margin-top: 9px; }
+  details.src summary { cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--muted); list-style: none; user-select: none; }
+  details.src summary::before { content: "▸"; color: var(--accent); margin-right: 8px; }
+  details.src[open] summary::before { content: "▾"; }
+  pre.code { margin: 8px 0 0; padding: 10px 12px; background: var(--codebg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink); white-space: pre; }
+  pre.code b { color: var(--accent); font-weight: 600; }
+  pre.code .c { color: var(--muted); }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 4px; color: var(--muted); font-size: 13px; }
+  .legend span { font-family: var(--mono); font-size: 11px; color: var(--auth-ink); background: var(--auth-bg); border: 1px solid var(--auth); border-radius: 999px; padding: 1px 8px; }
+  .anatomy { font-size: 12.5px; color: var(--muted); margin: 0 0 24px; }
+  .anatomy b { color: var(--ink); }
+
+  /* questionnaire */
+  ol.cross { margin: 0; padding-left: 1.2em; }
+  ol.cross > li { margin: 0 0 14px; }
+  ol.cross b { color: var(--ink); }
+  ol.cross .anch { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  details.q { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin: 0 0 10px; overflow: hidden; }
+  details.q > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-family: var(--mono); font-size: 13.5px; list-style: none; }
+  details.q > summary::-webkit-details-marker { display: none; }
+  details.q > summary::before { content: "▸"; color: var(--accent); margin-right: 10px; }
+  details.q[open] > summary::before { content: "▾"; }
+  details.q .body { padding: 2px 16px 14px; border-top: 1px solid var(--line); }
+  details.q ul { margin: 8px 0 0; padding-left: 1.2em; }
+  details.q li { margin: 0 0 8px; color: var(--muted); }
+  details.q li b { color: var(--ink); }
+  .vip { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 16px; }
+  .vip ol { margin: 8px 0 0; padding-left: 1.2em; }
+  .vip li { margin: 0 0 8px; }
+  .builder { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin: 0 0 16px; }
+  .btitle { font-family: var(--mono); font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--ink); }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin: 16px 0; }
+  table.reach { border-collapse: collapse; width: 100%; min-width: 680px; }
+  table.reach th, table.reach td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13px; }
+  table.reach tr:last-child td { border-bottom: none; }
+  table.reach th { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  table.reach td .svc { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+  table.reach td .port { color: var(--muted); font-family: var(--mono); }
+  table.reach .jwt { font-family: var(--mono); font-size: 11px; color: var(--auth-ink); background: var(--auth-bg); border: 1px solid var(--auth); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+  table.reach code { font-family: var(--mono); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Message-flow reference + audit questionnaire</p>
+    <h1>Internal HTTP exchanges</h1>
+    <p class="thesis">Every subsystem boundary, hop by hop — the <b>purpose</b> of the
+    message, the <b>headers + body</b> actually sent and received, and the
+    <b>source</b> that constructs it. Anchored to
+    <code class="inline">identity_service/app/*</code>, <code class="inline">libcloud.rest/app/*</code>,
+    and <code class="inline">dex/config.yaml</code>.</p>
+  </header>
+
+  <nav class="toc">
+    <a href="#flows">Flows</a><span class="sep">·</span>
+    <a href="#cross">Cross-cutting questions</a><span class="sep">·</span>
+    <a href="#peredge">Per-edge questions</a><span class="sep">·</span>
+    <a href="#vip">Highest-value</a><span class="sep">·</span>
+    <a href="#builders">Message builders</a><span class="sep">·</span>
+    <a href="#reach">Who can reach whom</a>
+  </nav>
+
+  <div class="legend"><span>token / principal</span> chip = the auth context on that hop</div>
+  <p class="anatomy"><b>Hop anatomy:</b> <b>edge</b> (from → to + token) · <b>call</b> (METHOD /path) ·
+  <b>Purpose</b> (why this message exists) · <b>Request / Response</b> (essential headers + body, emphasized) ·
+  <b>source</b> (the code that builds the HTTP message — bolded lines construct the wire).</p>
+
+  <!-- ======================= PART 1: FLOWS ======================= -->
+  <div class="part" id="flows">Part 1 · Flows</div>
+
+  <h2 class="flow">1 · Browser login — authorization code + PKCE</h2>
+  <p class="flow-desc">The human authenticates. The Dex refresh token never reaches the browser; the session is an identity-service cookie.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">Portal nginx</span></div>
+      <code class="call"><span class="m">GET</span> /login</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">serve the SPA; every non-<code class="inline">/api</code>/<code class="inline">/dex</code> path falls back to <code class="inline">index.html</code> so client-side routing works.</span></div>
+      <div class="wire">
+        <div><span class="tag">Response</span><code>200 <b>text/html</b> — the React bundle; no auth on this hop.</code></div>
+      </div>
+      <details class="src"><summary>source · server/Dockerfile (nginx location block)</summary><pre class="code">location /api/  { proxy_pass http://identity-service:8766; }   <span class="c"># portal API</span>
+location /dex/  { proxy_pass http://dex:5556; }                 <span class="c"># OIDC endpoints</span>
+location /      { try_files $uri /index.html; }                 <span class="c"># SPA fallback</span></pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">public</span></div>
+      <code class="call"><span class="m">GET</span> /api/auth/begin?provider=lldap&amp;redirect_uri=…</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">mint a server-issued <b>state</b> + <b>PKCE code_verifier</b>, then build the Dex <b>authorize URL</b>. The verifier never leaves the server.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>query: <b>provider=lldap</b>, <b>redirect_uri</b> (default <code class="inline">dex_portal_redirect_uri</code>)</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { <b>authorizeUrl</b>, <b>state</b>, provider } — <b>code_challenge</b> + <b>connector_id</b> baked into authorizeUrl</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/auth_state.py:54-77</summary><pre class="code">state = secrets.token_urlsafe(32)
+code_verifier = secrets.token_urlsafe(48)
+code_challenge = _b64url(hashlib.sha256(code_verifier.encode()).digest())
+_state_store[state] = {"code_verifier": code_verifier, "provider": provider,
+                       "redirect_uri": redirect_uri, "exp": _now() + 600}
+params = {
+    "client_id": s.dex_portal_client_id,
+    "redirect_uri": redirect_uri,
+    "response_type": "code",
+    "scope": "openid profile email",
+    "state": state,
+    "code_challenge": code_challenge,
+    "code_challenge_method": "S256",
+}
+if provider: params["connector_id"] = provider
+authorize_url = f"{s.dex_base_url.rstrip('/')}/auth?{urlencode(params)}"
+return {"authorizeUrl": authorize_url, "state": state, "provider": provider}</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">Dex</span></div>
+      <code class="call"><span class="m">GET</span> /dex/auth?client_id=libcloud-portal&amp;response_type=code&amp;scope=openid+profile+email&amp;code_challenge=…&amp;code_challenge_method=S256&amp;connector_id=lldap</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">the browser redirects to the Dex authorize endpoint (via nginx <code class="inline">/dex/</code>). <b>connector_id=lldap</b> pins the LDAP login form.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>GET</b> — query carries <b>code_challenge</b> (S256), <b>state</b>, <b>connector_id=lldap</b>. No secrets here.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 <b>text/html</b> — Dex renders the LLDAP username/password form.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/auth_state.py:65-76 (URL construction)</summary><pre class="code">params = { "client_id": s.dex_portal_client_id, "redirect_uri": redirect_uri,
+           "response_type": "code", "scope": "openid profile email",
+           "state": state, "code_challenge": code_challenge,
+           "code_challenge_method": "S256" }
+if provider: params["connector_id"] = provider          <span class="c"># → connector_id=lldap</span>
+authorize_url = f"{s.dex_base_url.rstrip('/')}/auth?{urlencode(params)}"</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">Dex</span></div>
+      <code class="call"><span class="m">POST</span> /dex/auth/lldap/login</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">submit the LLDAP credentials. Dex binds to LLDAP as the admin service account and searches <code class="inline">ou=people</code> for the <code class="inline">uid</code>.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>application/x-www-form-urlencoded</b>: <b>login</b>=&lt;uid&gt; · <b>password</b>=…</code></div>
+        <div class="res"><span class="tag">Response</span><code><b>302</b> with <b>Location: …?code=…&amp;state=…</b> — the authorization code.</code></div>
+      </div>
+      <details class="src"><summary>source · dex/config.yaml:78-97 (LLDAP connector this drives)</summary><pre class="code">connectors:
+  - type: ldap
+    id: lldap
+    config:
+      host: lldap:3890
+      insecureNoSSL: true
+      bindDN: uid=admin,ou=people,dc=libcloud,dc=local
+      bindPW: …
+      userSearch:
+        baseDN: ou=people,dc=libcloud,dc=local
+        filter: "(objectClass=person)"
+        username: uid
+        idAttr: uid      <span class="c"># → OIDC `sub`</span>
+        emailAttr: mail  <span class="c"># → OIDC `email`</span>
+        nameAttr: cn</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">Portal nginx</span></div>
+      <code class="call"><span class="m">GET</span> /auth/callback?code=…&amp;state=…</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">Dex redirects back to the SPA callback route; the SPA now holds <code class="inline">code</code> + <code class="inline">state</code> and hands them to the exchange endpoint.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Response</span><code>200 — SPA route <b>AuthCallbackPage</b>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">no cookie yet</span></div>
+      <code class="call"><span class="m">POST</span> /api/auth/exchange</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">swap the code for tokens. First <b>consumes the single-use state</b> (authoritative CSRF), then reads provider/redirect_uri from the state entry — <em>not</em> from the body.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>JSON <b>{ provider, code, state, redirectUri }</b> — the state must match a minted entry.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { internalUserId, role, email, linkedIdentities, clouds[], company } + <b>Set-Cookie</b> (hop 10)</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/main.py:129-186 + auth_state.py:79-87</summary><pre class="code"><b>state_entry = auth.consume_state(body.state)</b>       <span class="c"># single-use pop, TTL-checked</span>
+provider = state_entry["provider"] or body.provider
+redirect_uri = body.redirectUri or state_entry["redirect_uri"] or settings.dex_portal_redirect_uri
+code_verifier = state_entry["code_verifier"]
+tokens = dex.exchange_code(code=body.code, redirect_uri=redirect_uri,
+                           provider=provider, code_verifier=code_verifier)
+claims = dex.verify_id_token(tokens["id_token"])
+external = dex.external_identity(claims, provider)
+outcome = users.resolve_on_login(external)
+…
+sessions.create(resp, internal_user=internal_user,
+                refresh_token=tokens.get("refresh_token"), id_token=tokens.get("id_token"))</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Dex</span><span class="auth">client secret + verifier</span></div>
+      <code class="call"><span class="m">POST</span> /dex/token</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">server-side OAuth token exchange — the portal is a <b>confidential client</b>, so the secret + PKCE verifier are sent here (never to the browser).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>application/x-www-form-urlencoded</b>: <b>grant_type=authorization_code</b> · <b>code</b> · <b>redirect_uri</b> · <b>client_id=libcloud-portal</b> · <b>client_secret</b> · <b>code_verifier</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { <b>id_token</b>, <b>access_token</b>, <b>refresh_token</b>, token_type }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/dex.py:40-64</summary><pre class="code">data = {
+    "grant_type": "authorization_code",
+    "code": code,
+    "redirect_uri": redirect_uri,
+    "client_id": s.dex_portal_client_id,
+    "client_secret": s.dex_portal_client_secret,
+}
+if code_verifier:
+    data["code_verifier"] = code_verifier
+resp = httpx.post(s.dex_token_url, data=data, timeout=15)
+if resp.status_code != 200: raise APIError("auth_dex_exchange_failed", …, 400, …)
+return resp.json()</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Dex</span></div>
+      <code class="call"><span class="m">GET</span> /dex/keys</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">fetch the JWKS to verify the id_token signature, then enforce <code class="inline">iss/aud/exp/sub</code>. This is the trust anchor for the whole session.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>GET</b> (no auth) — the PyJWKClient fetches the public signing keys.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { keys: [ { kty, use, alg, kid, n, e } ] }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/dex.py:66-83</summary><pre class="code">signing_key = self._jwks_client().get_signing_key_from_jwt(id_token)
+header = jwt.get_unverified_header(id_token)
+alg = header.get("alg") or getattr(signing_key, "algorithm_name", "RS256")
+claims = jwt.decode(
+    id_token, signing_key.key, algorithms=[alg],
+    audience=s.dex_portal_client_id,           <span class="c"># aud == libcloud-portal</span>
+    issuer=s.dex_issuer.rstrip("/"),           <span class="c"># iss == http://dex:5556/dex</span>
+    options={"require": ["exp", "sub", "iss", "aud"]},
+)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">provisioner JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/read</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">read the end user's tuples to compute live <code class="inline">clouds[]</code> + <code class="inline">company</code> for the response. Caller is the provisioner; the <b>subject</b> filtered is the end user.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> &lt;provisioner Dex JWT&gt; · JSON <b>{ page_size: 100, continuation_token? }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { tuples: [ { key: { user, relation, object } } ] }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/fga.py:221-231 + 501-516</summary><pre class="code">def _post(self, path, payload):
+    url = f"{self.base_url}/stores/{self.store_id}{path}"
+    body = json.dumps(payload).encode()
+    headers = {"Content-Type": "application/json"}
+    token = self._bearer()
+    if token: headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, data=body, method="POST", headers=headers)
+    …
+def list_tuples(self):                     <span class="c"># paginated full-store read</span>
+    payload = {"page_size": 100}
+    if token: payload["continuation_token"] = token
+    body = self._post("/read", payload)
+    for t in body.get("tuples", []): …</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Browser</span><span class="auth">Set-Cookie</span></div>
+      <code class="call"><span class="m">200</span> + Set-Cookie: libcloud_portal_sid</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">mint the <b>httpOnly session cookie</b> (an HS256 JWT) so the browser stays signed in; the Dex refresh token is stored server-side, keyed by <code class="inline">sid</code>.</span></div>
+      <div class="wire">
+        <div><span class="tag">Response header</span><code><b>Set-Cookie: libcloud_portal_sid=&lt;HS256 JWT&gt;</b>; HttpOnly; SameSite=Lax; Max-Age=28800; Path=/</code></div>
+        <div class="res"><span class="tag">Cookie claims</span><code>{ internalUserId, role, email, linkedIdentities, sid, iat, exp, jti }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/session.py:33-42 + 67-76</summary><pre class="code">payload = {**claims, "iat": now, "exp": now + s.session_ttl_seconds, "jti": uuid.uuid4().hex}
+cookie_value = jwt.encode(payload, s.session_secret, algorithm="HS256")
+…
+resp.set_cookie(
+    key=s.session_cookie_name, value=cookie_value,
+    max_age=s.session_ttl_seconds,
+    httponly=True, secure=s.session_secure, samesite=s.session_samesite, path="/",
+)
+if refresh_token:
+    _refresh_store[sid] = {"refresh_token": refresh_token, "id_token": id_token, …}  <span class="c"># server-side only</span></pre></details>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">2 · Provision a VM — end to end</h2>
+  <p class="flow-desc">The end user's authorization is decided upstream; libcloud.rest re-checks against the provisioner service account.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">cookie</span></div>
+      <code class="call"><span class="m">POST</span> /api/provision/aws</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">the end user asks to provision. identity-service verifies the cookie JWT → principal, then runs the OpenFGA check before touching anything downstream.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Cookie: libcloud_portal_sid</b> · JSON <b>{ vmName }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { provider, vmName, status, steps[], node } — or 403 before any backend call.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/main.py:408-415</summary><pre class="code">@app.post("/api/provision/{cloud}")
+def provision_by_cloud(cloud, body, req):
+    claims = _require_session(req)                 <span class="c"># verify cookie JWT</span>
+    principal = _principal(claims)
+    if not fga.can_provision(principal, cloud):    <span class="c"># OpenFGA gate</span>
+        raise APIError("authz_forbidden", …, 403)
+    return proxy.provision(cloud, body.vmName or …, fga.tenant_binding(principal, cloud))</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">provisioner JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/check</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">authorize the <b>end user</b> for <code class="inline">can_provision</code>. The bearer authenticates the <em>caller</em>; the <b>tuple_key.user</b> is the subject actually evaluated.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> &lt;provisioner JWT&gt; · JSON <b>{ authorization_model_id, tuple_key:{ user:"user:&lt;end-user&gt;", relation:"can_provision", object:"aws_region:aws" } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { <b>allowed: true|false</b> } — deny ⇒ 403, nothing downstream.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/fga.py:273-280</summary><pre class="code">def check(self, user, relation, obj):
+    if not self.enabled: return True
+    body = self._post("/check", {
+        "authorization_model_id": self.model_id,
+        "tuple_key": {"user": user, "relation": relation, "object": obj},
+    })
+    return bool(body.get("allowed", False))</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Dex</span><span class="auth">service account</span></div>
+      <code class="call"><span class="m">GET</span> /dex/auth → <span class="m">POST</span> …/login → <span class="m">POST</span> /dex/token</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">obtain the <b>provisioner token</b> by logging into Dex as <code class="inline">aws-admin</code> (no callback server — the code is read from the 302 <code class="inline">Location</code>).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>form <b>login=aws-admin · password=…</b> (follow_redirects=False) → read <b>code</b> from 302 → <b>POST /dex/token</b> <b>grant_type=authorization_code</b> + <b>client_secret</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { <b>access_token</b> (aud=libcloud-rest), refresh_token } — cached per cloud.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/idp_login.py:103-148</summary><pre class="code">r = client.get(f"{dex}/dex/auth", params=params)          <span class="c"># → login form</span>
+post_url = dex + re.search(r'action="(/dex/auth/[^"]+)"', r.text).group(1)
+r = client.post(post_url, data={"login": user, "password": password}, follow_redirects=False)
+code = _extract_code(r.headers.get("location", ""))      <span class="c"># read code from 302</span>
+tr = client.post(f"{dex}/dex/token", data={
+    "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
+    "client_id": s.libcloud_oidc_client_id, "client_secret": s.libcloud_oidc_client_secret,
+})
+return _parse_token(tr.json())</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">libcloud.rest</span><span class="auth">provisioner token</span></div>
+      <code class="call"><span class="m">GET</span> /v1/auth/me</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">validate the token against libcloud.rest and confirm the provisioner identity before the sequence. Every REST call carries the same two headers.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> &lt;provisioner token&gt; · <b>X-Provider-Connection: {"provider":"aws","config":{"region":"…","secure":true},"auth_binding":"aws"}</b> (compact JSON — <em>no credentials</em>)</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { principal, scopes[], … }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:314-319 (header build)</summary><pre class="code">def _headers(self, token, conn):
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "X-Provider-Connection": json.dumps(conn, separators=(",", ":")),  <span class="c"># compact JSON, no creds</span>
+    }</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">libcloud.rest</span><span class="auth">provisioner token</span></div>
+      <code class="call"><span class="m">POST</span> /v1/connections:test</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">test the provider connection (resolves the backend credential from Vault) before any catalog call.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>body = the connection descriptor (provider + config + auth_binding).</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 on success.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:456</summary><pre class="code">self._call(client, "/v1/connections:test", headers, steps, method="POST", json_body=conn)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">libcloud.rest</span><span class="auth">provisioner token</span></div>
+      <code class="call"><span class="m">GET</span> /v1/compute/locations · sizes · images · nodes · subnets</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">catalog discovery — resolve the image/size/subnet/cluster ids needed for the create.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>same <b>Authorization</b> + <b>X-Provider-Connection</b>; AWS images filtered <b>?name=*ubuntu*24.04*amd64*</b>.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { data: [ … ] } per endpoint.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:322-347 (_call)</summary><pre class="code">url = f"{self._base()}{path}"
+r = client.request(method, url, headers=headers, json=json_body, params=params, timeout=30)
+if not (200 &lt;= r.status_code &lt; 300):
+    raise APIError("rest_error", f"libcloud REST {method} {path} failed", 502,
+                   {"status": r.status_code, "body": r.text[:500]})
+return r.json()</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">libcloud.rest</span><span class="auth">provisioner token</span></div>
+      <code class="call"><span class="m">POST</span> /v1/compute/nodes</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">the actual create. Body carries resolved ids — never any credential.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>JSON <b>{ name, size:{id}, image:{id}, network:{public_ip|subnet_id}, location? }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { data: { node } } → surfaced in the portal with a <b>steps[]</b> trace.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:470-484</summary><pre class="code">body = { "name": vm_name, "size": {"id": size_id}, "image": {"id": image_id},
+         "provider_options": {} }
+if cloud == "aws":
+    body["network"] = {"public_ip": True}
+    if subnet_id: body["network"]["subnet_id"] = subnet_id
+else:
+    body["location"] = {"id": cluster_id}
+    if subnet_id: body["network"] = {"subnet_id": subnet_id}
+created = self._call(client, "/v1/compute/nodes", headers, steps, method="POST", json_body=body).get("data", {})</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">forwarded JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/check ×3</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">defense-in-depth re-check against the <b>provisioner</b>: <code class="inline">can_connect</code> @ libcloud_api:main, <code class="inline">can_use</code> @ provider:aws, <code class="inline">can_provision</code> @ aws_region:aws.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> &lt;caller's Dex JWT forwarded&gt; · JSON <b>{ tuple_key:{ user:"user:aws-admin", relation, object } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { allowed } per check; any deny ⇒ 403 <code class="inline">authz_fga_denied</code>.</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud.rest/app/auth/fga_client.py:113-124 (body build) + policy.py:73-96</summary><pre class="code">payload = { "authorization_model_id": self.model_id,
+            "tuple_key": {"user": user, "relation": relation, "object": obj} }
+headers = {"Content-Type": "application/json", "Accept": "application/json"}
+if bearer: headers["Authorization"] = f"Bearer {bearer}"   <span class="c"># forward caller JWT</span>
+req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST", headers=headers)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">orchestrator → AppRole → tenant</span></div>
+      <code class="call"><span class="m">GET</span> /v1/secret/data/libcloud/aws</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">resolve the backend cloud credential (the 3-step in Flow 3); result cached in-process 30 s.</span></div>
+      <div class="wire"><div><span class="tag">Request</span><code><b>X-Vault-Token</b> (tenant AppRole token) · <b>GET</b> secret path.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { data: { data: { key, secret } } }</code></div></div>
+      <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:160-191</summary><pre class="code">token = self._approle_token(vault_user)
+payload = self._request("GET", self._secret_path(binding), token)
+data = (payload.get("data") or {}).get("data") or {}
+typed = {str(k): str(v) for k, v in data.items()}
+self._secret_cache[binding] = (now, typed)     <span class="c"># 30 s cache</span>
+return typed</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">AWS EC2 / Nutanix Prism</span></div>
+      <code class="call"><span class="m">POST</span> /api/vmm/v4.0/ahv/config/vms</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">the actual cloud write. Nutanix driver auth is per-request <b>HTTP Basic</b> (or a cached session cookie), plus a fresh <b>NTNX-Request-Id</b>.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Basic base64(user:pass)</b> · <b>Accept/Content-Type: application/json</b> · <b>NTNX-Request-Id: &lt;uuid4&gt;</b> · body = VM spec</code></div>
+        <div class="res"><span class="tag">Response</span><code><b>202</b> + task ref → poll <b>GET …/tasks/{id}</b> until SUCCEEDED → <b>GET</b> VM by extId.</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud/libcloud/common/nutanix.py:203-216 + 259-271</summary><pre class="code">def _basic_auth_header(self):
+    credentials = base64.b64encode(("%s:%s" % (self.user_id, self.key)).encode()).decode()
+    return "Basic %s" % credentials
+
+def _get_auth_headers(self):
+    return { "Authorization": self._basic_auth_header(), "Accept": "application/json",
+             "Content-Type": "application/json", "NTNX-Request-Id": new_request_id() }
+
+def add_default_headers(self, headers):
+    headers.setdefault("NTNX-Request-Id", new_request_id())
+    if self.session_cookie: headers["Cookie"] = self.session_cookie
+    else: headers["Authorization"] = self._basic_auth_header()
+    return headers</pre></details>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">3 · libcloud.rest → Vault — 3-step secret read</h2>
+  <p class="flow-desc">Tenant-scoped credential resolution: name → login material → short-lived token → secret.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">forwarded JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/list-objects</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">resolve the tenant's Vault AppRole name from the structural tuple <code class="inline">tenant:&lt;binding&gt; parent vault_user:*</code>. Falls back to <code class="inline">libcloud-&lt;binding&gt;</code>.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> · JSON <b>{ authorization_model_id, type:"vault_user", relation:"parent", user:"tenant:aws" }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { <b>objects: ["vault_user:libcloud-aws"]</b> }</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud.rest/app/auth/fga_client.py:173-187 + policy.py:98-115</summary><pre class="code">payload = { "authorization_model_id": self.model_id, "type": type_,
+            "relation": relation, "user": user }
+headers = {"Content-Type": "application/json", "Accept": "application/json"}
+if bearer: headers["Authorization"] = f"Bearer {bearer}"
+req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST", headers=headers)
+… return list(body.get("objects") or [])</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">orchestrator token</span></div>
+      <code class="call"><span class="m">GET</span> /v1/secret/data/libcloud-vault-auth/&lt;vault_user&gt;</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">read the AppRole login material (role_id + secret_id) with the narrow orchestrator token.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>X-Vault-Token</b> = orchestrator token · <b>GET</b> auth-material path.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { data: { data: { <b>role_id, secret_id</b> } } } — cached 30 s.</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:66-77 + 105-127</summary><pre class="code">def _request(self, method, path, token, body=None):
+    url = s.vault_addr.rstrip("/") + path
+    headers = {"Accept": "application/json"}
+    if token: headers["X-Vault-Token"] = token      <span class="c"># orchestrator token</span>
+    if data is not None: headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+…
+payload = self._request("GET", self._auth_path(vault_user), s.vault_token)
+data = (payload.get("data") or {}).get("data") or {}
+if not typed.get("role_id") or not typed.get("secret_id"): raise APIError(…, 503)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">role_id + secret_id</span></div>
+      <code class="call"><span class="m">POST</span> /v1/auth/approle/login</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">exchange role_id + secret_id for a short-lived tenant-scoped token (policy <code class="inline">libcloud-read-&lt;tenant&gt;</code>, TTL 60 m).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>JSON <b>{ role_id, secret_id }</b> — no token header.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { auth: { <b>client_token</b>, lease_duration } } — cached until lease−30 s.</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:129-158</summary><pre class="code">material = self._auth_material(vault_user)
+resp = self._request("POST", f"/v1/auth/{s.vault_approle_mount}/login", token="",
+                     body={"role_id": material["role_id"], "secret_id": material["secret_id"]})
+auth = resp.get("auth") or {}
+token = auth.get("client_token") or ""
+lease = float(auth.get("lease_duration") or 300.0)
+self._token_cache[vault_user] = (now + lease, token)   <span class="c"># short-lived tenant token</span>
+return token</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">libcloud.rest</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">tenant token</span></div>
+      <code class="call"><span class="m">GET</span> /v1/secret/data/libcloud/&lt;binding&gt;</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">read the actual cloud credential as the tenant identity.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>X-Vault-Token</b> = tenant AppRole token · <b>GET</b> secret path.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { data: { data: { <b>key, secret[, host]</b> } } } — cached 30 s.</code></div>
+      </div>
+      <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:160-191 (read_secret)</summary><pre class="code">token = self._approle_token(vault_user)
+payload = self._request("GET", self._secret_path(binding), token)
+data = (payload.get("data") or {}).get("data") or {}
+return {str(k): str(v) for k, v in data.items()}</pre></details>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">4 · Create department (company admin)</h2>
+  <p class="flow-desc">New company→department flow: OpenFGA gate → Vault AppRole + credential → OpenFGA wiring.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">cookie</span></div>
+      <code class="call"><span class="m">POST</span> /api/companies/{company_id}/departments</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">create a department (= a tenant bound to one cloud). Body includes the optional backend credential + owner.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Cookie: libcloud_portal_sid</b> · JSON <b>{ cloud, ownerUserId, name, credential?{key,secret,host} }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { id, cloud, ownerUserId }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/main.py:520-552</summary><pre class="code">if not fga.check(f"user:{principal}", "can_create_department", f"company:{company_id}"):
+    raise APIError("authz_forbidden", …, 403)
+vault = get_vault_service()
+if body.credential and (body.credential.key or body.credential.secret):
+    vault.write_department_credential(dept, body.credential.key, body.credential.secret, host=…)
+vault.create_department_identity(dept)
+fga.create_department(company_id, dept, body.cloud, owner_principal)
+return {"id": dept, "cloud": body.cloud, "ownerUserId": body.ownerUserId}</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">provisioner JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/check</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">authorize the caller to create departments in this company (company admin or superadmin).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> · JSON <b>{ tuple_key:{ user:"user:&lt;principal&gt;", relation:"can_create_department", object:"company:&lt;id&gt;" } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>{ allowed }.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/fga.py:273-280 (check)</summary><pre class="code">body = self._post("/check", {
+    "authorization_model_id": self.model_id,
+    "tuple_key": {"user": user, "relation": relation, "object": obj},
+})
+return bool(body.get("allowed", False))</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">dept-orchestrator token</span></div>
+      <code class="call"><span class="m">POST</span> /v1/secret/data/libcloud/&lt;dept&gt;</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">write the department's backend cloud credential (fire-and-forget; the value is never echoed back).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>X-Vault-Token</b> (dept-orchestrator) · JSON <b>{ data: { key, secret[, host] } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>204/200 (not returned to the caller).</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/vault.py:117-131</summary><pre class="code">data = {"key": key, "secret": secret}
+if host: data["host"] = host
+self._request("POST", f"/{KV_MOUNT}/data/{KV_PREFIX}/{dept}", {"data": data})</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Vault</span><span class="auth">dept-orchestrator token</span></div>
+      <code class="call"><span class="m">PUT</span> /sys/policies/acl/… · <span class="m">POST</span> /auth/approle/role/… · <span class="m">GET</span> role-id · <span class="m">POST</span> secret-id · <span class="m">POST</span> auth-KV</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">mint the per-department AppRole identity; role_id/secret_id are round-tripped into KV (invisible to the company admin).</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>X-Vault-Token</b> · PUT policy, POST role <b>{token_policies, token_ttl:"60m", token_max_ttl:"120m"}</b>, GET role-id, POST secret-id <b>{}</b>, POST KV <b>{data:{role_id, secret_id}}</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>each returns data; role_id/secret_id are used only server-side.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/vault.py:88-114</summary><pre class="code">self._request("PUT", f"/sys/policies/acl/{policy_name}", {"policy": policy})
+self._request("POST", f"/auth/{APPROLE_MOUNT}/role/{role}",
+              {"token_policies": [policy_name], "token_ttl": "60m", "token_max_ttl": "120m"})
+role_id = (self._request("GET", f"/auth/{APPROLE_MOUNT}/role/{role}/role-id").get("data") or {}).get("role_id", "")
+secret_id = (self._request("POST", f"/auth/{APPROLE_MOUNT}/role/{role}/secret-id", {}).get("data") or {}).get("secret_id", "")
+self._request("POST", f"/{KV_MOUNT}/data/{AUTH_KV_PREFIX}/{role}",
+              {"data": {"role_id": role_id, "secret_id": secret_id}})</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">provisioner JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/write</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">write the 8 structural + role tuples that wire the department into the model.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> · JSON <b>{ authorization_model_id, writes:{ tuple_keys:[ … ] } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 (idempotent — OpenFGA dedupes identical tuples).</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/fga.py:642-658 (create_department)</summary><pre class="code">self._write([
+    {"user": f"company:{company_id}", "relation": "parent", "object": f"tenant:{dept}"},
+    {"user": f"tenant:{dept}", "relation": "parent", "object": "libcloud_api:main"},
+    {"user": f"tenant:{dept}", "relation": "parent", "object": f"provider:{cloud}"},
+    {"user": f"provider:{cloud}", "relation": "provider", "object": f"{backend}:{dept}"},
+    {"user": f"tenant:{dept}", "relation": "tenant", "object": f"{backend}:{dept}"},
+    {"user": f"tenant:{dept}", "relation": "parent", "object": f"vault_user:libcloud-{dept}"},
+    {"user": "platform:main", "relation": "platform", "object": f"{backend}:{dept}"},
+    {"user": f"user:{owner_principal}", "relation": "owner", "object": f"tenant:{dept}"},
+])</pre></details>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">5 · Deprovision / private-pair — subprocess</h2>
+  <p class="flow-desc">identity-service shells out to the per-cloud script, which re-checks OpenFGA and calls libcloud.rest.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">cookie</span></div>
+      <code class="call"><span class="m">POST</span> /api/deprovision/aws</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">destroy a VM (write scope). Same <code class="inline">can_provision</code> grant as create.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Cookie: libcloud_portal_sid</b> · JSON <b>{ vmId | vmName }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { status, exitCode, stdout[-4000:], stderr[-4000:] }</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/main.py:436-448</summary><pre class="code">if not fga.can_provision(principal, cloud):
+    raise APIError("authz_forbidden", f"Cannot deprovision {cloud}", 403)
+return proxy.deprovision(cloud, body.vmName, body.vmId, fga.tenant_binding(principal, cloud))</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">provisioner JWT</span></div>
+      <code class="call"><span class="m">POST</span> /stores/{s}/check</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">authorize the end user for <code class="inline">can_provision</code> before shelling out.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer</b> · JSON <b>{ tuple_key:{ user:"user:&lt;end-user&gt;", relation:"can_provision", object:"aws_region:aws" } }</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>{ allowed }.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/fga.py:716-720</summary><pre class="code">def can_provision(self, principal, cloud):
+    obj = self._backend_object(principal, cloud)
+    return self.check(f"user:{principal}", "can_provision", obj)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Dex</span><span class="auth">service account</span></div>
+      <code class="call"><span class="m">POST</span> /dex/token</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">acquire a provisioner token and write it to a temp cache file the script's <code class="inline">require_token()</code> reads.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>as Flow 2 hop 3; result written to <b>IDP_TOKEN_CACHE_DIR/&lt;user&gt;.json</b> = <b>{access_token, refresh_token}</b>.</code></div>
+        <div class="res"><span class="tag">Response</span><code>token cached; file deleted after the script runs.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:796-818</summary><pre class="code">token = self._auth.get_token_full(cloud, binding)
+cache_dir = tempfile.mkdtemp(prefix=f"script-{cloud}-tokens-")
+cache_path = os.path.join(cache_dir, f"{user}.json")
+with open(cache_path, "w") as fh:
+    json.dump({"access_token": token.get("access_token", ""),
+               "refresh_token": token.get("refresh_token", "")}, fh)
+return cache_dir, cache_path, user</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">shell (subprocess)</span><span class="auth">env vars + token cache</span></div>
+      <code class="call">bash deprovision_aws.sh</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">delegate the deprovision sequence to the script (single source of truth), passing endpoints, client secret, and provisioner password via env.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>env: <b>LIBCLOUD_USER/PASSWORD</b>, <b>DEX_URL</b>, <b>DEX_TOKEN_URL</b>, <b>FGA_API_URL</b>, <b>FGA_STORE_ID/MODEL_ID</b>, <b>LIBCLOUD_*_AUTH_BINDING</b>, <b>IDP_TOKEN_CACHE_DIR</b>.</code></div>
+        <div class="res"><span class="tag">Response</span><code>exit code + stdout/stderr (truncated <b>[-4000:]</b>).</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/libcloud_proxy.py:852-902 (_script_env)</summary><pre class="code">env = {
+    "LIBCLOUD_USER": user, "LIBCLOUD_REST_URL": s.libcloud_rest_url,
+    "DEX_URL": s.dex_url, "DEX_TOKEN_URL": s.dex_token_url,
+    "LIBCLOUD_OIDC_CLIENT_ID": s.libcloud_oidc_client_id,
+    "LIBCLOUD_OIDC_CLIENT_SECRET": s.libcloud_oidc_client_secret,   <span class="c"># secret → /proc environ</span>
+    "FGA_API_URL": s.fga_api_url, "FGA_STORE_ID": s.fga_store_id,
+    "FGA_MODEL_ID": s.fga_model_id, "IDP_TOKEN_CACHE_DIR": cache_dir,
+}
+env.update({"LIBCLOUD_PASSWORD": s.provisioner_aws_password, …})</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">script</span><span class="arrow">→</span><span class="to">OpenFGA + libcloud.rest</span><span class="auth">cached token</span></div>
+      <code class="call"><span class="m">POST</span> /check → <span class="m">DELETE</span> /v1/compute/nodes/{id}</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">the script re-runs the OpenFGA check, then DELETEs the node — pure curl + jq.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Authorization: Bearer ${ACCESS_TOKEN}</b> · <b>X-Provider-Connection</b> (built by <code class="inline">connection_param()</code>) · DELETE body-less.</code></div>
+        <div class="res"><span class="tag">Response</span><code>OpenFGA <code class="inline">{allowed}</code> · REST DELETE <code class="inline">200/204</code>.</code></div>
+      </div>
+      <details class="src"><summary>source · test_script/scripts/deprovision_aws.sh (rest() + connection_param())</summary><pre class="code">connection_param() {
+  jq -nc --arg region "${AWS_REGION}" --arg binding "${LIBCLOUD_AWS_AUTH_BINDING}" \
+    '{provider:"aws",config:{region:$region,secure:true},auth_binding:$binding}'
+}
+rest() {
+  local method="$1" path="$2" body="${3:-}"
+  curl -sS -X "${method}" "${LIBCLOUD_REST_URL}${path}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "Accept: application/json" \
+    -H "X-Provider-Connection: ${CONNECTION_PARAM}" \
+    ${body:+ -H "Content-Type: application/json" -d "${body}"}
+}</pre></details>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">6 · Logout / refresh-token revoke</h2>
+  <p class="flow-desc">Clears the cookie, drops the server-side refresh entry, best-effort RFC 7009 revoke.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">identity-service</span><span class="auth">cookie</span></div>
+      <code class="call"><span class="m">POST</span> /api/logout</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">end the session — clear the cookie and drop the server-side refresh entry.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>Cookie: libcloud_portal_sid</b>.</code></div>
+        <div class="res"><span class="tag">Response</span><code>200 { logged_out: true } + <b>Set-Cookie</b> expiry.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/main.py:214-234 + session.py:86-103</summary><pre class="code">stored = sessions.revoke(req, resp)          <span class="c"># clear cookie + drop refresh entry</span>
+refresh_token = (stored or {}).get("refresh_token")
+if refresh_token:
+    try: dex.revoke_token(refresh_token)
+    except Exception as exc: log.warning("Failed to revoke: %s", exc)
+return {"logged_out": True}
+
+def revoke(self, req, resp):
+    claims = self._decode(token); stored = _refresh_store.pop(claims.get("sid"), None)
+    resp.delete_cookie(s.session_cookie_name, path="/")
+    return stored</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">Dex</span><span class="auth">client secret</span></div>
+      <code class="call"><span class="m">POST</span> /dex/token/revoke</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">revoke the refresh token at Dex (RFC 7009). Best-effort — logged but never blocks logout.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code><b>application/x-www-form-urlencoded</b>: <b>token</b>=refresh_token · <b>token_type_hint=refresh_token</b> · <b>client_id=libcloud-portal</b> · <b>client_secret</b></code></div>
+        <div class="res"><span class="tag">Response</span><code>200/204; non-2xx logged as a warning.</code></div>
+      </div>
+      <details class="src"><summary>source · identity_service/app/dex.py:85-106</summary><pre class="code">revoke_url = f"{s.dex_token_url}/revoke"
+data = { "token": refresh_token, "token_type_hint": "refresh_token",
+         "client_id": s.dex_portal_client_id, "client_secret": s.dex_portal_client_secret }
+resp = httpx.post(revoke_url, data=data, timeout=15)
+if resp.status_code not in (200, 204):
+    log.warning("Dex token revocation returned %s: %s", resp.status_code, resp.text)</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">identity-service</span><span class="arrow">→</span><span class="to">(no IdP logout)</span></div>
+      <code class="call">GET /dex/auth/logout → 404</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">note that stock Dex has no RP-initiated logout; the frontend navigates to <code class="inline">/login</code> on its own. Dex <code class="inline">memory</code> storage also invalidates every refresh token on restart.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Behavior</span><code>no IdP-side session to clear; token revocation is the only IdP cleanup.</code></div></div>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">7 · Bootstrap chain of trust (setup.sh)</h2>
+  <p class="flow-desc">Each step gated on the previous; the pivot is a real OIDC login as superadmin.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">setup.sh</span><span class="arrow">→</span><span class="to">dex_bootstrap.py</span></div>
+      <code class="call">render config.yaml</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">inject OAuth client secrets + LLDAP bind creds from template.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Result</span><code>writes <code class="inline">dex/config.yaml</code> with <b>staticClients</b> + <b>connectors[ldap]</b>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">setup.sh</span><span class="arrow">→</span><span class="to">LLDAP</span></div>
+      <code class="call">start + apply schema + create superadmin</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">apply custom attributes (department, multi-valued <b>role</b>, jobtitle) via GraphQL.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Result</span><code>LLDAP directory ready with <b>superadmin</b>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">setup.sh</span><span class="arrow">→</span><span class="to">Postgres → OpenFGA → Dex → Vault</span></div>
+      <code class="call">docker start (ordered)</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">bring up datastore, authz, IdP, secrets in dependency order. Vault starts sealed.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Result</span><code>containers up on <code class="inline">libcloud_net</code>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">superadmin_auth.sh</span><span class="arrow">→</span><span class="to">Dex</span><span class="auth">OIDC login</span></div>
+      <code class="call"><span class="m">GET</span> /dex/auth → <span class="m">POST</span> login → <span class="m">POST</span> /dex/token</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest"><b>GATE</b> — a real OIDC login as superadmin produces <b>SUPERADMIN_JWT</b>, verified inside the identity-service container. Everything privileged downstream refuses to run without it.</span></div>
+      <div class="wire">
+        <div><span class="tag">Request</span><code>authorization-code flow as <b>superadmin</b> (via <code class="inline">idp_login.py</code>).</code></div>
+        <div class="res"><span class="tag">Response</span><code><b>SUPERADMIN_JWT</b> exported for downstream steps.</code></div>
+      </div>
+      <details class="src"><summary>source · test_script/scripts/idp_login.py (same flow as ProvisionerAuth)</summary><pre class="code"># GET /dex/auth (connector_id=lldap) → scrape form action → POST credentials
+# → read code from 302 Location → POST /dex/token (client libcloud-rest + secret)
+# → cache {access_token, refresh_token} under generated/tokens/&lt;user&gt;.json</pre></details>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">setup.sh</span><span class="arrow">→</span><span class="to">LLDAP / OpenFGA / Vault</span><span class="auth">SUPERADMIN_JWT / root token</span></div>
+      <code class="call">create 7 users · store+model+48 tuples · init/unseal/KV v2 + AppRoles</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">seed users, the authorization model + tuples, and Vault (init, unseal, enable KV v2, mint per-tenant AppRoles) — each gated on step 4.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Result</span><code>OpenFGA store/model/tuples written; Vault unsealed with per-tenant AppRoles.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">setup.sh</span><span class="arrow">→</span><span class="to">REST API + visualizer + portal</span></div>
+      <code class="call">restart / recreate</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">pick up fresh OpenFGA state.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Result</span><code>system live.</code></div></div>
+    </li>
+
+  </ol>
+
+  <h2 class="flow">8 · OpenFGA visualizer SSO</h2>
+  <p class="flow-desc">Its own Dex login (callback :5050), hard superadmin-only gate, read-only on OpenFGA.</p>
+  <ol class="hops">
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">visualizer :5050</span></div>
+      <code class="call"><span class="m">GET</span> /</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">redirect to Dex login (OAuth client <code class="inline">libcloud-rest</code>; callback <code class="inline">localhost:5050/callback</code>).</span></div>
+      <div class="wire"><div class="res"><span class="tag">Response</span><code>302 → <b>/dex/auth</b>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">Browser</span><span class="arrow">→</span><span class="to">Dex → LLDAP</span></div>
+      <code class="call">login + redirect with code</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">same LLDAP connector; <code class="inline">uid → sub</code>.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Response</span><code>302 → <b>:5050/callback?code=…</b>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">visualizer</span><span class="arrow">→</span><span class="to">Dex</span></div>
+      <code class="call"><span class="m">GET</span> /dex/keys</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">verify the JWT (iss/aud) then enforce a <b>superadmin-only</b> gate — non-superadmin is rejected.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Response</span><code>JWKS; then a role check in <code class="inline">openfga_visualized/app.py</code>.</code></div></div>
+    </li>
+
+    <li class="hop">
+      <div class="edge"><span class="from">visualizer</span><span class="arrow">→</span><span class="to">OpenFGA</span><span class="auth">JWT</span></div>
+      <code class="call"><span class="m">GET</span> stores/models/tuples</code>
+      <div class="purpose"><span class="why">Purpose:</span> <span class="rest">read-only view of the RBAC graph. Note: Werkzeug dev server on <code class="inline">0.0.0.0:5050</code>.</span></div>
+      <div class="wire"><div class="res"><span class="tag">Response</span><code>200 — store/model/tuple data.</code></div></div>
+    </li>
+
+  </ol>
+
+  <!-- ======================= PART 2: QUESTIONS ======================= -->
+  <div class="part" id="cross">Part 2 · Cross-cutting questions</div>
+  <p class="flow-desc">An edge is undocumented until all 14 are answered — ask these about <em>every</em> exchange.</p>
+  <ol class="cross">
+    <li><b>Which credential authenticates the caller, and which principal does it name?</b> <span class="anch">(provisioner authenticates to OpenFGA; the end user is the subject evaluated — fga.py:276-280)</span></li>
+    <li><b>Synchronous request/response, redirect, callback, or poll?</b> <span class="anch">(OIDC 302 in idp_login.py:132; Nutanix task polling)</span></li>
+    <li><b>Exact method + path + Content-Type + body schema?</b> <span class="anch">(/check vs /read vs /write; Vault sys/policies vs auth/approle vs secret/data)</span></li>
+    <li><b>Which headers carry state?</b> <span class="anch">(Authorization, Cookie, X-Provider-Connection, X-Vault-Token, X-Request-ID, Accept)</span></li>
+    <li><b>Fail-closed or fail-open?</b> <span class="anch">(unreachable → 503 at fga.py:234-237 vs enabled=False → True at fga.py:274)</span></li>
+    <li><b>Error status + body shape, and does the other side map it or swallow it?</b> <span class="anch">(502 wrap at libcloud_proxy.py:343; _upstream_reason)</span></li>
+    <li><b>Timeouts, retries, cache TTLs per hop?</b> <span class="anch">(30 s httpx; 30 s Vault secret + auth-material; token refresh margin)</span></li>
+    <li><b>Idempotent / replay-safe?</b> <span class="anch">(OpenFGA tuple dedupe vs non-idempotent AppRole secret-id minting)</span></li>
+    <li><b>Correlation ID through the chain?</b> <span class="anch">(X-Request-ID at libcloud.rest — propagated into the subprocess?)</span></li>
+    <li><b>What secret crosses this wire, and is it logged / cachable / in /proc?</b> <span class="anch">(provisioner password → shell env, libcloud_proxy.py:880-901)</span></li>
+    <li><b>TLS or plaintext? Loopback / bridge / public interface?</b></li>
+    <li><b>Who can even reach it?</b> <span class="anch">(127.0.0.1 vs 0.0.0.0 — portal :3000, visualizer :5050, emulators :9440 are public)</span></li>
+    <li><b>Ordering / startup dependency — is there a race?</b> <span class="anch">(no depends_on for OpenFGA; discovery-latch bug, fga.py:135-141)</span></li>
+    <li><b>Trust boundary or defense-in-depth re-check?</b> <span class="anch">(enforcement points 1/2/3)</span></li>
+  </ol>
+
+  <!-- ======================= PART 3: PER-EDGE ======================= -->
+  <div class="part" id="peredge">Part 3 · Per-edge questions</div>
+
+  <details class="q"><summary>A/B — Browser ↔ Portal nginx ↔ identity-service</summary><div class="body"><ul>
+    <li>Complete <code class="inline">/api/</code> surface: is every route in <b>api.js</b> mirrored in <b>main.py</b>, and are there orphaned handlers or uncalled client methods?</li>
+    <li>How does nginx route <code class="inline">/api/</code>, <code class="inline">/dex/</code>, and the SPA fallback — and what happens to an unmatched URL?</li>
+    <li>Are <code class="inline">HttpOnly</code>, <code class="inline">SameSite=Lax</code>, <code class="inline">Max-Age=28800</code>, <code class="inline">Secure=False</code> on the cookie preserved through the proxy?</li>
+    <li>Why is CORS (origin from <code class="inline">PUBLIC_HOSTNAME</code>) needed at all when both live on :3000?</li>
+    <li>Which routes are cookie-authenticated vs. public (<code class="inline">/health</code>), and is any state-mutating route reachable without a session?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>C — Browser ↔ Dex (OIDC front channel)</summary><div class="body"><ul>
+    <li>Exact authorize URL (<code class="inline">/dex/auth?...connector_id=lldap</code>) and which params carry <code class="inline">code_challenge</code>/<code class="inline">state</code>?</li>
+    <li>Is the authorization <b>code</b> ever visible to the SPA or server logs? Where is it consumed?</li>
+    <li>Does Dex set/read a browser SSO cookie, or re-prompt every time?</li>
+    <li>What does Dex render for the <code class="inline">lldap</code> connector, and how does the SPA know to redirect vs. show it?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>D — identity-service ↔ Dex (server-to-server)</summary><div class="body"><ul>
+    <li>Token exchange: exact <code class="inline">POST /dex/token</code> body, and what happens when Dex returns no <code class="inline">id_token</code> (main.py:153-155)?</li>
+    <li>JWKS fetch (<code class="inline">GET /dex/keys</code>): cached? What breaks on Dex's 6-hour key rotation (the <code class="inline">RefreshUnknownKID</code> pin)?</li>
+    <li>ID-token validation: which claims are required (<code class="inline">iss/aud/exp/sub</code>) and which are <em>not</em> checked?</li>
+    <li>Provisioner login (no callback server): how is the code read from the <code class="inline">302 Location</code> (idp_login.py:132-137), and why is <code class="inline">127.0.0.1:8766/oauth/callback</code> never actually connected to?</li>
+    <li>Refresh: when is <code class="inline">grant_type=refresh_token</code> called, and what happens when refresh fails (idp_login.py:79-85)?</li>
+    <li>Revoke: <code class="inline">POST /dex/token/revoke</code> on logout — best-effort, and does Dex <code class="inline">memory</code> storage make it moot on restart?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>E — identity-service ↔ OpenFGA</summary><div class="body"><ul>
+    <li>Exact REST paths for <code class="inline">check/read/write/list-users/list-objects/expand/changes/authorization-models/assertions</code>.</li>
+    <li>Why does <code class="inline">/read</code> require a full-store read + client-side filter (fga.py:470-478), and what does that cost at scale?</li>
+    <li>What bearer token is sent, and how does the <b>subject</b> (<code class="inline">user:&lt;principal&gt;</code>) differ from the <b>caller</b> authenticated by the bearer?</li>
+    <li>When <code class="inline">enabled</code> is false, which callers get <code class="inline">allowed=True</code>/full capabilities (fga.py:365-374) and which get <code class="inline">503</code> — intentional?</li>
+    <li>What triggers <code class="inline">/write</code> (assign_role/clear_roles/create_company/create_department) and who is authorized to reach it?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>F — identity-service ↔ LLDAP</summary><div class="body"><ul>
+    <li>Which operations use LDAP (<code class="inline">ldap3</code>) vs. GraphQL (<code class="inline">POST /auth/simple/login</code> then <code class="inline">POST /api/graphql</code>)?</li>
+    <li>Admin bind DN/PW, and how the multi-valued <code class="inline">role</code> attribute is read/written?</li>
+    <li>How are the 8 seeded + 30 pool users enumerated, and how does an LLDAP <code class="inline">uid</code> map to an OpenFGA principal (the <code class="inline">int-</code> stripping, main.py:71-79)?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>G — identity-service ↔ libcloud.rest (provision replay)</summary><div class="body"><ul>
+    <li>Exact ordered sequence: <code class="inline">auth/me</code> → <code class="inline">connections:test</code> → <code class="inline">locations</code> → <code class="inline">sizes</code> → <code class="inline">images</code> → <code class="inline">nodes</code> → <code class="inline">subnets</code> → <code class="inline">POST nodes</code> (libcloud_proxy.py:452-484)?</li>
+    <li>How is <code class="inline">X-Provider-Connection</code> serialized, and which fields are in it — and which are <b>not</b> (no credentials, _headers at libcloud_proxy.py:314)?</li>
+    <li>What bearer token + <code class="inline">aud</code> — does libcloud.rest see the end user or the provisioner?</li>
+    <li>How is <code class="inline">auth_binding</code> (tenant → Vault secret) chosen when a user holds roles on several tenants of one cloud (fga.py:582-610)?</li>
+    <li>How are per-category resource lists fanned out, and what does a <code class="inline">501</code> degrade to (libcloud_proxy.py:408-411)?</li>
+    <li>For deprovision/private-pair: what is passed into the shell subprocess (env, token cache), and how are secrets exposed via <code class="inline">/proc/&lt;pid&gt;/environ</code>?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>H — identity-service ↔ Vault (department flow, new)</summary><div class="body"><ul>
+    <li>Which token authenticates identity-service to Vault (department-orchestrator), and what is its policy scope vs. the libcloud.rest orchestrator token?</li>
+    <li>Exact calls in <code class="inline">create_department_identity</code> (vault.py:73-115): policy <code class="inline">PUT</code>, role <code class="inline">POST</code>, <code class="inline">role-id</code> GET, <code class="inline">secret-id</code> POST, then the plaintext KV round-trip — why is <code class="inline">secret_id</code> persisted back into KV despite being write-only in Vault?</li>
+    <li>Ordering/atomicity if Vault succeeds but OpenFGA <code class="inline">create_department</code> fails halfway (main.py:543-551 fire-and-forget) — half-provisioned?</li>
+    <li>How are <code class="inline">read_department_credential</code> / <code class="inline">rotate_department_credential</code> gated (<code class="inline">can_manage_credentials</code> on <code class="inline">tenant:&lt;dept&gt;</code>), and is the credential value ever echoed to the browser?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>I — identity-service → subprocess scripts (→ Dex/OpenFGA/libcloud.rest)</summary><div class="body"><ul>
+    <li>Why are deprovision/private-pair delegated to <code class="inline">.sh</code> scripts, and which side is the single source of truth for each sequence?</li>
+    <li>What is the env contract (<code class="inline">IDP_TOKEN_CACHE_DIR</code>, <code class="inline">PROVISION</code>, <code class="inline">VM_*</code>, <code class="inline">LIBCLOUD_*</code>) and how does the script's own OpenFGA re-check duplicate the service's check?</li>
+    <li>How is stdout/stderr truncated (<code class="inline">[-4000:]</code>, libcloud_proxy.py:718-719) and returned — does that leak anything?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>J/K/L — libcloud.rest ↔ Dex / OpenFGA / Vault</summary><div class="body"><ul>
+    <li><b>J</b> — how is the bearer decoded (JWKS, <code class="inline">iss</code>, <code class="inline">aud=libcloud-rest</code>), and how is <code class="inline">sub</code> mapped through <code class="inline">principal_map.json</code>/legacy aliases to a <code class="inline">user:</code>?</li>
+    <li><b>K</b> — exact order in <code class="inline">authorize_connection</code> (policy.py:134-168): scope → provider allowlist → credential policy → <code class="inline">can_connect</code> → <code class="inline">can_use</code> → <code class="inline">can_provision</code>/<code class="inline">can_read</code> → <code class="inline">list_objects</code> for <code class="inline">vault_user</code>. Which run when <code class="inline">fga.enabled</code> is false?</li>
+    <li><b>K</b> — what status does an unmapped route produce (<code class="inline">policy_unknown_operation</code> 500), and is fail-closed intended?</li>
+    <li><b>L</b> — the Vault 3-step (vault_client.py): (1) auth-material with orchestrator token → (2) <code class="inline">POST /auth/approle/login</code> → (3) secret with tenant token. Which token impersonates which tenants, and what are the three cache TTLs (30 s / 30 s / lease)?</li>
+    <li><b>L</b> — when Vault is configured but a secret is missing, does libcloud.rest fall back to env creds or fail closed with <code class="inline">503</code> (credentials.py:99-103)?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>M/N — libcloud.rest ↔ AWS / Nutanix (and the emulator)</summary><div class="body"><ul>
+    <li><b>M</b> — driver auth: per-request Basic vs. session-cookie (<code class="inline">POST &lt;login_path&gt;</code> → replay <code class="inline">Set-Cookie</code>), and the <code class="inline">nutanix:&lt;host&gt;:&lt;port&gt;</code> session-cache TTL.</li>
+    <li><b>M</b> — task lifecycle: POST → <code class="inline">202</code> → poll <code class="inline">GET .../tasks/{id}</code> until SUCCEEDED; poll interval/timeout, and what the <em>emulator</em> does differently (fixed 200/400 ms timers, no failure paths).</li>
+    <li><b>M</b> — is <code class="inline">ETag</code>/<code class="inline">If-Match</code> sent, and does the emulator's lack of <code class="inline">ETag</code> silently skip optimistic concurrency?</li>
+    <li><b>N</b> — emulator fidelity: what is mocked (auth no-op, fake <code class="inline">NTNX_IAM_SESSION</code> vs real <code class="inline">NTNX_IGW_SESSION</code>, <code class="inline">stop_node</code> no-op), and which would hide a bug on a real Prism cluster?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>O — Dex ↔ LLDAP</summary><div class="body"><ul>
+    <li>Bind DN/PW + search filter (dex/config.yaml:87-97), and how <code class="inline">uid→sub</code>, <code class="inline">mail→email</code>, <code class="inline">cn→name</code> map.</li>
+    <li>On an LLDAP outage, does Dex fail the login or accept stale state (<code class="inline">memory</code>)?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>P — OpenFGA ↔ Dex</summary><div class="body"><ul>
+    <li>How does OpenFGA validate the caller JWT (issuer <code class="inline">http://dex:5556/dex</code>, audience <code class="inline">libcloud-rest</code>), and why was <code class="inline">v1.16.0</code> (PR #3101 <code class="inline">RefreshUnknownKID</code>) load-bearing?</li>
+    <li>Since OIDC authn is signature/iss/aud only, <b>what authorizes writes</b> (any authenticated user can self-grant)?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>Q — OpenFGA ↔ PostgreSQL</summary><div class="body"><ul>
+    <li>What lives there (tuples/models/assertions), and is it reachable only via the OpenFGA API or also directly by other components?</li>
+    <li>Real datastore volume name (the <code class="inline">openfga-data</code> vs <code class="inline">openfga_postgres_openfga-pg-data</code> drift)?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>R — OpenFGA visualizer ↔ Dex / OpenFGA</summary><div class="body"><ul>
+    <li>How does it do its own SSO login (callback <code class="inline">:5050</code>), and is its OpenFGA access genuinely read-only + superadmin-gated?</li>
+    <li>Why Werkzeug dev server on <code class="inline">0.0.0.0:5050</code>?</li>
+  </ul></div></details>
+
+  <details class="q"><summary>S — bootstrap / operator scripts ↔ everything</summary><div class="body"><ul>
+    <li>Chain-of-trust order (LLDAP → Dex superadmin login → <code class="inline">SUPERADMIN_JWT</code> → OpenFGA bootstrap → Vault bootstrap) — which step is the gate everything refuses to run without?</li>
+    <li>How do <code class="inline">idp_login.py</code>, <code class="inline">set_tenant_credentials.py</code>, <code class="inline">vault_bootstrap.py</code> authenticate, and which token do they present (root vs. scoped)?</li>
+    <li>Where is each generated secret written (<code class="inline">.env</code>, <code class="inline">fga.env</code>, <code class="inline">dex.env</code>, <code class="inline">vault.env</code>) and which are git-tracked?</li>
+  </ul></div></details>
+
+  <!-- ======================= PART 4: VIP ======================= -->
+  <div class="part" id="vip">Part 4 · Highest-value questions</div>
+  <div class="vip"><ol>
+    <li><b>Which principal does each hop evaluate, and which credential authenticates the caller?</b> (The provisioner-vs-end-user split is the crux.)</li>
+    <li><b>For every <code class="inline">enabled=False</code> / <code class="inline">except Exception</code> path, does it fail open or closed?</b> (OpenFGA discovery latch, Vault fallback, <code class="inline">_derive_authz</code> allow-all.)</li>
+    <li><b>Exact wire format</b> of <code class="inline">X-Provider-Connection</code>, the OpenFGA <code class="inline">check</code> body, and the Vault 3-step — can a client forge any of them?</li>
+    <li><b>Does the same <code class="inline">auth_binding</code>/tenant string stay consistent</b> across LLDAP uid → Dex <code class="inline">sub</code> → OpenFGA <code class="inline">user:</code> → Vault <code class="inline">libcloud-&lt;binding&gt;</code>?</li>
+    <li><b>Which secrets cross which edge in cleartext (no TLS), and which land in git, logs, or <code class="inline">/proc</code>?</b></li>
+  </ol></div>
+
+  <!-- ======================= PART 5: MESSAGE BUILDERS ======================= -->
+  <div class="part" id="builders">Part 5 · Library of message builders</div>
+  <p class="flow-desc">The remaining wire-constructing code paths that don't belong to a single
+  flow: the LLDAP GraphQL write and the libcloud.rest bearer-decode chain.</p>
+
+  <div class="builder">
+    <h3 class="btitle">LLDAP GraphQL write — set email (identity-service ↔ LLDAP)</h3>
+    <div class="purpose"><span class="why">Purpose:</span> <span class="rest">LLDAP reads use LDAP; <b>writes</b> go through its HTTP GraphQL API. First log in as admin to get a JWT, then POST an <code class="inline">updateUser</code> mutation with that bearer.</span></div>
+    <div class="wire">
+      <div><span class="tag">Request 1</span><code><b>POST</b> /auth/simple/login · JSON <b>{ username, password }</b> (admin creds)</code></div>
+      <div><span class="tag">Request 2</span><code><b>POST</b> /api/graphql · <b>Authorization: Bearer &lt;token&gt;</b> · JSON <b>{ query, variables:{ user:{ id, email } } }</b></code></div>
+      <div class="res"><span class="tag">Response</span><code>login → <b>{ token }</b> · mutation → <b>{ data:{ updateUser:{ ok } } }</b> or <b>{ errors }</b> (→ 400)</code></div>
+    </div>
+    <details class="src"><summary>source · identity_service/app/lldap.py:15-31 (_admin_token) + 118-136 (set_email)</summary><pre class="code"><span class="c"># 1) admin login → JWT</span>
+body = json.dumps({"username": s.lldap_admin_user, "password": s.lldap_ldap_user_pass}).encode()
+req = urllib.request.Request(f"{s.lldap_http_url.rstrip('/')}/auth/simple/login",
+                             data=body, method="POST", headers={"Content-Type": "application/json"})
+token = json.loads(resp.read().decode() or "{}").get("token", "")
+
+<span class="c"># 2) GraphQL mutation with that bearer</span>
+mutation = "mutation UpdateUser($user: UpdateUserInput!) { updateUser(user: $user) { ok } }"
+payload = json.dumps({"query": mutation,
+                      "variables": {"user": {"id": uid, "email": email}}}).encode()
+req = urllib.request.Request(f"{get_settings().lldap_http_url.rstrip('/')}/api/graphql",
+                             data=payload, method="POST",
+                             headers={"Content-Type": "application/json",
+                                      "Authorization": f"Bearer {token}"})</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">libcloud.rest bearer-decode + connection parse (J/K edge)</h3>
+    <div class="purpose"><span class="why">Purpose:</span> <span class="rest">on every authorized request, extract the bearer from <b>Authorization</b>, decode it (JWKS for RS/ES/PS, client-secret for HS), map <code class="inline">sub</code> → principal, derive scopes/providers — and parse <b>X-Provider-Connection</b>.</span></div>
+    <div class="wire">
+      <div><span class="tag">Request header</span><code><b>Authorization: Bearer &lt;JWT&gt;</b> · <b>X-Provider-Connection: {"provider":"aws","auth_binding":"aws",…}</b></code></div>
+      <div><span class="tag">Decode</span><code><b>jwt.decode</b>(token, JWKS signing key, audience=<b>oidc_audience</b>, issuer, require <b>exp,sub</b>) → <b>resolve_principal</b> → <b>TokenClaims</b></code></div>
+      <div class="res"><span class="tag">Result</span><code>TokenClaims { sub=principal, scope="…", allowed_providers=[…], access_token=token }</code></div>
+    </div>
+    <details class="src"><summary>source · libcloud.rest/app/auth/dependencies.py:41-88</summary><pre class="code">def _bearer_token_from_request(request):
+    header = request.headers.get("Authorization") or request.headers.get("authorization")
+    if not header: raise APIError("auth_invalid_token", "Bearer token required", 401)
+    parts = header.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
+        raise APIError("auth_invalid_token", "Bearer token required", 401)
+    return parts[1]
+
+def connection_from_request(request):
+    xpc = request.headers.get("X-Provider-Connection") or request.headers.get("x-provider-connection")
+    if xpc: return parse_connection_raw(xpc, url_encoded=False)   <span class="c"># header preferred</span>
+    raw = request.query_params.get("connection")
+    if raw: return parse_connection_raw(raw, url_encoded=True)    <span class="c"># ?connection= fallback</span>
+    raise APIError("invalid_connection", "Missing provider connection…", 400)</pre></details>
+    <details class="src"><summary>source · libcloud.rest/app/auth/oidc_service.py:55-67 + identity.py:106-160</summary><pre class="code"><span class="c"># OIDC decode — JWKS path (RS/ES/PS)</span>
+def _decode_with_jwks(self, token, settings):
+    signing_key = self._client().get_signing_key_from_jwt(token)   <span class="c"># GET {oidc_jwks_url}</span>
+    header = jwt.get_unverified_header(token)
+    alg = header.get("alg") or getattr(signing_key, "algorithm_name", "RS256")
+    issuer = (settings.oidc_issuer_url or "").rstrip("/")
+    return jwt.decode(token, signing_key.key, algorithms=[alg],
+                      audience=settings.oidc_audience, issuer=issuer,
+                      options={"require": ["exp", "sub"]})
+
+<span class="c"># sub → stable principal slug</span>
+def resolve_principal(payload):
+    mapping = _load_map()
+    sub = str(payload.get("sub") or ""); email = str(payload.get("email") or "").lower()
+    if sub and sub in mapping["by_sub"]: return mapping["by_sub"][sub]
+    if email and email in mapping["by_email"]: return mapping["by_email"][email]
+    …
+    local = email.split("@", 1)[0] if email else ""
+    if local and _role_suffix(local) is not None: return local      <span class="c"># &lt;tenant&gt;-owner/admin/viewer</span></pre></details>
+  </div>
+
+  <!-- ======================= PART 6: WHO CAN REACH WHOM ======================= -->
+  <div class="part" id="reach">Part 6 · Who can reach whom — the JWT-gated call graph</div>
+  <p class="flow-desc">Reproduced from <code class="inline">click-to-prism.html</code> §1: the static call graph
+  with, for every direction, the credential that <b>restricts</b> it — and below, the source that
+  <b>constructs</b> each JWT / token.</p>
+
+  <div class="table-scroll">
+    <table class="reach">
+      <thead><tr><th>From</th><th>→ To</th><th>Binding</th><th>Credential that gates the direction</th></tr></thead>
+      <tbody>
+        <tr><td><span class="svc">Browser (SPA)</span></td><td>nginx <span class="port">:3000</span></td><td>public <span class="port">0.0.0.0</span></td><td>none — public SPA</td></tr>
+        <tr><td><span class="svc">nginx</span></td><td>identity-service <span class="port">:8766</span> / Dex <span class="port">:5556</span></td><td>loopback</td><td>forwards cookie / OIDC unchanged</td></tr>
+        <tr><td><span class="svc">Browser</span></td><td>identity-service <code>/api/*</code></td><td>via nginx</td><td><span class="jwt">session JWT</span> <code>libcloud_portal_sid</code> (HS256)</td></tr>
+        <tr><td><span class="svc">identity-service</span></td><td>Dex <span class="port">:5556</span></td><td>bridge</td><td>OAuth <code>client_secret</code> + PKCE verifier (server-side)</td></tr>
+        <tr><td><span class="svc">identity-service</span></td><td>OpenFGA <span class="port">:8080</span></td><td>bridge</td><td><span class="jwt">provisioner JWT</span> (<code>aud=libcloud-rest</code>)</td></tr>
+        <tr><td><span class="svc">identity-service</span></td><td>libcloud.rest <span class="port">:8765</span></td><td>bridge</td><td><span class="jwt">provisioner JWT</span> + <code>X-Provider-Connection</code></td></tr>
+        <tr><td><span class="svc">identity-service</span></td><td>Vault <span class="port">:8200</span></td><td>bridge</td><td><span class="jwt">dept-orchestrator token</span></td></tr>
+        <tr><td><span class="svc">identity-service</span></td><td>LLDAP <span class="port">:3890/:17170</span></td><td>bridge</td><td>admin bind / LLDAP JWT</td></tr>
+        <tr><td><span class="svc">Dex</span></td><td>LLDAP <span class="port">:3890</span></td><td>bridge</td><td>LDAP admin bind (<code>insecureNoSSL</code>)</td></tr>
+        <tr><td><span class="svc">libcloud.rest</span></td><td>OpenFGA <span class="port">:8080</span></td><td>bridge</td><td><span class="jwt">forwarded caller JWT</span> (<code>aud=libcloud-rest</code>)</td></tr>
+        <tr><td><span class="svc">libcloud.rest</span></td><td>Vault <span class="port">:8200</span></td><td>bridge</td><td>orchestrator token → <span class="jwt">AppRole tenant token</span></td></tr>
+        <tr><td><span class="svc">libcloud.rest</span></td><td>Nutanix / AWS</td><td>egress</td><td><span class="jwt">HTTP Basic</span> (or session cookie)</td></tr>
+        <tr><td><span class="svc">OpenFGA</span></td><td>PostgreSQL <span class="port">:5432</span></td><td>internal</td><td>DB credentials</td></tr>
+        <tr><td><span class="svc">visualizer</span></td><td>Dex / OpenFGA</td><td>public <span class="port">0.0.0.0:5050</span></td><td><span class="jwt">Dex SSO JWT</span> (superadmin gate)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="anatomy"><b>Loopback vs public:</b> only nginx <code class="inline">:3000</code>, the visualizer <code class="inline">:5050</code>,
+  and the emulators <code class="inline">:9440</code> bind <code class="inline">0.0.0.0</code>; everything else is
+  <code class="inline">127.0.0.1</code> or bridge-only. <b>OpenFGA caveat:</b> OpenFGA's OIDC authn checks only
+  <code class="inline">iss/aud/sig</code> — any <code class="inline">aud=libcloud-rest</code> bearer can call
+  <code class="inline">/write</code> (finding 4), so that token <em>authenticates</em> but does not <em>authorize</em>.</p>
+
+  <h3 class="btitle" style="margin-top:24px">JWT / token directory — where each is constructed</h3>
+  <p class="flow-desc">Each credential gates one or more directions above; the snippet is the source that constructs it
+  (or, for Dex-issued tokens, the code that builds the exchange obtaining it).</p>
+
+  <div class="builder">
+    <h3 class="btitle">1 · session JWT — libcloud_portal_sid (HS256)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">Browser → identity-service <code>/api/*</code>. Signed with <code>session_secret</code> (placeholder <code>"change-me"</code> — finding 2).</span></div>
+    <details class="src"><summary>source · identity_service/app/session.py:33-42 + 67-76</summary><pre class="code">payload = {**claims, "iat": now, "exp": now + s.session_ttl_seconds, "jti": uuid.uuid4().hex}
+cookie_value = jwt.encode(payload, s.session_secret, algorithm="HS256")   <span class="c"># ← the JWT</span>
+…
+resp.set_cookie(key=s.session_cookie_name, value=cookie_value, max_age=s.session_ttl_seconds,
+                httponly=True, secure=s.session_secure, samesite=s.session_samesite, path="/")</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">2 · provisioner access token (Dex JWT, aud=libcloud-rest)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">identity-service → OpenFGA and identity-service → libcloud.rest (forwarded again libcloud.rest → OpenFGA). Obtained by a server-side LDAP login as <code>aws-admin</code>/<code>ntnx-admin</code>.</span></div>
+    <details class="src"><summary>source · identity_service/app/idp_login.py:37-45 + 138-148</summary><pre class="code">def _parse_token(tok):
+    access = tok.get("access_token", "")
+    exp = int(time.time()) + 3600
+    payload = jwt.decode(access, options={"verify_signature": False})   <span class="c"># read exp only</span>
+    exp = int(payload.get("exp", exp))
+    return {"access_token": access, "refresh_token": tok.get("refresh_token", ""), "exp": exp}
+
+tr = client.post(f"{dex}/dex/token", data={
+    "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
+    "client_id": s.libcloud_oidc_client_id, "client_secret": s.libcloud_oidc_client_secret,
+})
+return _parse_token(tr.json())</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">3 · id_token (Dex-issued; verified, not constructed here)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">the login trust — identity-service only mints a session after verifying Dex's id_token. Issued by Dex; the repo builds the <em>verification</em>.</span></div>
+    <details class="src"><summary>source · identity_service/app/dex.py:66-83</summary><pre class="code">signing_key = self._jwks_client().get_signing_key_from_jwt(id_token)
+alg = header.get("alg") or getattr(signing_key, "algorithm_name", "RS256")
+claims = jwt.decode(id_token, signing_key.key, algorithms=[alg],
+                    audience=s.dex_portal_client_id, issuer=s.dex_issuer.rstrip("/"),
+                    options={"require": ["exp", "sub", "iss", "aud"]})</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">4 · pending identity token (HS256, single-use)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">the account-collapse step — binds a Dex-verified identity to the collapse attempt.</span></div>
+    <details class="src"><summary>source · identity_service/app/auth_state.py:90-102</summary><pre class="code">payload = { "provider": …, "subject": …, "email": …, "iat": now,
+            "exp": now + _PENDING_TTL, "jti": uuid.uuid4().hex, "type": "pending_identity" }
+return jwt.encode(payload, s.session_secret, algorithm="HS256")</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">5 · Vault orchestrator token (VAULT_TOKEN)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">libcloud.rest → Vault <code>secret/data/libcloud-vault-auth/*</code> (reads every tenant's AppRole material). Minted at bootstrap by <code>vault_bootstrap.py</code>.</span></div>
+    <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:66-77 + 114</summary><pre class="code">headers = {"Accept": "application/json"}
+if token: headers["X-Vault-Token"] = token      <span class="c"># orchestrator token → X-Vault-Token</span>
+if data is not None: headers["Content-Type"] = "application/json"
+req = urllib.request.Request(url, data=data, method=method, headers=headers)
+…
+payload = self._request("GET", self._auth_path(vault_user), s.vault_token)</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">6 · Vault AppRole tenant token (client_token, 60 m TTL)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">libcloud.rest → Vault <code>secret/data/libcloud/&lt;tenant&gt;</code> — the actual cloud credential, scoped to one tenant.</span></div>
+    <details class="src"><summary>source · libcloud.rest/app/connections/vault_client.py:129-158</summary><pre class="code">material = self._auth_material(vault_user)
+resp = self._request("POST", f"/v1/auth/{s.vault_approle_mount}/login", token="",
+                     body={"role_id": material["role_id"], "secret_id": material["secret_id"]})
+auth = resp.get("auth") or {}
+token = auth.get("client_token") or ""                    <span class="c"># ← the tenant token</span>
+lease = float(auth.get("lease_duration") or 300.0)
+self._token_cache[vault_user] = (now + lease, token)
+return token</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">7 · Vault department-orchestrator token</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">identity-service → Vault (department credential write + AppRole creation).</span></div>
+    <details class="src"><summary>source · identity_service/app/vault.py:40-57</summary><pre class="code">self.token = s.vault_dept_orchestrator_token
+…
+headers = {"X-Vault-Token": self.token}          <span class="c"># dept-orchestrator token</span>
+if data is not None: headers["Content-Type"] = "application/json"
+req = urllib.request.Request(url, data=data, method=method, headers=headers)</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">8 · LLDAP admin JWT</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">identity-service → LLDAP GraphQL writes.</span></div>
+    <details class="src"><summary>source · identity_service/app/lldap.py:15-31</summary><pre class="code">body = json.dumps({"username": s.lldap_admin_user, "password": s.lldap_ldap_user_pass}).encode()
+req = urllib.request.Request(f"{s.lldap_http_url.rstrip('/')}/auth/simple/login",
+                             data=body, method="POST", headers={"Content-Type": "application/json"})
+token = json.loads(resp.read().decode() or "{}").get("token", "")   <span class="c"># ← LLDAP JWT</span></pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">9 · Nutanix HTTP Basic (not a JWT)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">libcloud.rest → Nutanix Prism (or the emulator).</span></div>
+    <details class="src"><summary>source · libcloud/libcloud/common/nutanix.py:203-207</summary><pre class="code">def _basic_auth_header(self):
+    credentials = base64.b64encode(("%s:%s" % (self.user_id, self.key)).encode()).decode()
+    return "Basic %s" % credentials</pre></details>
+  </div>
+
+  <div class="builder">
+    <h3 class="btitle">10 · SUPERADMIN_JWT (bootstrap gate)</h3>
+    <div class="purpose"><span class="why">Restricts:</span> <span class="rest">setup.sh steps 5-7 (users, OpenFGA tuples, Vault bootstrap) — nothing privileged runs without it.</span></div>
+    <details class="src"><summary>source · test_script/scripts/idp_login.py (same auth-code flow as §2)</summary><pre class="code"># GET /dex/auth (connector_id=lldap) → POST credentials → read code from 302
+# → POST /dex/token (client libcloud-rest + secret) → cache under generated/tokens/&lt;user&gt;.json
+# superadmin_auth.sh exports SUPERADMIN_JWT, verified inside the identity-service container.</pre></details>
+  </div>
+
+</div>
+</body>
+</html>

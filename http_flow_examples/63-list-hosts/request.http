@@ -1,0 +1,6 @@
+GET /api/hosts/nutanix HTTP/1.1
+Host: localhost:8766
+Accept: application/json
+Cookie: libcloud_portal_sid=...department_owner_session...
+
+(empty body — GET request; proxies GET /v1/compute/hosts)

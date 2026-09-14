@@ -26,7 +26,11 @@ let users = MOCK_USERS.map((u) => ({ ...u, linkedIdentities: [...u.linkedIdentit
 let mockTuples = MOCK_TUPLES.map((t) => ({ ...t }));
 let companies = MOCK_COMPANIES.map((c) => ({
   ...c,
-  departments: c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })),
+  departments: c.departments.map((d) => ({
+    ...d,
+    clouds: [...d.clouds],
+    credentials: { ...(d.credentials || {}) },
+  })),
 }));
 let members = MOCK_MEMBERS.map((m) => ({ ...m, clouds: [...m.clouds] }));
 // Mutable copy of each cloud's resource list so the Deprovision/Edit buttons
@@ -534,7 +538,11 @@ export const mockApi = {
     return {
       companies: companies.map((c) => ({
         ...c,
-        departments: c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })),
+        departments: c.departments.map((d) => ({
+          id: d.id,
+          clouds: [...d.clouds],
+          owner: d.owner,
+        })),
       })),
     };
   },
@@ -583,11 +591,13 @@ export const mockApi = {
     const c = companies.find((x) => x.id === companyId);
     return {
       company: companyId,
-      departments: c ? c.departments.map((d) => ({ ...d, clouds: [...d.clouds] })) : [],
+      departments: c
+        ? c.departments.map((d) => ({ id: d.id, clouds: [...d.clouds], owner: d.owner }))
+        : [],
     };
   },
 
-  async createDepartment(companyId, { name, clouds, ownerUserId }) {
+  async createDepartment(companyId, { name, clouds, ownerUserId, credentials }) {
     await delay();
     const c = companies.find((x) => x.id === companyId);
     if (!c) throw new Error("404 company not found");
@@ -597,19 +607,29 @@ export const mockApi = {
       throw new Error(`409 department "${id}" already exists`);
     }
     const deptClouds = [...(clouds || [])];
-    c.departments.push({ id, clouds: deptClouds, owner: ownerUserId });
+    const deptCreds = {};
+    for (const [cloud, cred] of Object.entries(credentials || {})) {
+      if (cred && (cred.key || cred.secret)) deptCreds[cloud] = { ...cred };
+    }
+    c.departments.push({ id, clouds: deptClouds, owner: ownerUserId, credentials: deptCreds });
     if (ownerUserId) {
       members.push({ user: ownerUserId, department: id, role: "owner", clouds: deptClouds });
     }
     return { id, clouds: deptClouds, ownerUserId };
   },
 
-  async updateDepartment(dept, { ownerUserId, clouds }) {
+  async updateDepartment(dept, { ownerUserId, clouds, credentials }) {
     await delay();
     const found = companies.flatMap((x) => x.departments).find((d) => d.id === dept);
     if (!found) throw new Error("404 department not found");
     if (ownerUserId) found.owner = ownerUserId;
     if (clouds) found.clouds = [...clouds];
+    // Persist any newly supplied per-provider credentials (mirrors the backend's
+    // Vault write on department edit); blank inputs leave existing creds intact.
+    found.credentials = found.credentials || {};
+    for (const [cloud, cred] of Object.entries(credentials || {})) {
+      if (cred && (cred.key || cred.secret)) found.credentials[cloud] = { ...cred };
+    }
     members.forEach((m) => { if (m.department === dept) m.clouds = [...found.clouds]; });
     return { id: dept, updated: true };
   },
@@ -659,11 +679,23 @@ export const mockApi = {
 
   async getDepartmentCredential(dept) {
     await delay();
+    const d = companies.flatMap((x) => x.departments).find((x) => x.id === dept);
+    const primaryCloud = d?.clouds?.[0];
+    const cred = primaryCloud && d?.credentials?.[primaryCloud];
+    if (cred) return { ...cred };
     return { key: `AKIA${dept.toUpperCase()}MOCKKEY`, secret: "••••••••mock-secret" };
   },
 
-  async rotateDepartmentCredential(dept) {
+  async rotateDepartmentCredential(dept, payload = {}) {
     await delay();
+    const d = companies.flatMap((x) => x.departments).find((x) => x.id === dept);
+    if (d) {
+      const primaryCloud = d.clouds?.[0];
+      if (primaryCloud) {
+        d.credentials = d.credentials || {};
+        d.credentials[primaryCloud] = { key: payload.key || "", secret: payload.secret || "" };
+      }
+    }
     return { department: dept, rotated: true };
   },
 };

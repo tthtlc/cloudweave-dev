@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 36
+Date: Wed, 23 Jul 2026 14:27:01 GMT
+
+{
+  "data": {
+    "updateUser": {
+      "ok": true
+    }
+  }
+}

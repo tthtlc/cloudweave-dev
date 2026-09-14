@@ -1,0 +1,9 @@
+POST /api/provision-private/aws HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...department_owner_session...
+
+{
+  "vmName": "libcloud-aws-pair-1753486921"
+}

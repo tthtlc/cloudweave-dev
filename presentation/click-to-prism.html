@@ -198,6 +198,54 @@
   .col li { margin: 6px 0; font-size: 14.5px; }
   .col li b { font-weight: 600; }
 
+  /* ---- step-by-step (text rendering of the sequence diagrams) ---- */
+  .steps-head {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 26px 0 10px;
+  }
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0;
+  }
+  .steps li {
+    position: relative;
+    padding: 0 0 14px 40px;
+    counter-increment: step;
+    font-size: 15px;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 26px;
+    text-align: center;
+  }
+  .steps li .s {
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .steps li .d {
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+  }
+
   footer {
     margin-top: 48px;
     padding-top: 20px;
@@ -296,10 +344,99 @@ sequenceDiagram
       </div>
       <figcaption><b>The login handshake.</b> The user authenticates at Dex (backed by LLDAP); identity-service exchanges the one-time code for tokens, resolves the internal identity and role from OpenFGA, and drops an 8-hour httpOnly session cookie on the browser.</figcaption>
     </figure>
+
+    <h3 class="steps-head">The login handshake, in words</h3>
+    <ol class="steps">
+      <li><span class="s">GET /api/auth/begin?provider=lldap.</span><span class="d">The login page starts OIDC by asking identity-service for a Dex authorize URL (handler <code>main.py</code> &rarr; <code>auth.begin()</code>). Purpose: hand the browser a URL to redirect to, while making the <b>server</b> the owner of the CSRF/PKCE secrets before Dex is ever contacted.</span></li>
+      <li><span class="s">authorizeUrl (state + PKCE stored server-side).</span><span class="d"><code>auth_state.py:begin()</code> mints <code>state = secrets.token_urlsafe(32)</code> and <code>code_verifier = secrets.token_urlsafe(48)</code>, stores them in <code>_state_store</code> with a <b>600 s</b> TTL, and returns <code>{"authorizeUrl","state","provider"}</code>. The URL embeds <code>state</code>, <code>code_challenge = base64url(sha256(code_verifier))</code>, and <code>code_challenge_method=S256</code>. The verifier never leaves the server.</span></li>
+      <li><span class="s">GET /dex/auth (redirect: state, code_challenge, connector).</span><span class="d">The browser follows <code>authorizeUrl</code> to Dex. This is the OIDC authorization request — it carries <code>state</code> + <code>code_challenge</code> + <code>connector_id=lldap</code> but authenticates nothing yet; Dex responds by showing its login form.</span></li>
+      <li><span class="s">LDAP bind (uid + password).</span><span class="d">The actual credential check, performed by <b>Dex&rsquo;s LLDAP connector</b>, not identity-service: Dex binds to LLDAP:3890 as its service account, searches <code>ou=people</code> for the typed <code>uid</code>, then re-binds <em>as that user</em> with the submitted password. A failed bind ends the flow at the login form.</span></li>
+      <li><span class="s">user record (uid, mail, cn).</span><span class="d">LLDAP returns the matched entry. Dex maps <code>uid&rarr;sub</code> (a base64 protobuf, not the raw uid), <code>mail&rarr;email</code>, <code>cn&rarr;name</code> into the id_token claims.</span></li>
+      <li><span class="s">302 back with code + state.</span><span class="d">Dex redirects the browser to the portal&rsquo;s <code>/auth/callback</code> with a single-use authorization <code>code</code> and the echoed <code>state</code>. The <code>code</code> is the only proof-of-login artifact the browser carries.</span></li>
+      <li><span class="s">POST /api/auth/exchange {state, code}.</span><span class="d">The SPA&rsquo;s callback page sends <code>{"provider","code","state","redirectUri"}</code> to <code>main.py</code> (<code>exchange</code>). From here the server — not the browser — performs the token swap.</span></li>
+      <li><span class="s">consume state + code_verifier (single-use).</span><span class="d"><code>auth_state.py:consume_state()</code> pops the stored entry, rejecting missing/reused/expired state with <code>400 auth_bad_state</code>. This single-use pop is what makes <code>state</code> CSRF-resistant.</span></li>
+      <li><span class="s">POST /dex/token (code + verifier + client_secret).</span><span class="d"><code>dex.py:exchange_code()</code> POSTs <code>grant_type=authorization_code</code>, <code>code</code>, <code>redirect_uri</code>, <code>client_id=libcloud-portal</code>, <code>client_secret</code> (server-side only), and the recovered <code>code_verifier</code>. PKCE proves the same party that requested the code is redeeming it.</span></li>
+      <li><span class="s">id_token + refresh_token.</span><span class="d">Dex returns the tokens. The <code>id_token</code> carries the verified identity; the <code>refresh_token</code> is the long-lived secret, and it is deliberately <b>not</b> sent onward to the browser.</span></li>
+      <li><span class="s">verify id_token (iss / aud / exp).</span><span class="d"><code>dex.py:verify_id_token()</code> fetches Dex&rsquo;s JWKS and checks signature, <code>iss</code>, <code>aud=libcloud-portal</code>, <code>exp</code>, and <code>sub</code>. A tampered token &rarr; <code>401 auth_invalid_id_token</code>.</span></li>
+      <li><span class="s">resolve internal user + role.</span><span class="d"><code>users.py:resolve_on_login()</code> maps the verified external identity to an internal principal. For LLDAP logins it recovers the <code>uid</code> and reads the role OpenFGA holds (<code>fga.role_for(uid)</code>, &rarr; <code>int-&lt;uid&gt;</code>); for federated identities it may instead return a collapse or pending outcome. <code>dex.py:external_identity()</code> builds the <code>&lt;provider&gt;:&lt;sub&gt;</code> subject stored in <code>linkedIdentities</code>.</span></li>
+      <li><span class="s">role + cloud capabilities.</span><span class="d">OpenFGA answers with the role and per-cloud <code>{cloud, canView, canProvision, canUpdate}</code>, so the SPA renders only the tenants this user may access.</span></li>
+      <li><span class="s">Set-Cookie: libcloud_portal_sid (httpOnly, 8 h).</span><span class="d"><code>session.py:create()</code> mints an HS256 session JWT (<code>internalUserId, role, email, linkedIdentities, sid, iat, exp, jti</code>, 8 h), sets it as an httpOnly cookie, stores the refresh token server-side in <code>_refresh_store[sid]</code>, and returns the session JSON.</span></li>
+    </ol>
   </section>
 
   <section>
-    <h2>3 &middot; An authenticated request, end to end</h2>
+    <h2>3 &middot; An unauthenticated request, in depth</h2>
+    <p class="sec-note">Every session begins with <b>no credential</b>. A browser that arrives without a cookie is turned away with <code>401</code>, then walked through the full OIDC dance &mdash; Dex authenticates against LLDAP, and identity-service mints the session JWT. This is the same exchange &sect;2 summarizes; here it is request by request.</p>
+    <figure>
+      <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant IS as identity-service
+  participant D as Dex
+  participant L as LLDAP
+  participant F as OpenFGA
+
+  Note over B: no session cookie
+  B->>IS: GET /api/session (SPA boot)
+  IS->>IS: sessions.read finds no cookie
+  IS-->>B: 401 auth_no_session
+  Note over B: SPA route guard sends the user to /login
+
+  B->>IS: GET /api/auth/begin?provider=lldap
+  IS->>IS: mint state (32 B) + PKCE code_verifier (48 B)<br/>store server-side, 600 s TTL
+  IS-->>B: { authorizeUrl, state }
+
+  B->>D: GET /dex/auth?connector_id=lldap<br/>code_challenge=S256
+  D-->>B: 302 to the LDAP login form
+  B->>D: POST /dex/auth/lldap/login (uid + password)
+  D->>L: LDAP bind (admin) + search ou=people<br/>match uid, then bind as the user
+  L-->>D: user record (uid, mail, cn)
+  D-->>B: 302 to /auth/callback (code + state)
+
+  B->>IS: POST /api/auth/exchange {state, code}
+  IS->>IS: consume state + code_verifier (single-use)
+  IS->>D: POST /dex/token (code + verifier + client_secret)
+  D-->>IS: id_token + access_token + refresh_token
+  IS->>IS: verify id_token (JWKS sig, iss, aud, exp, sub)
+  IS->>F: resolve internal user + role
+  F-->>IS: role + cloud capabilities
+  IS-->>B: Set-Cookie: libcloud_portal_sid<br/>(HS256 JWT, httpOnly, 8 h) + session JSON
+  Note over IS: refresh_token held server-side,<br/>keyed by sid
+  Note over B: authenticated - JS cannot read the cookie
+</pre>
+      </div>
+      <figcaption><b>Anonymous &rarr; authenticated.</b> The credential check belongs to Dex, not identity-service: Dex binds to LLDAP with its admin service account, searches <code>ou=people</code> for the typed <code>uid</code>, then binds as that user to verify the password. The mapped claims (<code>uid&rarr;sub</code>, <code>mail&rarr;email</code>, <code>cn&rarr;name</code>) become the id_token. identity-service verifies that id_token, resolves the internal principal and role in OpenFGA, and only then mints the session cookie &mdash; an HS256 JWT carrying <code>internalUserId, role, email, linkedIdentities, sid, iat, exp, jti</code>. The Dex refresh token never reaches the browser; it is held server-side, keyed by <code>sid</code>.</figcaption>
+    </figure>
+
+    <h3 class="steps-head">The same exchange, in words</h3>
+    <ol class="steps">
+      <li><span class="s">GET /api/session — SPA boot.</span><span class="d">The React app fires this on load to ask &ldquo;am I already logged in?&rdquo;. It is a plain <code>GET</code> to nginx, reverse-proxied on <code>/api/*</code> to identity-service:8766, carrying <b>no <code>Cookie</code> header</b>. If a valid cookie were present this would return <code>200</code> + the session JSON; here there is none.</span></li>
+      <li><span class="s">sessions.read finds no cookie.</span><span class="d"><code>SessionService.read()</code> looks up <code>libcloud_portal_sid</code> in <code>req.cookies</code>; the lookup returns <code>None</code>, so no JWT decode is attempted.</span></li>
+      <li><span class="s">401 auth_no_session.</span><span class="d">The route raises <code>APIError("auth_no_session","No session",401)</code>; the handler returns <code>HTTP/1.1 401</code> with body <code>{"error":"auth_no_session","message":"No session","details":{}}</code>. No <code>Set-Cookie</code> and no token are produced.</span></li>
+      <li><span class="s">GET /api/auth/begin?provider=lldap.</span><span class="d">The SPA route guard redirects to <code>/login</code>; the login page calls this to start OIDC. A <code>GET</code> with only the <code>provider</code> query param (<code>redirect_uri</code> defaults to <code>http://localhost:3000/auth/callback</code>).</span></li>
+      <li><span class="s">Mint state (32 B) + PKCE code_verifier (48 B); store 600 s TTL.</span><span class="d"><code>AuthService.begin()</code> generates <code>state = secrets.token_urlsafe(32)</code> (&asymp;43 chars) and <code>code_verifier = secrets.token_urlsafe(48)</code> (&asymp;64 chars), derives <code>code_challenge = base64url(sha256(verifier))</code>, and stores <code>{code_verifier, provider, redirect_uri, exp}</code> in <code>_state_store</code> for <b>600 s</b>. The verifier never leaves the server.</span></li>
+      <li><span class="s">{ authorizeUrl, state }.</span><span class="d"><code>200</code> with <code>{"authorizeUrl":"http://&hellip;/dex/auth?client_id=libcloud-portal&amp;redirect_uri=&hellip;&amp;response_type=code&amp;scope=openid+profile+email&amp;state=&hellip;&amp;code_challenge=&hellip;&amp;code_challenge_method=S256&amp;connector_id=lldap","state":"&hellip;","provider":"lldap"}</code>. The browser navigates to <code>authorizeUrl</code>.</span></li>
+      <li><span class="s">GET /dex/auth?connector_id=lldap, code_challenge=S256.</span><span class="d">The browser follows the redirect to Dex (nginx proxies <code>/dex/*</code> &rarr; Dex:5556). The <code>GET</code> carries <code>state</code>, <code>code_challenge</code>, <code>code_challenge_method=S256</code>, <code>scope</code>, and <code>connector_id=lldap</code> — still no credential.</span></li>
+      <li><span class="s">302 to the LDAP login form.</span><span class="d">Dex finds no <code>dex_session</code> cookie and redirects to its LDAP login form (<code>/dex/auth/local?req=&hellip;&amp;state=&hellip;</code>) so the user can type credentials.</span></li>
+      <li><span class="s">POST /dex/auth/lldap/login (uid + password).</span><span class="d">The user submits the form; the browser <code>POST</code>s <code>login=&lt;uid&gt;&amp;password=&lt;pw&gt;</code> (form-encoded) back to Dex.</span></li>
+      <li><span class="s">LDAP bind (admin) + search ou=people, then bind as the user.</span><span class="d">Dex authenticates to LLDAP:3890 with its <b>admin service account</b>, searches <code>ou=people</code> for the typed <code>uid</code>, then re-binds <b>as that user</b> with the submitted password. The password check happens at LLDAP, not at identity-service.</span></li>
+      <li><span class="s">user record (uid, mail, cn).</span><span class="d">LLDAP returns the matched entry. Dex maps <code>uid&rarr;sub</code>, <code>mail&rarr;email</code>, <code>cn&rarr;name</code> for the id_token claims.</span></li>
+      <li><span class="s">302 to /auth/callback (code + state).</span><span class="d">Dex redirects the browser back with <code>?code=&lt;authorization code&gt;&amp;state=&hellip;</code>. The <code>code</code> is the single-use OAuth artifact handed to the next step.</span></li>
+      <li><span class="s">POST /api/auth/exchange {state, code}.</span><span class="d">The SPA callback page sends JSON <code>{"provider":"lldap","code":"&hellip;","state":"&hellip;","redirectUri":"http://localhost:3000/auth/callback"}</code> to identity-service.</span></li>
+      <li><span class="s">consume state + code_verifier (single-use).</span><span class="d"><code>consume_state()</code> pops the entry from <code>_state_store</code> — missing/reused/expired state returns <code>400 auth_bad_state</code> — recovering the <code>code_verifier</code> and the original <code>provider</code>/<code>redirect_uri</code> bound at <code>/begin</code>.</span></li>
+      <li><span class="s">POST /dex/token (code + verifier + client_secret).</span><span class="d">identity-service calls Dex server-to-server with <code>application/x-www-form-urlencoded</code>: <code>grant_type=authorization_code</code>, <code>code</code>, <code>redirect_uri</code>, <code>client_id=libcloud-portal</code>, <code>client_secret</code>, and <code>code_verifier</code> (PKCE).</span></li>
+      <li><span class="s">id_token + access_token + refresh_token.</span><span class="d">Dex validates the code + PKCE pair and returns all three tokens. Only the <code>id_token</code> drives login; the <code>refresh_token</code> stays server-side.</span></li>
+      <li><span class="s">verify id_token (JWKS sig, iss, aud, exp, sub).</span><span class="d">identity-service fetches Dex&rsquo;s <code>/dex/keys</code> (JWKS) and verifies the id_token signature plus <code>iss</code>/<code>aud=libcloud-portal</code>/<code>exp</code>/<code>sub</code>, then derives the external identity.</span></li>
+      <li><span class="s">resolve internal user + role.</span><span class="d">identity-service maps the verified identity to an internal principal (<code>user:&lt;uid&gt;</code>) and reads its role from OpenFGA (a <code>/read</code> of the tenant role tuples).</span></li>
+      <li><span class="s">role + cloud capabilities.</span><span class="d">OpenFGA returns the role plus per-cloud <code>{cloud, canView, canProvision, canUpdate}</code>, so the SPA renders only the tenants this user may access.</span></li>
+      <li><span class="s">Set-Cookie: libcloud_portal_sid (HS256 JWT, httpOnly, 8 h) + session JSON.</span><span class="d">identity-service mints an <b>HS256</b> session JWT with claims <code>{internalUserId, role, email, linkedIdentities, sid, iat, exp, jti}</code> (8 h), sets it as an <code>httpOnly; SameSite=Lax; Path=/; Max-Age=28800</code> cookie, and returns <code>200</code> with the session JSON (<code>internalUserId, role, linkedIdentities, email, clouds</code>). The Dex <code>refresh_token</code> is held in <code>_refresh_store[sid]</code>, never sent to the browser.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>4 &middot; An authenticated request, end to end</h2>
     <p class="sec-note">The same path serves read and write. A list (<code>GET /api/resources/nutanix</code>) is shown; a provision adds catalog discovery then a <code>POST /v1/compute/nodes</code> at step 13.</p>
     <figure>
       <div class="diagram">
@@ -342,6 +479,89 @@ sequenceDiagram
       </div>
       <figcaption><b>The full request path.</b> One browser call fans out into three OpenFGA calls, one Dex token issue, a per-tenant AppRole login, and a Prism login&rarr;session-cookie&rarr;request cycle. The response then retraces the chain (dashed) back to the browser.</figcaption>
     </figure>
+
+    <h3 class="steps-head">The same request, in words</h3>
+    <ol class="steps">
+      <li><span class="s">GET /api/resources/nutanix + Cookie: libcloud_portal_sid.</span><span class="d">The browser sends the session cookie with a <code>GET</code> for the Nutanix tenant&rsquo;s resources (a read). A provision would add catalog discovery and a <code>POST /v1/compute/nodes</code> at step 13 of the diagram.</span></li>
+      <li><span class="s">verify session JWT (HS256).</span><span class="d">identity-service decodes and verifies the cookie with <code>session_secret</code>, checking <code>exp</code>. Invalid or expired &rarr; <code>401 auth_invalid_session</code>.</span></li>
+      <li><span class="s">Check can_read(principal, nutanix).</span><span class="d">identity-service calls OpenFGA <code>/check</code> with the tuple key <code>user:&lt;principal&gt; can_read nutanix_cluster:&lt;tenant&gt;</code> to decide whether this user may view the Nutanix tenant.</span></li>
+      <li><span class="s">allowed.</span><span class="d">OpenFGA returns <code>{"allowed":true}</code>; a deny would surface as <code>403 authz_forbidden</code> and the request would stop here.</span></li>
+      <li><span class="s">provisioner OIDC token (aud: libcloud-rest).</span><span class="d">identity-service mints a <b>different</b> token for the backend hop — a Dex login as the provisioner service account with audience <code>libcloud-rest</code>. The portal token&rsquo;s <code>aud=libcloud-portal</code> would not be accepted by libcloud.rest.</span></li>
+      <li><span class="s">bearer JWT.</span><span class="d">Dex returns the provisioner bearer JWT, valid for the REST API.</span></li>
+      <li><span class="s">GET /v1/compute/nodes + Bearer JWT + X-Provider-Connection.</span><span class="d">identity-service proxies to libcloud.rest:8765 with <code>Authorization: Bearer &lt;jwt&gt;</code> and an <code>X-Provider-Connection</code> header carrying <code>{provider, config:{region,secure}, auth_binding}</code> — note <b>no cloud credentials</b> travel in this header.</span></li>
+      <li><span class="s">verify JWT (JWKS) + policies.json.</span><span class="d">libcloud.rest validates the bearer against Dex&rsquo;s JWKS and checks the <code>GET /v1/compute/nodes</code> route against <code>policies.json</code> scope rules.</span></li>
+      <li><span class="s">Check relation (scope / principal).</span><span class="d">libcloud.rest re-checks authorization in OpenFGA using the token&rsquo;s scopes and principal.</span></li>
+      <li><span class="s">allowed.</span><span class="d">OpenFGA permits the call.</span></li>
+      <li><span class="s">resolve vault_user (tenant parent vault_user).</span><span class="d">libcloud.rest reads the tuple <code>tenant:&lt;tenant&gt; parent vault_user:&lt;&hellip;&gt;</code> to find this tenant&rsquo;s Vault AppRole identity name.</span></li>
+      <li><span class="s">libcloud-nutanix.</span><span class="d">OpenFGA returns the tenant&rsquo;s vault_user id (<code>libcloud-nutanix</code>), which names the Vault AppRole.</span></li>
+      <li><span class="s">read AppRole material (orchestrator token).</span><span class="d">libcloud.rest uses the department-orchestrator token to read <code>secret/data/libcloud-vault-auth/libcloud-nutanix</code>.</span></li>
+      <li><span class="s">role_id + secret_id.</span><span class="d">Vault returns the AppRole <code>role_id</code> and <code>secret_id</code> — the login material, never exposed to the browser.</span></li>
+      <li><span class="s">POST /auth/approle/login.</span><span class="d">libcloud.rest exchanges <code>role_id</code> + <code>secret_id</code> for a short-lived tenant token.</span></li>
+      <li><span class="s">tenant token (60 m TTL).</span><span class="d">Vault mints a tenant-scoped token carrying the department&rsquo;s read-only policy.</span></li>
+      <li><span class="s">GET secret/libcloud/nutanix (tenant token).</span><span class="d">Using the tenant token, libcloud.rest reads the actual cloud credentials.</span></li>
+      <li><span class="s">Prism credentials.</span><span class="d">Vault returns <code>{key, secret, host}</code> — the Nutanix admin username/password and Prism URL.</span></li>
+      <li><span class="s">POST login (Basic auth).</span><span class="d">libcloud.rest logs into Nutanix Prism with HTTP Basic auth using those credentials.</span></li>
+      <li><span class="s">Set-Cookie: session.</span><span class="d">Prism returns a session cookie (cached &asymp;1 h and replayed for subsequent calls).</span></li>
+      <li><span class="s">GET v4 resources (Cookie).</span><span class="d">libcloud.rest calls the Prism v4 resources API presenting the session cookie.</span></li>
+      <li><span class="s">resource JSON.</span><span class="d">Prism returns the raw resources (VMs / clusters).</span></li>
+      <li><span class="s">200 {nodes, categories}.</span><span class="d">libcloud.rest shapes the raw cloud data and returns <code>200</code> with <code>{nodes, categories}</code>.</span></li>
+      <li><span class="s">200 JSON (shaped resources).</span><span class="d">identity-service returns the final shaped resource list to the browser.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>5 &middot; Logout: invalidating every credential</h2>
+    <p class="sec-note">Logout clears the browser credential and revokes the refresh token &mdash; but it is honest about what a signed JWT can and cannot be revoked. <code>POST /api/logout</code> runs three cleanups and then stops: stock Dex offers no IdP-side logout page to call.</p>
+    <figure>
+      <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant IS as identity-service
+  participant D as Dex
+
+  B->>IS: POST /api/logout<br/>Cookie: libcloud_portal_sid
+  IS->>IS: decode cookie to recover sid
+  IS->>IS: pop _refresh_store[sid]<br/>(refresh_token + id_token)
+  IS-->>B: Set-Cookie: libcloud_portal_sid (Max-Age=0)
+  IS->>D: POST /dex/token/revoke<br/>token=refresh_token
+  D-->>IS: 200 (refresh token revoked)
+  IS-->>B: { "logged_out": true }
+  Note over B: SPA clears sessionStorage, navigates to /login
+  Note over D: no RP-initiated logout endpoint<br/>(GET /dex/auth/logout returns 404)
+</pre>
+      </div>
+      <figcaption><b>The logout handshake.</b> Three invalidations: the cookie is deleted (<code>Max-Age=0</code>), the server-side <code>_refresh_store[sid]</code> entry is dropped, and the Dex refresh token is revoked over RFC 7009 (best-effort &mdash; a failed revoke never blocks logout). There is no IdP redirect because Dex v2.41.1 has no RP-initiated logout: <code>GET /dex/auth/logout</code> 404s, and Dex keeps no browser SSO cookie to clear.</figcaption>
+    </figure>
+
+    <h3 class="steps-head">The logout handshake, in words</h3>
+    <ol class="steps">
+      <li><span class="s">POST /api/logout + Cookie: libcloud_portal_sid.</span><span class="d">The browser logs out; <code>main.py</code> (<code>logout</code>) reads the session cookie. Goal: clear every credential that proves this session.</span></li>
+      <li><span class="s">decode cookie to recover sid.</span><span class="d"><code>session.py:revoke()</code> decodes the JWT to recover the <code>sid</code> — the key into the server-side refresh store.</span></li>
+      <li><span class="s">pop _refresh_store[sid] (refresh_token + id_token).</span><span class="d">It drops the server-side entry holding the Dex refresh token + id token, so the session can no longer be silently renewed.</span></li>
+      <li><span class="s">Set-Cookie: libcloud_portal_sid (Max-Age=0).</span><span class="d"><code>delete_cookie</code> tells the browser to discard the cookie. Caveat: the JWT itself is not blocklisted — a stolen copy stays valid until <code>exp</code> (8 h), which the table below makes explicit.</span></li>
+      <li><span class="s">POST /dex/token/revoke + token=refresh_token.</span><span class="d"><code>dex.py:revoke_token()</code> revokes the refresh token at Dex over RFC 7009. It is best-effort: a failed revoke is logged and never blocks logout.</span></li>
+      <li><span class="s">200 (refresh token revoked).</span><span class="d">Dex confirms revocation (or the failure is swallowed — the cookie and server-side store are already cleared by the caller).</span></li>
+      <li><span class="s">{ "logged_out": true }.</span><span class="d">identity-service returns <code>{"logged_out": true}</code>; the SPA clears sessionStorage and navigates to <code>/login</code>. There is no IdP-side redirect because stock Dex v2.41.1 has no RP-initiated logout endpoint (<code>GET /dex/auth/logout</code> 404s).</span></li>
+    </ol>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Credential</th><th>After logout</th><th>How</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><svc>Portal session cookie</svc> <code>libcloud_portal_sid</code></td><td class="role">✅ cleared</td><td class="role"><code>delete_cookie</code> &rarr; <code>Set-Cookie: Max-Age=0</code></td></tr>
+          <tr><td><svc>Session JWT</svc> (the cookie's payload)</td><td class="role">⚠️ not blocklisted</td><td class="role">no server-side <code>jti</code> denylist &mdash; a stolen JWT stays valid until <code>exp</code> (8 h)</td></tr>
+          <tr><td><svc>Dex refresh token</svc></td><td class="role">✅ revoked</td><td class="role"><code>POST /dex/token/revoke</code> (RFC 7009), best-effort</td></tr>
+          <tr><td><svc>Dex id_token + server-side entry</svc></td><td class="role">✅ dropped</td><td class="role"><code>_refresh_store.pop(sid)</code></td></tr>
+          <tr><td><svc>Dex browser SSO session</svc></td><td class="role">&mdash; nothing to clear</td><td class="role">Dex keeps no SSO cookie; every <code>/dex/auth</code> re-prompts the login form</td></tr>
+          <tr><td><svc>Provisioner token cache</svc> <code>_token_cache</code></td><td class="role">❌ survives (by design)</td><td class="role">keyed by cloud, shared service account, never exposed to the browser</td></tr>
+          <tr><td><svc>Vault / Prism / OpenFGA state</svc></td><td class="role">❌ untouched</td><td class="role">outside the user-session scope; cloud credentials and tuples persist</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <aside class="replay">

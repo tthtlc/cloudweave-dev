@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 280
+Date: Wed, 23 Jul 2026 14:29:08 GMT
+
+{
+  "tree": {
+    "root": {
+      "name": "tenant:eng#can_read",
+      "leaf": {
+        "users": {
+          "users": ["user:eng-owner"]
+        }
+      }
+    }
+  }
+}

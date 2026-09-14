@@ -1,0 +1,6 @@
+GET /api/openfga/assertions/01M1ZZEQE73M3NSSK0JQ837BF0 HTTP/1.1
+Host: localhost:8766
+Accept: application/json
+Cookie: libcloud_portal_sid=...superadmin_session...
+
+(empty body — GET request)

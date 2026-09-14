@@ -1,0 +1,64 @@
+
+./test_script/get_admin_vault.sh 
+== tenant:aws ==
+{
+  "key": "AKIAYHGEH2P75YEO4GGY",
+  "secret": "xxxxx"
+}
+
+== tenant:aws1 ==
+{
+  "key": "AKIAYHGEH2P726TAT2PS",
+  "secret": "7gffffff"
+}
+
+== tenant:aws2 ==
+{
+  "key": "AKIAYHGEH2P7QJKE5UGO",
+  "secret": "yxxxxl2"
+}
+
+== tenant:companyuser01-nutanix-user04 ==
+{
+  "host": "host.docker.internal:9442",
+  "key": "admin",
+  "secret": "admin"
+}
+
+== tenant:companyuser05-user06aws ==
+{
+  "key": "AKIAYHGEH2P75YEO4GGY",
+  "secret": "xxxxx"
+}
+
+== tenant:companyuser05-user07nutanix ==
+{
+  "host": "host.docker.internal:9442",
+  "key": "admin",
+  "secret": "admin"
+}
+
+== tenant:dept1user02 ==
+{
+  "key": "AKIAYHGEH2P75YEO4GGY",
+  "secret": "xxxxx"
+}
+
+== tenant:dept2user03 ==
+{
+  "key": "AKIAYHGEH2P75YEO4GGY",
+  "secret": "xxxxx"
+}
+
+== tenant:nutanix ==
+{
+  "key": "admin",
+  "secret": "admin"
+}
+
+== tenant:user08user05compdeptawsnutanix ==
+{
+  "key": "AKIAYHGEH2P75YEO4GGY",
+  "secret": "xxxxx"
+}
+

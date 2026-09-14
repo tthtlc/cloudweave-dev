@@ -25,6 +25,9 @@ services:
       - ../openfga_postgres/generated/fga.env
       # LLDAP_LDAP_USER_PASS, LLDAP_LDAP_BASE_DN, LLDAP_ADMIN_USER
       - ../lldap/.env
+      # VAULT_DEPT_ORCHESTRATOR_TOKEN (identity-service's scoped Vault capability
+      # for creating per-department AppRoles + writing/viewing dept credentials).
+      - ../vault/generated/vault.env
       # Per-tenant provisioner passwords (LIBCLOUD_PASSWORD_AWS1_ADMIN /
       # AWS2_ADMIN) written by create_tenant.sh / register_aws_tenants.sh. The
       # identity service logs in as a tenant's admin to obtain the libcloud-rest
@@ -60,6 +63,9 @@ services:
       LLDAP_USE_SSL: "false"
       LLDAP_BASE_DN: ou=people,dc=libcloud,dc=local
       LIBCLOUD_REST_URL: http://libcloud-rest-api:8765
+      # In-container Vault URL (overrides the host-side VAULT_ADDR in
+      # ../vault/generated/vault.env).
+      VAULT_ADDR: http://vault:8200
       DEX_URL: http://dex:5556
       LIBCLOUD_OIDC_CLIENT_ID: libcloud-rest
       # RUNTIME portal-login callback. The browser lands here after Dex

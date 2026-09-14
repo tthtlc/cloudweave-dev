@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 210
+Date: Wed, 23 Jul 2026 14:29:04 GMT
+
+{
+  "assertions": [
+    {
+      "tuple_key": {
+        "user": "user:aws-admin",
+        "relation": "can_provision",
+        "object": "aws_region:aws"
+      },
+      "expectation": true
+    }
+  ]
+}

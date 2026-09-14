@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 143
+Date: Wed, 23 Jul 2026 14:22:13 GMT
+
+{
+  "connected": true,
+  "provider": "aws",
+  "region": "ap-southeast-1",
+  "message": "Successfully connected to AWS ap-southeast-1"
+}

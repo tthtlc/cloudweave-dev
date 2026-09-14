@@ -1,0 +1,62 @@
+
+
+
+
+rote test_script/generated/openfga_pg_dump_20260909_124613.sql
+CW/home/ubuntu/libcloud_nutanix/test_script/scripts>vi ../../test_script/generated/openfga_pg_dump_20260909_124613.sql
+CW/home/ubuntu/libcloud_nutanix/test_script/scripts>d
+
+
+
+lldap_set_password.py       lldap-user-offboard.sh     lldap-group-add-member.sh       lldap-group-remove-member.sh  lldap-group-create.sh           lldap-group-delete.sh           lldap-user-password-reset.sh          lldap-group-list-members.sh       lldap-user-list-groups.sh
+openfga-tuple-write.sh      openfga-tuple-delete.sh    openfga-check.sh                openfga-list-objects.sh       openfga-list-users.sh           openfga-tuple-reconcile.py      cloud-node-list.sh                    cloud-image-list.sh               cloud-size-list.sh
+cloud-keypair-manage.sh     cloud-node-provision.sh    cloud-node-action.sh            cloud-storage-bucket-list.sh  cloud-storage-bucket-create.sh  cloud-storage-bucket-delete.sh  cloud-storage-object-upload.sh        cloud-storage-object-download.sh  cloud-volume-list.sh
+cloud-network-list.sh       cloud-floatingip-list.sh   cloud-floatingip-allocate.sh    cloud-floatingip-release.sh   vault-lease-list.sh             vault-health-check.sh           vault-policy-apply.sh                 vault-ldap-group-bind.sh          vault-secrets-engine-enable.sh
+vault-role-create.sh        vault-root-cred-rotate.sh  vault-lease-renew.sh            vault-lease-revoke.sh         vault-lease-revoke-prefix.sh    vault-dynamic-cred-request.sh   vault-audit-log-query.sh              vault-token-lookup.sh             vault-static-secret-rotate.sh
+query_urls.sh               verify_superadmin_jwt.py   cloud_common.sh                 openfga_common.sh             chain-offboard-user.sh          chain-onboard-user.sh           chain-presharedkey-rotate.sh          chain-diagnose-access.sh          chain-provider-onboard.sh
+chain-role-revoke.sh        chain-role-assign.sh       aws_vm_lifecycle.sh             pg_dump.sh                    pg_query.sh                     openfga-denial-log-query.sh     lldap-user-onboard.sh                 lldap-admin-cred-rotate.sh        lldap-audit-all-memberships.sh
+vault-policy-list-audit.sh  lldap_common.sh            vault_common.sh                 openfga_pylib.py              openfga-presharedkey-rotate.sh  openapi_rest_test.sh            deprovision_aws.sh                    openfga-breakglass-grant.sh       openfga-tuple-audit.py
+deprovision_nutanix.sh      idp_login.py               nutanix_lifecycle_benchmark.sh  lldap-user-create.sh          lldap-user-list.sh              provision_nutanix_private.sh    provision_nutanix_bastion_private.sh  provision_aws.sh                  aws_resolve_catalog.py
+provision_aws_private.sh    set_tenant_credentials.py  superadmin_auth.sh              infra-smoke-test.sh           openapi_rest_test.py            provision_nutanix.sh            enumerate_readonly.sh                 register_aws_tenants.sh           common.sh
+create_aws_iam_user.sh      create_tenant.sh           dump_openfga_user_mapping.py    __pycache__/                  materialize_vault_users.py      vault_tenant_role.py            create_users.sh                       generated/                        e2e_department_flow.py
+
+
+
+CW/home/ubuntu/libcloud_nutanix/test_script/scripts>grep -i dept ../../test_script/generated/openfga_pg_dump_20260909_124613.sql
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept1user02	parent	company:user01company	0	01M204BZ3KG40EZD075SAVXAAM	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	libcloud_api	main	parent	tenant:dept1user02	0	01M204BZ3KG40EZD075T0CQ8QR	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	provider	aws	parent	tenant:dept1user02	0	01M204BZ3KG40EZD075VSVQ3CB	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	provider	provider:aws	0	01M204BZ3KG40EZD075W3SEQF7	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	tenant	tenant:dept1user02	0	01M204BZ3KG40EZD075YRHWGPV	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	vault_user	libcloud-dept1user02	parent	tenant:dept1user02	0	01M204BZ3KG40EZD075ZZ7CAPX	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	platform	platform:main	0	01M204BZ3KG40EZD0760KR573Q	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept1user02	owner	user:user02	0	01M204BZ3KG40EZD0761R81K94	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept2user03	parent	company:user01company	0	01M204HYGAPAQD23QZGXJ4HQVQ	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	libcloud_api	main	parent	tenant:dept2user03	0	01M204HYGAPAQD23QZGXTWD64N	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	provider	aws	parent	tenant:dept2user03	0	01M204HYGAPAQD23QZGZ29NR0B	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	provider	provider:aws	0	01M204HYGAPAQD23QZH06H238D	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	tenant	tenant:dept2user03	0	01M204HYGAPAQD23QZH1TT6FVE	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	vault_user	libcloud-dept2user03	parent	tenant:dept2user03	0	01M204HYGAPAQD23QZH37HHRJP	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	platform	platform:main	0	01M204HYGAPAQD23QZH5K5BMFR	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept2user03	owner	user:user03	0	01M204HYGAPAQD23QZH6G2EAPB	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept1user02	parent	company:user01company	user	01M204BZ3KG40EZD075SAVXAAM	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	libcloud_api	main	parent	tenant:dept1user02	user	01M204BZ3KG40EZD075T0CQ8QR	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	provider	aws	parent	tenant:dept1user02	user	01M204BZ3KG40EZD075VSVQ3CB	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	provider	provider:aws	user	01M204BZ3KG40EZD075W3SEQF7	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	tenant	tenant:dept1user02	user	01M204BZ3KG40EZD075YRHWGPV	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	vault_user	libcloud-dept1user02	parent	tenant:dept1user02	user	01M204BZ3KG40EZD075ZZ7CAPX	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept1user02	platform	platform:main	user	01M204BZ3KG40EZD0760KR573Q	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept1user02	owner	user:user02	user	01M204BZ3KG40EZD0761R81K94	2026-09-08 09:07:45.395769+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept2user03	parent	company:user01company	user	01M204HYGAPAQD23QZGXJ4HQVQ	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	libcloud_api	main	parent	tenant:dept2user03	user	01M204HYGAPAQD23QZGXTWD64N	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	provider	aws	parent	tenant:dept2user03	user	01M204HYGAPAQD23QZGZ29NR0B	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	provider	provider:aws	user	01M204HYGAPAQD23QZH06H238D	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	tenant	tenant:dept2user03	user	01M204HYGAPAQD23QZH1TT6FVE	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	vault_user	libcloud-dept2user03	parent	tenant:dept2user03	user	01M204HYGAPAQD23QZH37HHRJP	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	aws_region	dept2user03	platform	platform:main	user	01M204HYGAPAQD23QZH5K5BMFR	2026-09-08 09:11:01.386437+00		\N
+01KXFQ6JWFD2MZKFDFSHYNNNXE	tenant	dept2user03	owner	user:user03	user	01M204HYGAPAQD23QZH6G2EAPB	2026-09-08 09:11:01.386437+00		\N
+CW/home/ubuntu/libcloud_nutanix/test_script/scripts>
+
+
+
+

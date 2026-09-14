@@ -1,0 +1,30 @@
+# --- Example A: List all tuples response ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "tuples": [
+    {"user": "user:superadmin", "relation": "superadmin", "object": "platform:main"},
+    {"user": "user:aws-admin", "relation": "admin", "object": "tenant:aws"},
+    {"user": "user:ntnx-owner", "relation": "owner", "object": "tenant:nutanix"},
+    {"user": "user:aws-viewer", "relation": "viewer", "object": "tenant:aws"}
+  ]
+}
+
+
+# --- Example B: Write tuples response ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "written": 1
+}
+
+
+# --- Example C: Delete tuples response ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "deleted": 1
+}

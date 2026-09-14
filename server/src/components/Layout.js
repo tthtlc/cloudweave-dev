@@ -18,6 +18,7 @@ export default function Layout({ children }) {
     { to: "/viewer", label: "Viewer", roles: ["viewer", "admin", "owner", "superadmin"] },
     { to: "/admin", label: "Admin", roles: ["admin"] },
     { to: "/owner", label: "Owner", roles: ["owner"] },
+    { to: "/company", label: "Company", roles: ["company_admin"] },
     { to: "/superadmin", label: "Superadmin", roles: ["superadmin"] },
     { to: "/superadmin/tuples", label: "Tuples", roles: ["superadmin"] },
     { to: "/superadmin/explorer", label: "Explorer", roles: ["superadmin"] },

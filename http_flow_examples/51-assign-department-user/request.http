@@ -1,0 +1,9 @@
+PUT /api/departments/eng/users/int-eng-viewer HTTP/1.1
+Host: localhost:8766
+Content-Type: application/json
+Accept: application/json
+Cookie: libcloud_portal_sid=...company_admin_session...
+
+{
+  "role": "admin"
+}

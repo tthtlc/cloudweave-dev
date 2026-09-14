@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 400
+Date: Wed, 23 Jul 2026 14:30:02 GMT
+
+{
+  "cluster": "nutanix",
+  "hosts": [
+    {
+      "id": "host-1",
+      "name": "prism-42-host-1",
+      "cpu_count": 16,
+      "memory_mib": 65536,
+      "hypervisor": "AHV",
+      "serial": "SN-0000001",
+      "model": "NX-3060-G6"
+    }
+  ]
+}

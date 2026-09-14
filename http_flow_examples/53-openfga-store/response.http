@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 150
+Date: Wed, 23 Jul 2026 14:29:01 GMT
+
+{
+  "id": "01J5K7M9P2R4V6W8",
+  "name": "libcloud-rest-store",
+  "created_at": "2026-07-01T00:00:00Z",
+  "updated_at": "2026-07-23T14:22:00Z"
+}

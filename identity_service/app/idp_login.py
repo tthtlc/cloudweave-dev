@@ -22,7 +22,10 @@ _token_cache: dict[str, dict[str, Any]] = {}
 
 
 def _cache_key(cloud: str, binding: str | None) -> str:
-    return cloud if not binding else f"{cloud}:{binding}"
+    # The machine provisioner is always the per-cloud service account
+    # (aws-admin / ntnx-admin), independent of the department binding, so one
+    # cached token per cloud is sufficient (design_company_department.md §2/§4).
+    return cloud
 
 
 def _extract_code(location: str) -> str:
@@ -55,19 +58,17 @@ class ProvisionerAuth:
         self._settings = get_settings
 
     def _provisioner(self, cloud: str, binding: str | None = None) -> tuple[str, str]:
+        # The machine provisioner is always the per-cloud LLDAP service account
+        # (aws-admin for AWS, ntnx-admin for Nutanix) — NOT a per-department
+        # account derived from the binding. OpenFGA's `provisioner` role (scoped
+        # to the cloud by the `and can_use from provider` intersection) authorizes
+        # it on every backend of that cloud; the `auth_binding` selects the
+        # per-department Vault credential downstream (design_company_department.md
+        # §2/§4). `binding` is kept in the signature for call-site clarity.
         s = self._settings()
-        if not binding:
-            # Seeded per-cloud defaults (aws-admin / ntnx-admin).
-            if cloud == "aws":
-                return s.provisioner_aws_user, s.provisioner_aws_password
-            return s.provisioner_ntnx_user, s.provisioner_ntnx_password
-        # Per-tenant binding (aws1, aws2, ...): log in as that tenant's admin.
-        # The tenant id is the LLDAP slug prefix, except the seeded "nutanix"
-        # tenant whose users are "ntnx-*".
-        slug = "ntnx" if binding == "nutanix" else binding
-        user = f"{slug}-admin"
-        password = os.environ.get(f"LIBCLOUD_PASSWORD_{slug.upper()}_ADMIN", "")
-        return user, password
+        if cloud == "aws":
+            return s.provisioner_aws_user, s.provisioner_aws_password
+        return s.provisioner_ntnx_user, s.provisioner_ntnx_password
 
     def get_token(self, cloud: str, binding: str | None = None) -> str:
         key = _cache_key(cloud, binding)

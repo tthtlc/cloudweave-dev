@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 58
+Date: Wed, 23 Jul 2026 14:28:08 GMT
+
+{
+  "id": "acme-corp-international",
+  "updated": true
+}

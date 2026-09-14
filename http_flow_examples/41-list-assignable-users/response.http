@@ -1,0 +1,25 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 460
+Date: Wed, 23 Jul 2026 14:28:03 GMT
+
+{
+  "users": [
+    {
+      "internalUserId": "int-eng-owner",
+      "email": "eng-owner@libcloud.local",
+      "displayName": "Engineering Owner",
+      "role": "owner",
+      "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+      "createdAt": "2026-07-01T00:00:00Z"
+    },
+    {
+      "internalUserId": "int-eng-viewer",
+      "email": "eng-viewer@libcloud.local",
+      "displayName": "Engineering Viewer",
+      "role": "viewer",
+      "linkedIdentities": ["lldap:CiQgT1JURV9VU0VFOkJMQk9DSw=="],
+      "createdAt": "2026-07-01T00:00:00Z"
+    }
+  ]
+}

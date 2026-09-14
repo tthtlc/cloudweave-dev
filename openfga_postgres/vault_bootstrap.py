@@ -76,6 +76,39 @@ path "{KV_MOUNT}/metadata/{AUTH_KV_PREFIX}/*" {{
 }}
 """
 
+# Department orchestrator token (identity-service): mint per-department AppRoles
+# and read/write per-department backend credentials. This is the identity-service's
+# scoped Vault capability for the company-admin "create department" flow (write
+# credential + create AppRole) and "view/rotate credential" (read). It is NOT
+# root: no non-libcloud paths, and no read-back of any AppRole secret_id (the
+# secret-id path grants only "update", i.e. mint; auth material is written to KV,
+# not read). The identity-service gates every use behind OpenFGA
+# can_manage_credentials / can_create_department.
+DEPARTMENT_ORCHESTRATOR_POLICY_NAME = os.environ.get(
+    "VAULT_DEPT_ORCHESTRATOR_POLICY", "department-orchestrator"
+)
+DEPARTMENT_ORCHESTRATOR_POLICY = f"""# Scoped department provisioning: create per-department AppRoles and
+# read/write per-department cloud credentials (KV v2).
+path "{KV_MOUNT}/data/{KV_PREFIX}/*" {{
+  capabilities = ["create", "update", "read"]
+}}
+path "{KV_MOUNT}/metadata/{KV_PREFIX}/*" {{
+  capabilities = ["list"]
+}}
+path "{KV_MOUNT}/data/{AUTH_KV_PREFIX}/*" {{
+  capabilities = ["create", "update"]
+}}
+path "sys/policies/acl/libcloud-read-*" {{
+  capabilities = ["create", "update"]
+}}
+# The trailing `*` makes this a PREFIX match, so `read` also covers the
+# .../role-id sub-endpoint and `update` also covers .../secret-id. A separate
+# `libcloud-*/role-id` path does NOT match (Vault only globs the final segment).
+path "auth/{APPROLE_MOUNT}/role/libcloud-*" {{
+  capabilities = ["create", "update", "read"]
+}}
+"""
+
 
 def _tenant_read_policy(tenant: str) -> str:
     """ACL policy scoped to a single tenant's backend cloud credentials."""
@@ -154,6 +187,7 @@ def _write_env(values: dict[str, str]) -> Path:
         f"VAULT_TOKEN={values['VAULT_TOKEN']}",
         f"VAULT_ROOT_TOKEN={values['VAULT_ROOT_TOKEN']}",
         f"VAULT_UNSEAL_KEY={values['VAULT_UNSEAL_KEY']}",
+        f"VAULT_DEPT_ORCHESTRATOR_TOKEN={values.get('VAULT_DEPT_ORCHESTRATOR_TOKEN', '')}",
     ]
     VAULT_ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
     try:
@@ -233,6 +267,28 @@ def ensure_orchestrator_token(root_token: str) -> str:
     )
     token = created["auth"]["client_token"]
     log.info("Issued libcloud REST API orchestrator token (policy=%s)", ORCH_POLICY_NAME)
+    return token
+
+
+def ensure_department_orchestrator_token(root_token: str) -> str:
+    """Issue the identity-service's department-orchestrator token (mint
+    per-department AppRoles + read/write per-department credentials)."""
+    _request(
+        "PUT",
+        f"/sys/policies/acl/{DEPARTMENT_ORCHESTRATOR_POLICY_NAME}",
+        token=root_token,
+        body={"policy": DEPARTMENT_ORCHESTRATOR_POLICY},
+    )
+    log.info("Ensured department-orchestrator ACL policy %s", DEPARTMENT_ORCHESTRATOR_POLICY_NAME)
+
+    _, created = _request(
+        "POST",
+        "/auth/token/create",
+        token=root_token,
+        body={"policies": [DEPARTMENT_ORCHESTRATOR_POLICY_NAME], "ttl": "768h", "renewable": True},
+    )
+    token = created["auth"]["client_token"]
+    log.info("Issued department-orchestrator token (policy=%s)", DEPARTMENT_ORCHESTRATOR_POLICY_NAME)
     return token
 
 
@@ -338,6 +394,7 @@ def main() -> int:
     enable_kv_v2(root_token)
     enable_approle(root_token)
     orchestrator_token = ensure_orchestrator_token(root_token)
+    dept_orchestrator_token = ensure_department_orchestrator_token(root_token)
 
     # Per-tenant AppRole identities (role + scoped policy + secret_id). These
     # are the "vault users": one per tenant, shared by that tenant's admin and
@@ -361,6 +418,7 @@ def main() -> int:
             "VAULT_TOKEN": orchestrator_token,
             "VAULT_ROOT_TOKEN": root_token,
             "VAULT_UNSEAL_KEY": unseal_key,
+            "VAULT_DEPT_ORCHESTRATOR_TOKEN": dept_orchestrator_token,
         }
     )
 

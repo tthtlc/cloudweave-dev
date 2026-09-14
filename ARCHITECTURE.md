@@ -64,6 +64,41 @@ Note the deliberate asymmetry: **superadmin can read everything and grant
 anything, but cannot itself provision.** It is a control-plane role, not a
 data-plane one (`openfga_postgres/openfga_bootstrap.py:855-861`).
 
+### Company → department hierarchy (added since this document was written)
+
+The system gained a **3-level organization hierarchy** on top of the tenant (see
+`design_company_department.md`):
+
+```
+platform:main                              (superadmin)
+  └─ company                               created by superadmin; one "company admin" (an LLDAP user)
+       └─ tenant = "department"            created by the company admin; bound to ONE cloud
+                                           (aws|nutanix) + ONE credential + ONE AppRole; has
+                                           owner/admin/viewer (owner = "department administrator")
+```
+
+- **A department is exactly a `tenant`** — `tenant.parent → company`. The whole
+  tenant→provider→backend-object→vault_user→AppRole→credential machinery is
+  reused; only `company` and the parent link are new.
+- **`company`** is a new OpenFGA type (a grouping with a single `admin`); it
+  holds no cloud/credential of its own.
+- **Roles** grew by **`company_admin`** (the company administrator). The
+  department's `owner` is the "department administrator" assigned at creation,
+  who may then assign `admin`/`viewer`.
+- **Machine provisioner**: the `aws-admin`/`ntnx-admin` LLDAP **service accounts**
+  are granted the platform `provisioner` role (scoped to their cloud by the
+  `and can_use from provider` intersection, §5.2). The identity-service uses them
+  to reach `libcloud.rest`/OpenFGA on behalf of any end user — there is no
+  per-department provisioner account. (A Dex `client_credentials` machine grant
+  was evaluated and dropped: Dex v2.41.1 emits `aud = client_id` and an opaque
+  `sub`.)
+- **30 pool users** (`user01..user30`, `test_script/scripts/create_users.sh`) are
+  inert until a superadmin/company-admin assigns them a company/department role.
+
+New identity-service routes: `GET/POST /api/companies`,
+`GET/POST /api/companies/{id}/departments`, `GET/PUT /api/departments/{id}/credential`,
+`GET /api/users/assignable`. Portal: `CompanyAdminDashboard` (`/company`).
+
 ---
 
 ## 2. Deployment topology
@@ -340,6 +375,21 @@ The design worth noting is on the backend objects: writes require an
 be permitted to use that provider. Revoking `provider.can_use` for a tenant
 instantly disables provisioning for everyone in it without touching per-user
 grants. That is the intended kill switch.
+
+#### Model extensions since this DSL (company / department / provisioner)
+
+The running model (v2) extends the DSL above — see `design_company_department.md`
+and `openfga_postgres/model/libcloud.fga`:
+
+- **`company`** type (grouping with one `admin`); **`tenant.parent → company`**
+  makes a department just a tenant under a company.
+- **`platform.provisioner`** role, threaded **inside** the backend objects'
+  `and can_use from provider` intersection (NOT a separate OR-arm) so the machine
+  provisioner stays cloud-scoped. `user:aws-admin` / `user:ntnx-admin` hold it.
+- `platform.can_manage_company_lifecycle` + company-derived tenant arms
+  (`can_manage_credentials`, `can_assign_*`, `can_view`).
+- tenant→cloud is now derived from `tenant:<t> parent provider:<cloud>` at
+  runtime (`identity_service/app/fga.py`), not a hard-coded map.
 
 Bootstrap seeds **48 tuples** (39 structural wiring + 9 role grants) via
 `openfga_bootstrap.py:855-931`, then runs ~50 `Check` assertions to validate

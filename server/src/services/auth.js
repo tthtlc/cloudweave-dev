@@ -56,6 +56,7 @@ export function clearSessionMeta() {
 export function roleHome(role) {
   switch (role) {
     case "superadmin": return "/superadmin";
+    case "company_admin": return "/company";
     case "admin": return "/admin";
     case "owner": return "/owner";
     case "pending": return "/pending";

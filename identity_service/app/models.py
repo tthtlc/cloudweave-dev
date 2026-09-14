@@ -161,6 +161,11 @@ class UpdateDepartmentRequest(BaseModel):
     name: str | None = None
     clouds: list[str] | None = None
     ownerUserId: str | None = None
+    # Per-provider backend credentials, keyed by cloud id ("aws" | "nutanix"),
+    # written to Vault when the company admin adds a provider to an existing
+    # department (the create form already collects these). A blank/omitted
+    # credential leaves that provider's existing secret untouched.
+    credentials: dict[str, CredentialInput] = {}
 
 
 class DepartmentUserUpdateRequest(BaseModel):

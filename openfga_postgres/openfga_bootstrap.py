@@ -222,6 +222,12 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
             "type": "platform",
             "relations": {
                 "superadmin": {"this": {}},
+                # Machine orchestrator identities (the identity-service) that act
+                # on behalf of end users across every tenant/department. Threaded
+                # through can_connect/can_use/can_provision/can_read on the
+                # backend objects (design_company_department.md §2). The actual
+                # per-department authorization remains at enforcement point 1.
+                "provisioner": {"this": {}},
                 # Global read-only visibility of every tenant and its resources,
                 # granted by virtue of being SuperAdmin (rbac_design.md:32-34).
                 # Feeds can_connect / can_use / can_read on tenants, providers,
@@ -233,6 +239,11 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 # Tenant lifecycle: create / onboard / decommission tenants
                 # (register AWS accounts, Nutanix projects). rbac_design.md:27-29
                 "can_manage_tenant_lifecycle": {
+                    "computedUserset": {"relation": "superadmin"}
+                },
+                # Company lifecycle: create companies + assign company admins
+                # (design_company_department.md §2). SuperAdmin only.
+                "can_manage_company_lifecycle": {
                     "computedUserset": {"relation": "superadmin"}
                 },
                 # Global policies: password/SSO/IdP, logging, guardrails, quotas,
@@ -249,6 +260,96 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                     "superadmin": {
                         "directly_related_user_types": [{"type": "user"}]
                     },
+                    "provisioner": {
+                        "directly_related_user_types": [{"type": "user"}]
+                    },
+                }
+            },
+        },
+        {
+            # A company is a grouping of departments (tenants). It has one admin
+            # (the company administrator) and no cloud/credential of its own. It
+            # is created by a platform superadmin and parents its departments via
+            # tenant.parent (design_company_department.md §1-§2).
+            "type": "company",
+            "relations": {
+                "admin": {"this": {}},
+                "platform": {"this": {}},
+                "member": {
+                    "union": {
+                        "child": [
+                            {"this": {}},
+                            {"computedUserset": {"relation": "admin"}},
+                        ]
+                    }
+                },
+                # Governance of this company: its admin, or a platform superadmin.
+                "can_manage_company": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "can_manage_platform"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # The right to create departments under this company.
+                "can_create_department": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "can_manage_platform"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # The right to assign a department admin/owner (reached from the
+                # department via tenant.can_assign_* from parent).
+                "can_assign_department_admin": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "can_manage_platform"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # Read/observe the company and its departments.
+                "can_view": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "admin"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "platform"},
+                                    "computedUserset": {"relation": "global_reader"},
+                                }
+                            },
+                        ]
+                    }
+                },
+            },
+            "metadata": {
+                "relations": {
+                    "admin": {"directly_related_user_types": [{"type": "user"}]},
+                    "platform": {
+                        "directly_related_user_types": [{"type": "platform"}]
+                    },
+                    "member": {
+                        "directly_related_user_types": [{"type": "user"}]
+                    },
                 }
             },
         },
@@ -258,6 +359,11 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 # platform:main is the parent that gates cross-tenant SuperAdmin
                 # capabilities (assign-owner, global read) on this tenant.
                 "platform": {"this": {}},
+                # Optional company parent: a department is a tenant parented to a
+                # company (design_company_department.md §2). Grandfathered tenants
+                # (aws, nutanix, ...) have no parent tuple, so the company-derived
+                # arms resolve to nothing for them.
+                "parent": {"this": {}},
                 "owner": {"this": {}},
                 "admin": {"this": {}},
                 "viewer": {"this": {}},
@@ -281,16 +387,56 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                         "computedUserset": {"relation": "can_manage_platform"},
                     }
                 },
-                "can_assign_admin": {"computedUserset": {"relation": "owner"}},
-                # Only Owners assign/revoke Viewer. Admins cannot change tenant
-                # membership at all (rbac_design.md:93-97), so the admin arm is
-                # dropped (rbac_design_modified1.md contradiction #3).
-                "can_assign_viewer": {"computedUserset": {"relation": "owner"}},
-                # Backend cloud credentials for this tenant may only be updated
-                # by the tenant owner. SuperAdmin is no longer seeded as an
-                # owner, so it must be explicitly granted the owner role on a
-                # tenant to manage that tenant's credentials (break-glass).
-                "can_manage_credentials": {"computedUserset": {"relation": "owner"}},
+                # A tenant Owner can assign/revoke Admin. For a department, the
+                # parent company admin can too (can_assign_department_admin from
+                # parent) so the company admin controls department membership
+                # (design_company_department.md §2).
+                "can_assign_admin": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "owner"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "parent"},
+                                    "computedUserset": {"relation": "can_assign_department_admin"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # Only Owners assign/revoke Viewer (and, for departments, the
+                # company admin). Admins cannot change tenant membership at all
+                # (rbac_design.md:93-97), so the admin arm is dropped.
+                "can_assign_viewer": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "owner"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "parent"},
+                                    "computedUserset": {"relation": "can_assign_department_admin"},
+                                }
+                            },
+                        ]
+                    }
+                },
+                # Backend cloud credentials for this tenant may be updated by the
+                # tenant owner, or (for a department) the parent company admin via
+                # can_manage_company (design_company_department.md §2 / D1: the
+                # company admin supplies + rotates the department credential).
+                "can_manage_credentials": {
+                    "union": {
+                        "child": [
+                            {"computedUserset": {"relation": "owner"}},
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "parent"},
+                                    "computedUserset": {"relation": "can_manage_company"},
+                                }
+                            },
+                        ]
+                    }
+                },
                 "can_provision": {
                     "union": {
                         "child": [
@@ -318,6 +464,15 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                             {"computedUserset": {"relation": "viewer"}},
                             {"computedUserset": {"relation": "admin"}},
                             {"computedUserset": {"relation": "owner"}},
+                            # A department is visible to its parent company's admin
+                            # (can_view) so the company admin can enumerate/observe
+                            # its departments (design_company_department.md §2).
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {"relation": "parent"},
+                                    "computedUserset": {"relation": "can_view"},
+                                }
+                            },
                             # SuperAdmin global read-only visibility.
                             {
                                 "tupleToUserset": {
@@ -333,6 +488,9 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                 "relations": {
                     "platform": {
                         "directly_related_user_types": [{"type": "platform"}]
+                    },
+                    "parent": {
+                        "directly_related_user_types": [{"type": "company"}]
                     },
                     "owner": {"directly_related_user_types": [{"type": "user"}]},
                     "admin": {"directly_related_user_types": [{"type": "user"}]},
@@ -585,6 +743,14 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                                             "relation": "tenant_owner"
                                                         }
                                                     },
+                                                    # Machine provisioner identities are scoped to this
+                                                    # cloud by the can_use intersection below.
+                                                    {
+                                                        "tupleToUserset": {
+                                                            "tupleset": {"relation": "platform"},
+                                                            "computedUserset": {"relation": "provisioner"},
+                                                        }
+                                                    },
                                                 ]
                                             }
                                         },
@@ -632,6 +798,14 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                                     {
                                                         "computedUserset": {
                                                             "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                    # Machine provisioner identities are scoped to this
+                                                    # cloud by the can_use intersection below.
+                                                    {
+                                                        "tupleToUserset": {
+                                                            "tupleset": {"relation": "platform"},
+                                                            "computedUserset": {"relation": "provisioner"},
                                                         }
                                                     },
                                                 ]
@@ -746,6 +920,14 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                                             "relation": "tenant_owner"
                                                         }
                                                     },
+                                                    # Machine provisioner identities are scoped to this
+                                                    # cloud by the can_use intersection below.
+                                                    {
+                                                        "tupleToUserset": {
+                                                            "tupleset": {"relation": "platform"},
+                                                            "computedUserset": {"relation": "provisioner"},
+                                                        }
+                                                    },
                                                 ]
                                             }
                                         },
@@ -790,6 +972,14 @@ LIBCLOUD_MODEL: Dict[str, Any] = {
                                                     {
                                                         "computedUserset": {
                                                             "relation": "tenant_owner"
+                                                        }
+                                                    },
+                                                    # Machine provisioner identities are scoped to this
+                                                    # cloud by the can_use intersection below.
+                                                    {
+                                                        "tupleToUserset": {
+                                                            "tupleset": {"relation": "platform"},
+                                                            "computedUserset": {"relation": "provisioner"},
                                                         }
                                                     },
                                                 ]
@@ -875,6 +1065,16 @@ INITIAL_TUPLES: List[Dict[str, str]] = [
     # below. To provision inside a tenant it must be explicitly granted that
     # tenant's owner/admin role (break-glass).
     {"user": "user:superadmin", "relation": "superadmin", "object": "platform:main"},
+    # Machine provisioner identities: the aws-admin / ntnx-admin LLDAP service
+    # accounts act as the platform's machine provisioners, letting the
+    # identity-service reach libcloud.rest / OpenFGA on behalf of end users
+    # (design_company_department.md §2/§4). The `provisioner from platform` arm
+    # sits INSIDE the `and can_use from provider` intersection on each backend
+    # object, so aws-admin is scoped to AWS backends and ntnx-admin to Nutanix
+    # backends (cross-cloud isolation preserved). The per-department Vault
+    # AppRole further scopes the actual cloud credential.
+    {"user": "user:aws-admin", "relation": "provisioner", "object": "platform:main"},
+    {"user": "user:ntnx-admin", "relation": "provisioner", "object": "platform:main"},
     # platform:main parents every tenant / api / provider / backend /
     # resource_class so the SuperAdmin-gated relations (global_reader,
     # can_manage_platform -> can_assign_owner) can resolve onto them.
@@ -959,6 +1159,7 @@ VALIDATION_CHECKS: List[Tuple[str, str, str, bool]] = [
     ("user:superadmin", "can_manage_tenant_lifecycle", "platform:main", True),
     ("user:superadmin", "can_manage_global_policy", "platform:main", True),
     ("user:superadmin", "can_manage_iam_mapping", "platform:main", True),
+    ("user:superadmin", "can_manage_company_lifecycle", "platform:main", True),
     ("user:superadmin", "can_connect", "libcloud_api:main", True),
     ("user:superadmin", "can_use", "provider:aws", True),
     ("user:superadmin", "can_use", "provider:nutanix", True),
@@ -1036,6 +1237,18 @@ VALIDATION_CHECKS: List[Tuple[str, str, str, bool]] = [
     ("user:ntnx-compute-viewer", "can_provision", "aws_region:aws", False),
     # Authenticated-but-unauthorized demo user is denied at the gate
     ("user:cloud-denied", "can_connect", "libcloud_api:main", False),
+    # Machine provisioner identities (design_company_department.md §2/§4): the
+    # aws-admin / ntnx-admin LLDAP service accounts are granted the platform
+    # `provisioner` role so the identity-service can act on their behalf across
+    # departments. The role is scoped to the provisioner's cloud by the
+    # `and can_use from provider` intersection on the backend objects, so
+    # aws-admin provisions only AWS backends and ntnx-admin only Nutanix — the
+    # cross-cloud isolation checks above remain true. Provisioners are NOT owners
+    # (no credential management) and NOT superadmin (no platform governance).
+    ("user:aws-admin", "can_manage_credentials", "tenant:nutanix", False),
+    ("user:ntnx-admin", "can_manage_credentials", "tenant:aws", False),
+    ("user:aws-admin", "can_manage_platform", "platform:main", False),
+    ("user:ntnx-admin", "can_manage_platform", "platform:main", False),
 ]
 
 
